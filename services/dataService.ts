@@ -8,7 +8,12 @@ export const getActiveUrls = () => {
   try {
     const saved = localStorage.getItem('MUNDIAL_DASHBOARD_URLS');
     if (saved) {
-      return { ...CSV_URLS, ...JSON.parse(saved) };
+      const parsed = JSON.parse(saved);
+      if (!parsed.fDetalhes || parsed.fDetalhes.includes('1aG4Gl14KUL93l_ovqhA_4Dx4P-BBG-eewcy1OAJ_L4M')) {
+        parsed.fDetalhes = CSV_URLS.fDetalhes;
+        localStorage.setItem('MUNDIAL_DASHBOARD_URLS', JSON.stringify(parsed));
+      }
+      return { ...CSV_URLS, ...parsed };
     }
   } catch (e) {
     console.error("Error reading custom URLs", e);
