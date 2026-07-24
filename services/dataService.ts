@@ -2,6 +2,7 @@
 import { CSV_URLS, DEFAULT_CONFIG } from '../constants';
 import { parseCSV } from '../utils/csvParser';
 import { DashboardData, PlayerData, KillFeed, MatchDetails, CharacterData, TeamStats, TeamReference, WeaponData, SafeData, GenericDimData, AppConfig } from '../types';
+import { findTeamLogo } from '../utils/teamUtils';
 
 export const getActiveUrls = () => {
   try {
@@ -19,7 +20,13 @@ export const getAppConfig = (): AppConfig => {
   try {
     const saved = localStorage.getItem('MUNDIAL_DASHBOARD_CONFIG');
     if (saved) {
-      return { ...DEFAULT_CONFIG, ...JSON.parse(saved) };
+      const parsed = JSON.parse(saved);
+      if (parsed.titlePart1 === 'FFWSBR' && parsed.titlePart2 === '2026') {
+        parsed.titlePart1 = 'FFWSBR 2026';
+        parsed.titlePart2 = 'SPLIT 2';
+        localStorage.setItem('MUNDIAL_DASHBOARD_CONFIG', JSON.stringify(parsed));
+      }
+      return { ...DEFAULT_CONFIG, ...parsed };
     }
   } catch (e) {
     console.error("Error reading app config", e);
@@ -259,7 +266,7 @@ export const calculateTeamStats = (data: DashboardData): TeamStats[] => {
     if (!teamMap.has(teamName)) {
       teamMap.set(teamName, { 
         name: teamName, 
-        image: teamImages.get(teamName), 
+        image: findTeamLogo(teamName, data.teamsReference), 
         grupo: teamGroups.get(teamName),
         s: 0, b: 0, ptsc: 0, abts: 0, pts: 0, 
         avgAbts: 0, avgPts: 0, avgPtsc: 0, 

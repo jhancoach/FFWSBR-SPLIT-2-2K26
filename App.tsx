@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import Leaderboard from './pages/Leaderboard';
+import Schedule from './pages/Schedule';
 import Players from './pages/Players';
 import Teams from './pages/Teams';
 import KillFeedPage from './pages/KillFeedPage';
@@ -60,6 +61,7 @@ const App: React.FC = () => {
       <Layout onRefresh={loadData} loading={data.loading} lastUpdated={data.lastUpdated} config={config}>
         <Routes>
           <Route path="/" element={<Leaderboard data={data} />} />
+          <Route path="/cronograma" element={<Schedule data={data} />} />
           <Route path="/players" element={<Players data={data} />} />
           <Route path="/teams" element={<Teams data={data} />} />
           <Route path="/killfeed" element={<KillFeedPage data={data} />} />

@@ -23,8 +23,8 @@ export const CSV_URLS = {
 export const LOGO_URL = "https://i.ibb.co/d04qyJhF/image.png";
 
 export const DEFAULT_CONFIG = {
-  titlePart1: "FFWSBR",
-  titlePart2: "2026",
+  titlePart1: "FFWSBR 2026",
+  titlePart2: "SPLIT 2",
   subtitle: "Dashboard Competitivo Free Fire"
 };
 

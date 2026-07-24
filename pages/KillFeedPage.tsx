@@ -4,6 +4,7 @@ import { DashboardData } from '../types';
 import { Crosshair, ShieldAlert, Swords, Disc, List, User, FilterX, Shield, History, Clock, MapPin, Target, Skull, BarChart3, TrendingUp } from 'lucide-react';
 import FilterBar from '../components/FilterBar';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
+import { findTeamLogo } from '../utils/teamUtils';
 
 interface KillFeedPageProps {
   data: DashboardData;
@@ -274,7 +275,7 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
 
   const getTeamImg = (name: string) => {
     if (!name) return undefined;
-    return data.teamsReference.find(t => normalize(t.TIME) === normalize(name))?.IMG;
+    return findTeamLogo(name, data.teamsReference) || undefined;
   };
 
   const getPlayerImg = (name: string, isVictim: boolean = false) => {

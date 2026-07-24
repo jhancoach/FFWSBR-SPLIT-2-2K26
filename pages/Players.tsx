@@ -2,9 +2,10 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { DashboardData, PlayerData, CharacterData } from '../types';
-import { Trophy, Crown, User, Swords, Zap, BarChart2, Scale, Map as MapIcon, Skull, ChevronRight, ChevronDown, ChevronUp, Sparkles, X, Activity, Info, Crosshair, Shield, ArrowLeft, Disc, Flame, Target, AlertCircle, LayoutGrid, MapPin, Hash, Target as TargetIcon, CheckCircle2, AlertTriangle, Search } from 'lucide-react';
+import { Trophy, Crown, User, Swords, Zap, BarChart2, Scale, Map as MapIcon, Skull, ChevronRight, ChevronDown, ChevronUp, Sparkles, X, Activity, Info, Crosshair, Shield, ArrowLeft, Disc, Flame, Target, AlertCircle, LayoutGrid, MapPin, Hash, Target as TargetIcon, CheckCircle2, AlertTriangle, Search, Star } from 'lucide-react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, LabelList, Cell, YAxis, CartesianGrid } from 'recharts';
 import FilterBar from '../components/FilterBar';
+import { findTeamLogo } from '../utils/teamUtils';
 
 interface PlayersProps {
   data: DashboardData;
@@ -485,7 +486,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
              hab4Img: findDimImg(data.hab4, c.Hab4),
              petImg: findDimImg(data.pets, c.Pet),
              itemImg: findDimImg(data.items, c.Item),
-             teamImg: data.teamsReference.find(t => normalize(t.TIME) === normalize(c.Time))?.IMG
+             teamImg: findTeamLogo(c.Time, data.teamsReference)
          };
     });
   }, [data.characters, filters, data.hab1, data.hab2, data.hab3, data.hab4, data.pets, data.items, data.teamsReference, activeHabFilter]);
@@ -1196,13 +1197,32 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                         </thead>
                         <tbody className="divide-y divide-gray-800 text-[11px] font-medium">
                             {rankingData.map((player, idx) => (
-                                <tr key={idx} onClick={() => { setFilters(prev => ({...prev, players: [player.name]})); setActiveTab('report'); }} className="hover:bg-yellow-900/10 transition-colors cursor-pointer group">
-                                    <td className="px-4 py-3 text-gray-600 font-mono text-center">{idx + 1}</td>
-                                    <td className="px-4 py-3 font-bold text-white uppercase italic flex items-center gap-2">
-                                        {player.name}
+                                <tr 
+                                    key={idx} 
+                                    onClick={() => { setFilters(prev => ({...prev, players: [player.name]})); setActiveTab('report'); }} 
+                                    className={`transition-colors cursor-pointer group ${
+                                        ((player.team && player.team.toLowerCase().includes('loud')) || (player.name && player.name.toLowerCase().includes('loud')))
+                                            ? 'bg-gradient-to-r from-yellow-500/25 via-amber-500/15 to-yellow-500/5 border-y border-yellow-400/80 shadow-[0_0_15px_rgba(234,179,8,0.2)] hover:from-yellow-500/35' 
+                                            : 'hover:bg-yellow-900/10'
+                                    }`}
+                                >
+                                    <td className="px-4 py-3 text-gray-600 font-mono text-center">
+                                        <span className={(player.team?.toLowerCase().includes('loud') || player.name?.toLowerCase().includes('loud')) ? 'text-yellow-400 font-black text-xs flex items-center justify-center gap-0.5' : ''}>
+                                            {idx + 1} {(player.team?.toLowerCase().includes('loud') || player.name?.toLowerCase().includes('loud')) && <Star size={10} className="fill-yellow-400 text-yellow-400" />}
+                                        </span>
+                                    </td>
+                                    <td className="px-4 py-3 font-bold uppercase italic flex items-center gap-2">
+                                        <span className={(player.team?.toLowerCase().includes('loud') || player.name?.toLowerCase().includes('loud')) ? 'text-yellow-400 font-black text-xs font-display flex items-center gap-1' : 'text-white'}>
+                                            {player.name}
+                                            {(player.team?.toLowerCase().includes('loud') || player.name?.toLowerCase().includes('loud')) && <Star size={12} className="fill-yellow-400 text-yellow-400" />}
+                                        </span>
                                         <ChevronRight size={12} className="text-yellow-500 opacity-0 group-hover:opacity-100 transition-opacity" />
                                     </td>
-                                    <td className="px-4 py-3 text-gray-400 uppercase text-[9px] tracking-widest">{player.team}</td>
+                                    <td className="px-4 py-3 uppercase text-[9px] tracking-widest font-bold">
+                                        <span className={(player.team?.toLowerCase().includes('loud') || player.name?.toLowerCase().includes('loud')) ? 'text-yellow-300 font-black flex items-center gap-1' : 'text-gray-400'}>
+                                            {player.team} {(player.team?.toLowerCase().includes('loud') || player.name?.toLowerCase().includes('loud')) && '★'}
+                                        </span>
+                                    </td>
                                     <td className="px-4 py-3 text-center">
                                         <div className="flex flex-col items-center">
                                             <span className={`text-[9px] font-black uppercase italic ${player.funcao === 'CPT' ? 'text-yellow-500' : 'text-gray-400'}`}>{player.funcao}</span>
@@ -1562,7 +1582,7 @@ const PlayerProfile = ({ data, playerName, filters, characters }: any) => {
         const withKillsPct = totalMatches > 0 ? ((withKillsMatches / totalMatches) * 100).toFixed(1) : '0.0';
 
         const team = records[0]?.TIME || data.players.find(p => normalize(p.PLAYER) === normalize(playerName))?.TIME || 'N/A';
-        const teamImg = data.teamsReference.find(t => normalize(t.TIME) === normalize(team))?.IMG;
+        const teamImg = findTeamLogo(team, data.teamsReference);
 
         const teamRecords = data.players.filter((p: PlayerData) => {
             if (normalize(p.TIME) !== normalize(team)) return false;

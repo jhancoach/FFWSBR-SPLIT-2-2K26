@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, Shield, Skull, RefreshCw, Menu, X, Printer, Download, Settings, Map } from 'lucide-react';
+import { LayoutDashboard, Users, Shield, Skull, RefreshCw, Menu, X, Printer, Download, Settings, Map, Calendar } from 'lucide-react';
 import { CSV_URLS, LOGO_URL } from '../constants';
 import { AppConfig } from '../types';
 
@@ -18,6 +18,7 @@ const Layout: React.FC<LayoutProps> = ({ children, onRefresh, loading, lastUpdat
 
   const navItems = [
     { name: 'Classificação', path: '/', icon: <LayoutDashboard size={20} /> },
+    { name: 'Cronograma', path: '/cronograma', icon: <Calendar size={20} /> },
     { name: 'Jogadores', path: '/players', icon: <Users size={20} /> },
     { name: 'Times', path: '/teams', icon: <Shield size={20} /> },
     { name: 'Killfeed', path: '/killfeed', icon: <Skull size={20} /> },
@@ -37,26 +38,39 @@ const Layout: React.FC<LayoutProps> = ({ children, onRefresh, loading, lastUpdat
 
   return (
     <div className="min-h-screen text-gray-100 flex flex-col bg-transparent">
+      {/* Developer Credit Top Bar */}
+      <div className="bg-gradient-to-r from-yellow-500/15 via-amber-500/20 to-yellow-500/15 border-b border-yellow-500/30 py-1.5 px-4 sm:px-6 no-print shadow-sm">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">
+          <div className="flex items-center gap-2 text-yellow-400 min-w-0">
+            <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse shrink-0"></span>
+            <span className="text-gray-200 truncate font-display">FFWSBR 2026 SPLIT 2 • PAINEL COMPETITIVO</span>
+          </div>
+          <div className="flex items-center gap-1.5 bg-black/70 px-3 py-0.5 rounded-full border border-yellow-500/40 text-yellow-300 shadow-[0_0_12px_rgba(234,179,8,0.2)] shrink-0 whitespace-nowrap">
+            <span>Dashboard desenvolvido por <strong className="text-white font-black">Jhan Medeiros Analista</strong></span>
+          </div>
+        </div>
+      </div>
+
       {/* Navbar Temática */}
       <nav className="glass sticky top-0 z-50 no-print">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-20 items-center">
+          <div className="flex justify-between h-20 items-center gap-3">
             
             {/* Logo Dinâmica Oficial */}
-            <div className="flex items-center gap-4 group cursor-pointer" onClick={() => window.location.hash = '/'}>
-              <div className="relative">
+            <div className="flex items-center gap-3 group cursor-pointer shrink-0" onClick={() => window.location.hash = '/'}>
+              <div className="relative shrink-0">
                  <div className="absolute inset-0 bg-[#f97316] rounded-xl blur opacity-20 group-hover:opacity-40 transition-opacity duration-500"></div>
-                 <div className="relative bg-gradient-to-br from-[#2d0a31] to-black p-0.5 rounded-xl border border-[#f97316]/30 overflow-hidden w-16 h-16 flex items-center justify-center shadow-[0_0_15px_rgba(249,115,22,0.2)]">
+                 <div className="relative bg-gradient-to-br from-[#2d0a31] to-black p-0.5 rounded-xl border border-[#f97316]/30 overflow-hidden w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center shadow-[0_0_15px_rgba(249,115,22,0.2)]">
                     <img src={LOGO_URL} alt="FFWSBR 2026 Logo" className="w-full h-full object-contain scale-110" />
                  </div>
               </div>
-              <div className="flex flex-col">
-                <h1 className="text-2xl font-black italic tracking-widest font-display leading-none text-white drop-shadow-md uppercase">
+              <div className="flex flex-col justify-center min-w-0">
+                <h1 className="text-lg sm:text-xl md:text-2xl font-black italic tracking-wider font-display leading-tight text-white drop-shadow-md uppercase whitespace-nowrap">
                   {config.titlePart1} <span className="text-[#facc15]">{config.titlePart2}</span>
                 </h1>
-                <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-[#f97316] animate-pulse"></span>
-                    <p className="text-[10px] text-gray-400 font-bold tracking-[0.2em] uppercase">{config.subtitle}</p>
+                <div className="flex items-center gap-1.5 mt-0.5 whitespace-nowrap">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#f97316] animate-pulse shrink-0"></span>
+                    <p className="text-[9px] sm:text-[10px] text-gray-400 font-bold tracking-wider uppercase truncate">{config.subtitle}</p>
                 </div>
               </div>
             </div>
@@ -145,9 +159,9 @@ const Layout: React.FC<LayoutProps> = ({ children, onRefresh, loading, lastUpdat
       </main>
       
       <footer className="border-t border-white/5 py-6 mt-8 bg-black/40 no-print">
-        <div className="max-w-7xl mx-auto px-4 text-center text-gray-500 text-xs font-mono flex flex-col items-center gap-2">
-            <span>&copy; 2026 {config.titlePart1} {config.titlePart2} OFFICIAL DASHBOARD.</span>
-            <div className="flex gap-2 text-[10px] text-gray-600 uppercase">
+        <div className="max-w-7xl mx-auto px-4 text-center text-gray-400 text-xs font-mono flex flex-col items-center gap-2">
+            <span className="font-bold">&copy; 2026 {config.titlePart1} {config.titlePart2} • <span className="text-yellow-400 font-bold">Dashboard desenvolvido por Jhan Medeiros Analista</span></span>
+            <div className="flex gap-2 text-[10px] text-gray-500 uppercase">
                 <span className="text-[#f97316]">Domínio Total</span>
                 <span>•</span>
                 <span className="text-[#facc15]">Fogo Cruzado</span>

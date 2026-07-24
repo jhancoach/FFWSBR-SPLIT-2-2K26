@@ -6,6 +6,7 @@ import { calculateTeamStats } from '../services/dataService';
 import { Shield, TrendingUp, Users, ArrowLeft, Target, Award, Crosshair, Map as MapIcon, BarChart3, Star, Disc, Activity, Layers, Zap, ListOrdered, Trophy, ChevronDown, Medal, CheckCircle2, Flame, TrendingDown, LayoutGrid, MapPin, Scale, ArrowUp, ArrowDown, Calendar } from 'lucide-react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, LabelList, PieChart, Pie, Cell, Legend, CartesianGrid, YAxis } from 'recharts';
 import FilterBar from '../components/FilterBar';
+import { formatTeamName } from '../utils/teamUtils';
 
 interface TeamsProps {
   data: DashboardData;
@@ -1803,7 +1804,7 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                 {team.image ? <img src={team.image} alt={team.name} className="w-full h-full object-contain" /> : <Shield className="text-gray-800" size={24} />}
                             </div>
                             <div className="text-right">
-                                <h3 className="text-xl font-black italic text-white uppercase leading-none group-hover:text-yellow-500 transition-colors">{team.name}</h3>
+                                <h3 className="text-xl font-black italic text-white uppercase leading-none group-hover:text-yellow-500 transition-colors">{formatTeamName(team.name)}</h3>
                                 <div className="flex flex-col items-end gap-1 mt-1">
                                     <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest block">{team.pts} PONTOS</span>
                                     {(() => {
