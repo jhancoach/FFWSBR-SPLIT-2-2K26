@@ -1,10 +1,12 @@
 {
-  "projectId": "remixed-project-id",
-  "appId": "remixed-app-id",
-  "apiKey": "remixed-api-key",
-  "authDomain": "remixed-auth-domain",
-  "firestoreDatabaseId": "remixed-firestore-database-id",
-  "storageBucket": "remixed-storage-bucket",
-  "messagingSenderId": "remixed-messaging-sender-id",
-  "measurementId": "remixed-measurement-id"
+  "projectId": "aesthetic-point-6sdpj",
+  "appId": "1:111034791670:web:de9cdefc819b1679c25ed7",
+  "apiKey": "AIzaSyDJCA1FGYsDOqKDp8ERsZmXc8-agjOCGV0",
+  "authDomain": "aesthetic-point-6sdpj.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-ffwsbr2026split2-743ac8bf-bd6f-4994-97ef-d222c985728c",
+  "storageBucket": "aesthetic-point-6sdpj.firebasestorage.app",
+  "messagingSenderId": "111034791670",
+  "measurementId": "",
+  "oAuthClientId": "111034791670-p50fca63dm8coe9lvp30rhcvbjqos96u.apps.googleusercontent.com",
+  "recaptchaSiteKey": ""
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Map, Trash2, Crosshair, ZoomIn, ZoomOut, Move, LogIn, LogOut, X } from 'lucide-react';
+import { Map, Trash2, Crosshair, ZoomIn, ZoomOut, Move, LogIn, LogOut, X, Download, Upload } from 'lucide-react';
 import { doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db, auth, isFirebasePlaceholder } from '../firebase';
 import { OperationType, handleFirestoreError } from '../utils/firestoreError';
@@ -193,6 +193,70 @@ const Studies: React.FC = () => {
         }
     };
 
+    const handleExportJSON = () => {
+        try {
+            const exportData: Record<string, SafePoint[]> = {};
+            MAPS.forEach(m => {
+                const saved = localStorage.getItem('studies_' + m.id);
+                if (saved) {
+                    try {
+                        exportData[m.id] = JSON.parse(saved);
+                    } catch (e) {
+                        exportData[m.id] = [];
+                    }
+                } else if (m.id === selectedMap.id) {
+                    exportData[m.id] = points;
+                }
+            });
+
+            const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `estudos_safe_${selectedMap.id}_${new Date().toISOString().slice(0, 10)}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (e) {
+            console.error("Erro ao exportar JSON:", e);
+            alert("Erro ao exportar dados.");
+        }
+    };
+
+    const handleImportJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            try {
+                const content = event.target?.result as string;
+                const importedData = JSON.parse(content);
+
+                if (importedData[selectedMap.id] && Array.isArray(importedData[selectedMap.id])) {
+                    await savePoints(importedData[selectedMap.id]);
+                } else if (Array.isArray(importedData)) {
+                    await savePoints(importedData);
+                } else {
+                    Object.keys(importedData).forEach(mapId => {
+                        if (Array.isArray(importedData[mapId])) {
+                            if (isFirebasePlaceholder) {
+                                localStorage.setItem('studies_' + mapId, JSON.stringify(importedData[mapId]));
+                            }
+                        }
+                    });
+                    if (importedData[selectedMap.id]) {
+                        setPoints(importedData[selectedMap.id]);
+                    }
+                }
+                alert("Estudos de Safe importados com sucesso!");
+            } catch (err) {
+                console.error("Erro ao importar arquivo JSON:", err);
+                alert("Formato de arquivo JSON de estudos inválido.");
+            }
+        };
+        reader.readAsText(file);
+    };
+
     const maxCount = Math.max(...points.map(p => p.count), 1);
 
     return (
@@ -260,20 +324,42 @@ const Studies: React.FC = () => {
                     <p className="text-sm text-gray-500 font-bold uppercase tracking-widest mt-1">Clique para adicionar, botão direito para remover.</p>
                 </div>
                 
-                <div className="flex bg-black/40 p-1.5 rounded-xl border border-white/5 shadow-inner">
-                    {MAPS.map(map => (
+                <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex bg-black/40 p-1.5 rounded-xl border border-white/5 shadow-inner">
+                        {MAPS.map(map => (
+                            <button 
+                                key={map.id}
+                                onClick={() => setSelectedMap(map)}
+                                className={`px-6 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${
+                                    selectedMap.id === map.id 
+                                    ? 'bg-yellow-500 text-black shadow-[0_0_15px_rgba(234,179,8,0.3)]' 
+                                    : 'text-gray-400 hover:text-white hover:bg-white/5'
+                                }`}
+                            >
+                                {map.name}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="flex items-center gap-2">
                         <button 
-                            key={map.id}
-                            onClick={() => setSelectedMap(map)}
-                            className={`px-6 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${
-                                selectedMap.id === map.id 
-                                ? 'bg-yellow-500 text-black shadow-[0_0_15px_rgba(234,179,8,0.3)]' 
-                                : 'text-gray-400 hover:text-white hover:bg-white/5'
-                            }`}
+                            onClick={handleExportJSON}
+                            className="bg-white/5 hover:bg-white/10 text-white border border-gray-800 px-3 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all"
+                            title="Baixar arquivo dos estudos para compartilhar"
                         >
-                            {map.name}
+                            <Download size={14} className="text-yellow-400" /> Exportar JSON
                         </button>
-                    ))}
+
+                        <label className="bg-white/5 hover:bg-white/10 text-white border border-gray-800 px-3 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer">
+                            <Upload size={14} className="text-emerald-400" /> Importar JSON
+                            <input 
+                                type="file" 
+                                accept=".json" 
+                                onChange={handleImportJSON} 
+                                className="hidden" 
+                            />
+                        </label>
+                    </div>
                 </div>
             </div>
 
