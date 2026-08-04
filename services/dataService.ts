@@ -47,21 +47,61 @@ const cleanKey = (s: string) =>
    .replace(/[^a-z0-9]/g, "")
    .trim();
 
-const parseNumber = (val: string | undefined | null): number => {
-  if (!val) return 0;
-  const cleaned = val.toString().replace(/\D/g, '');
-  return parseInt(cleaned) || 0;
+const uncorruptKey = (key: string): string => {
+  let cleaned = cleanKey(key);
+  return cleaned
+    .replace(/teamsolid/g, 'ts')
+    .replace(/solid/g, 'ts')
+    .replace(/fluxow7m/g, 'fx')
+    .replace(/fluxo/g, 'fx')
+    .replace(/w7m/g, 'fx');
+};
+
+const parseNumber = (val: string | number | undefined | null): number => {
+  if (val === undefined || val === null) return 0;
+  if (typeof val === 'number') return isNaN(val) ? 0 : Math.round(val);
+  const str = val.toString().trim().replace(',', '.');
+  if (!str) return 0;
+  if (/^-?\d+$/.test(str)) return parseInt(str, 10);
+  const num = parseFloat(str);
+  return isNaN(num) ? 0 : Math.round(num);
 };
 
 const getVal = (row: any, aliases: string[]) => {
+  if (!row) return '';
   const keys = Object.keys(row);
+  
+  // 1. Direct cleanKey match
   for (const alias of aliases) {
     const target = cleanKey(alias);
     const foundKey = keys.find(k => cleanKey(k) === target);
-    if (foundKey && row[foundKey] !== undefined) {
+    if (foundKey && row[foundKey] !== undefined && row[foundKey] !== '') {
       return row[foundKey].toString().trim();
     }
   }
+
+  // 2. Uncorrupted key match
+  for (const alias of aliases) {
+    const target = cleanKey(alias);
+    const foundKey = keys.find(k => uncorruptKey(k) === target);
+    if (foundKey && row[foundKey] !== undefined && row[foundKey] !== '') {
+      return row[foundKey].toString().trim();
+    }
+  }
+
+  // 3. Partial or substring match
+  for (const alias of aliases) {
+    const target = cleanKey(alias);
+    if (target.length < 3) continue;
+    const foundKey = keys.find(k => {
+      const ck = uncorruptKey(k);
+      return ck.includes(target) || target.includes(ck);
+    });
+    if (foundKey && row[foundKey] !== undefined && row[foundKey] !== '') {
+      return row[foundKey].toString().trim();
+    }
+  }
+
   return '';
 };
 
@@ -161,7 +201,7 @@ export const fetchDashboardData = async (): Promise<DashboardData> => {
     // Parse players (Fonte Fato: fPlayersDados)
     const players: PlayerData[] = parseCSV<any>(responses[0]).map(row => ({
         PLAYER: getVal(row, ['PLAYER', 'Player', 'Jogador', 'JOGADOR', 'NOME', 'COMPETIDOR']),
-        TIME: getVal(row, ['TIME', 'Time', 'Equipe', 'EQUIPE', 'TAG']),
+        TIME: getVal(row, ['TIME', 'Time', 'Equipe', 'EQUIPE', 'TAG', 'NOME DO TIME', 'TEAM']),
         S: getVal(row, ['S', 'Partida', 'Quedas', 'Q', 'QUEDAS']),
         CONFRONTO: getVal(row, ['CONFRONTO', 'Confronto', 'CF', 'CONFRONTO ', 'CONFRONTO_', 'CONFRONTOS', 'Confrontos', 'NOME', 'NAME']),
         Abates: getVal(row, ['ABATES', 'Abates', 'Kills', 'KILLS', 'ABTS', 'KILL']) || '0',
@@ -192,25 +232,40 @@ export const fetchDashboardData = async (): Promise<DashboardData> => {
     })).filter(k => k.PLAYER);
 
     // Parse Detalhes (Fonte Fato)
-    const details: MatchDetails[] = parseCSV<any>(responses[2]).map(row => ({
-        TIME: getVal(row, ['TIME', 'Time', 'Equipe']),
-        MAPA: getVal(row, ['MAPA', 'Mapa']),
-        RD: getVal(row, ['RD', 'Rd', 'Rodada']),
-        CONFRONTO: getVal(row, ['CONFRONTO', 'Confronto', 'CF', 'CONFRONTO ', 'CONFRONTO_', 'CONFRONTOS', 'Confrontos', 'NOME', 'NAME']),
-        PTS: getVal(row, ['PTS', 'PONTOS', 'PONTOS TOTAL']) || '0',
-        PTSC: getVal(row, ['PTSC', 'PTS/C', 'COLOCACAO']) || '0',
-        POS: getVal(row, ['POS', 'POSICAO']) || '0',
-        ABTS: getVal(row, ['ABTS', 'ABATES']) || '0',
-        B: getVal(row, ['B', 'BOOYAH', 'VITORIA']) || '0',
-        S: getVal(row, ['S', 'PARTIDA', 'QUEDAS']) || '1',
-        Q: getVal(row, ['Q', 'QUEDA', 'Queda', 'PARTIDA']) || '1',
-        ONDE_FECHOU: getVal(row, ['ONDE FECHOU', 'Onde Fechou', 'ONDEFECHOU', 'LOCAL FECHAMENTO'])
-    })).filter(d => d.TIME);
+    const details: MatchDetails[] = parseCSV<any>(responses[2]).map(row => {
+        const timeVal = getVal(row, ['TIME', 'Time', 'Equipe', 'EQUIPE', 'TAG', 'NOME DO TIME', 'TEAM', 'TIMES', 'EQUIPES', 'NOME', 'NAME', 'CLUBE', 'CLUB']);
+        const ptsVal = getVal(row, ['PTS', 'PONTOS', 'PONTOS TOTAL', 'PTS TOTAL', 'TOTAL PTS', 'TOTAL PONTOS', 'TOTAL', 'PT', 'PTS_TOTAL', 'PONTOS_TOTAL', 'PONTUAÇÃO', 'PONTUACAO']);
+        const ptscVal = getVal(row, ['PTSC', 'PTS/C', 'PTS C', 'COLOCACAO', 'PONTOS COLOCACAO', 'PONTOS DE COLOCACAO', 'PTS COLOCACAO', 'PTSC.', 'PTS_COLOCACAO', 'COLOCAÇÃO', 'PONTOS COLOCAÇÃO', 'PONTOS DE COLOCAÇÃO', 'PTS COLOCAÇÃO', 'PTS_COLOCAÇÃO', 'PTS_POS', 'PONTOS POSICAO', 'PONTOS POSIÇÃO']);
+        const posVal = getVal(row, ['POS', 'POSICAO', 'POSIÇÃO', 'COLOCACAO', 'COLOCAÇÃO', 'RANK', 'LUGAR', 'COLOC', 'COL']);
+        const abtsVal = getVal(row, ['ABTS', 'ABATES', 'KILLS', 'ABT', 'KILL', 'ABATE', 'PONTOS ABATES', 'PTS ABATES', 'PTS ABT', 'PONTOS DE ABATES']);
+        const bVal = getVal(row, ['B', 'BOOYAH', 'BOOYAHS', 'VITORIA', 'VITÓRIA', 'BOOYA', 'V', 'BY']);
+        const sVal = getVal(row, ['S', 'PARTIDA', 'PARTIDAS', 'QUEDAS', 'QUEDA', 'JOGOS', 'QTD', 'S_']);
+        const qVal = getVal(row, ['Q', 'QUEDA', 'Queda', 'PARTIDA', 'FALL', 'ROUND']);
+        const mapaVal = getVal(row, ['MAPA', 'Mapa', 'Map', 'MAP']);
+        const rdVal = getVal(row, ['RD', 'Rd', 'Rodada', 'RODADA', 'ROUND', 'ROD']);
+        const confrontoVal = getVal(row, ['CONFRONTO', 'Confronto', 'CF', 'CONFRONTO ', 'CONFRONTO_', 'CONFRONTOS', 'Confrontos', 'NOME', 'NAME', 'FASE', 'PHASE']);
+        const ondeFechouVal = getVal(row, ['ONDE FECHOU', 'Onde Fechou', 'ONDEFECHOU', 'LOCAL FECHAMENTO', 'SAFE FECHOU', 'FECHAMENTO']);
+
+        return {
+            TIME: timeVal,
+            MAPA: mapaVal,
+            RD: rdVal,
+            CONFRONTO: confrontoVal,
+            PTS: ptsVal || '0',
+            PTSC: ptscVal || '0',
+            POS: posVal || '0',
+            ABTS: abtsVal || '0',
+            B: bVal || '0',
+            S: sVal || '1',
+            Q: qVal || '1',
+            ONDE_FECHOU: ondeFechouVal
+        };
+    }).filter(d => d.TIME);
     
     // Parse Loadouts (Fonte Fato)
     const characters: CharacterData[] = parseCSV<any>(responses[3]).map(row => ({
         Player: getVal(row, ['Player', 'Jogador', 'PLAYER', 'NOME']),
-        Time: getVal(row, ['Time', 'Equipe', 'TIME']),
+        Time: getVal(row, ['Time', 'Equipe', 'TIME', 'TAG', 'NOME DO TIME', 'TEAM']),
         Hab1: getVal(row, ['Hab1', 'Hab 1', 'Ativa']),
         Hab2: getVal(row, ['Hab2', 'Hab 2', 'Passiva 1']),
         Hab3: getVal(row, ['Hab3', 'Hab 3', 'Passiva 2']),
@@ -227,8 +282,8 @@ export const fetchDashboardData = async (): Promise<DashboardData> => {
     return {
       players, killFeed, details, characters,
       teamsReference: parseCSV<any>(responses[4]).map(row => ({
-        TIME: getVal(row, ['TIME', 'Time', 'Equipe', 'EQUIPE']),
-        IMG: getVal(row, ['IMG', 'Img', 'Imagem', 'URL']),
+        TIME: getVal(row, ['TIME', 'Time', 'Equipe', 'EQUIPE', 'TAG', 'NOME', 'NAME', 'NOME DO TIME', 'TEAM']),
+        IMG: getVal(row, ['IMG', 'Img', 'Imagem', 'URL', 'LOGO', 'ESCUDO']),
         GRUPO: getVal(row, ['GRUPO', 'Grupo', 'Group', 'GROUP', 'G'])
       })),
       playersDimension: normalizeDim(parseCSV<any>(responses[5]), 'Player'),
@@ -253,6 +308,17 @@ export const fetchDashboardData = async (): Promise<DashboardData> => {
   }
 };
 
+const POSITION_POINTS: Record<number, number> = {
+  1: 12, 2: 9, 3: 8, 4: 7, 5: 6, 6: 5, 7: 4, 8: 3, 9: 2, 10: 1
+};
+
+const getCanonicalTeamName = (teamName: string, teamsRef: TeamReference[]): string => {
+  if (!teamName || !teamName.trim()) return '';
+  const clean = teamName.trim().toLowerCase();
+  const ref = teamsRef.find(t => t.TIME && t.TIME.trim().toLowerCase() === clean);
+  return ref && ref.TIME ? ref.TIME.trim() : teamName.trim();
+};
+
 export const calculateTeamStats = (data: DashboardData): TeamStats[] => {
   const teamMap = new Map<string, TeamStats>();
   const lastMatchTracker = new Map<string, { rd: number, q: number, pos: number }>();
@@ -260,67 +326,156 @@ export const calculateTeamStats = (data: DashboardData): TeamStats[] => {
   const teamGroups = new Map<string, string>();
   
   data.teamsReference.forEach(t => { 
-    if (t.TIME && t.IMG) teamImages.set(t.TIME, t.IMG); 
-    if (t.TIME && t.GRUPO) teamGroups.set(t.TIME, t.GRUPO);
+    if (t.TIME && t.IMG) teamImages.set(t.TIME.trim(), t.IMG); 
+    if (t.TIME && t.GRUPO) teamGroups.set(t.TIME.trim(), t.GRUPO);
   });
 
-  data.details.forEach(row => {
-    const teamName = row.TIME;
-    if (!teamName) return;
-    
-    if (!teamMap.has(teamName)) {
-      teamMap.set(teamName, { 
-        name: teamName, 
-        image: findTeamLogo(teamName, data.teamsReference), 
-        grupo: teamGroups.get(teamName),
-        s: 0, b: 0, ptsc: 0, abts: 0, pts: 0, 
-        avgAbts: 0, avgPts: 0, avgPtsc: 0, 
-        percentPos: 0, percentAbts: 0, 
-        lastPos: 99 // Default alto para melhor colocação ser menor valor
-      });
-    }
-    
-    const stats = teamMap.get(teamName)!;
-    stats.pts += parseNumber(row.PTS);
-    stats.ptsc += parseNumber(row.PTSC);
-    stats.abts += parseNumber(row.ABTS);
-    stats.b += parseNumber(row.B);
-    stats.s += parseNumber(row.S);
+  const getGrupo = (teamName: string) => {
+    if (teamGroups.has(teamName)) return teamGroups.get(teamName);
+    const ref = data.teamsReference.find(t => t.TIME && t.TIME.toLowerCase().trim() === teamName.toLowerCase().trim());
+    return ref ? ref.GRUPO : undefined;
+  };
 
-    // Lógica para rastrear a posição na última queda real
-    const currentRD = parseNumber(row.RD);
-    const currentQ = parseNumber(row.Q);
-    const currentPos = parseNumber(row.POS) || 99;
+  // 1. Process from data.details if present
+  if (data.details && data.details.length > 0) {
+    data.details.forEach(row => {
+      const rawTeamName = row.TIME;
+      if (!rawTeamName) return;
 
-    const last = lastMatchTracker.get(teamName);
-    if (!last || (currentRD > last.rd) || (currentRD === last.rd && currentQ > last.q)) {
-        lastMatchTracker.set(teamName, { rd: currentRD, q: currentQ, pos: currentPos });
-        stats.lastPos = currentPos;
+      const teamName = getCanonicalTeamName(rawTeamName, data.teamsReference);
+      if (!teamName) return;
+      
+      if (!teamMap.has(teamName)) {
+        teamMap.set(teamName, { 
+          name: teamName, 
+          image: findTeamLogo(teamName, data.teamsReference), 
+          grupo: getGrupo(teamName),
+          s: 0, b: 0, ptsc: 0, abts: 0, pts: 0, 
+          avgAbts: 0, avgPts: 0, avgPtsc: 0, 
+          percentPos: 0, percentAbts: 0, 
+          lastPos: 99
+        });
+      }
+      
+      const stats = teamMap.get(teamName)!;
+      let rowPts = parseNumber(row.PTS);
+      let rowPtsc = parseNumber(row.PTSC);
+      let rowAbts = parseNumber(row.ABTS);
+      let rowB = parseNumber(row.B);
+      let rowPos = parseNumber(row.POS);
+      let rowS = parseNumber(row.S);
+
+      // Skip empty placeholder rows from spreadsheet
+      if (rowS === 0 && rowPts === 0 && rowPtsc === 0 && rowAbts === 0 && rowPos === 0 && rowB === 0) {
+        return;
+      }
+
+      if (rowS === 0) rowS = 1;
+
+      // Derived Booyah
+      if (rowB === 0 && rowPos === 1) {
+        rowB = 1;
+      }
+
+      // Derived PTSC from Position
+      if (rowPtsc === 0 && rowPos >= 1 && rowPos <= 10) {
+        rowPtsc = POSITION_POINTS[rowPos] || 0;
+      }
+
+      // Derived PTS / PTSC / ABTS
+      if (rowPts > 0) {
+        if (rowPtsc === 0 && rowAbts > 0 && rowPts >= rowAbts) {
+          rowPtsc = rowPts - rowAbts;
+        }
+        if (rowAbts === 0 && rowPtsc > 0 && rowPts >= rowPtsc) {
+          rowAbts = rowPts - rowPtsc;
+        }
+      } else {
+        rowPts = rowPtsc + rowAbts;
+      }
+
+      stats.pts += rowPts;
+      stats.ptsc += rowPtsc;
+      stats.abts += rowAbts;
+      stats.b += rowB;
+      stats.s += rowS;
+
+      // Lógica para rastrear a posição na última queda real
+      const currentRD = parseNumber(row.RD);
+      const currentQ = parseNumber(row.Q);
+      const currentPos = rowPos || 99;
+
+      const last = lastMatchTracker.get(teamName);
+      if (!last || (currentRD > last.rd) || (currentRD === last.rd && currentQ > last.q)) {
+          lastMatchTracker.set(teamName, { rd: currentRD, q: currentQ, pos: currentPos });
+          stats.lastPos = currentPos;
+      }
+    });
+  }
+
+  // 2. Fallback to data.players if details produced no team stats
+  if (teamMap.size === 0 && data.players && data.players.length > 0) {
+    data.players.forEach(p => {
+      const rawTeamName = p.TIME;
+      if (!rawTeamName) return;
+
+      const teamName = getCanonicalTeamName(rawTeamName, data.teamsReference);
+      if (!teamName) return;
+
+      if (!teamMap.has(teamName)) {
+        teamMap.set(teamName, {
+          name: teamName,
+          image: findTeamLogo(teamName, data.teamsReference),
+          grupo: getGrupo(teamName),
+          s: 0, b: 0, ptsc: 0, abts: 0, pts: 0,
+          avgAbts: 0, avgPts: 0, avgPtsc: 0,
+          percentPos: 0, percentAbts: 0,
+          lastPos: 99
+        });
+      }
+
+      const stats = teamMap.get(teamName)!;
+      const kills = parseNumber(p.Abates);
+      stats.abts += kills;
+      stats.pts += kills; // 1 kill = 1 pt in Free Fire
+    });
+  }
+
+  // 3. Ensure all reference teams are present in the map
+  data.teamsReference.forEach(t => {
+    if (t.TIME) {
+      const canonicalName = getCanonicalTeamName(t.TIME, data.teamsReference);
+      if (canonicalName && !teamMap.has(canonicalName)) {
+        teamMap.set(canonicalName, {
+          name: canonicalName,
+          image: findTeamLogo(canonicalName, data.teamsReference),
+          grupo: t.GRUPO,
+          s: 0, b: 0, ptsc: 0, abts: 0, pts: 0,
+          avgAbts: 0, avgPts: 0, avgPtsc: 0,
+          percentPos: 0, percentAbts: 0,
+          lastPos: 99
+        });
+      }
     }
   });
 
-  return Array.from(teamMap.values()).map(stats => {
-    if (stats.s > 0) {
-      stats.avgAbts = parseFloat((stats.abts / stats.s).toFixed(2));
-      stats.avgPts = parseFloat((stats.pts / stats.s).toFixed(2));
-      stats.avgPtsc = parseFloat((stats.ptsc / stats.s).toFixed(2));
-    }
-    if (stats.pts > 0) {
-      stats.percentPos = parseFloat(((stats.ptsc / stats.pts) * 100).toFixed(1));
-      stats.percentAbts = parseFloat(((stats.abts / stats.pts) * 100).toFixed(1));
-    }
-    return stats;
-  }).sort((a, b) => {
-    // Critério Principal: Pontos Total
-    if (b.pts !== a.pts) return b.pts - a.pts;
-    
-    // 1º Desempate: Booyahs (Vitórias)
-    if (b.b !== a.b) return b.b - a.b;
-    
-    // 2º Desempate: Abates Total
-    if (b.abts !== a.abts) return b.abts - a.abts;
-    
-    // 3º Desempate: Melhor colocação na última queda (menor posição é melhor)
-    return a.lastPos - b.lastPos;
-  });
+  return Array.from(teamMap.values())
+    .filter(stats => stats.s > 0 || stats.pts > 0 || stats.abts > 0)
+    .map(stats => {
+      if (stats.s > 0) {
+        stats.avgAbts = parseFloat((stats.abts / stats.s).toFixed(2));
+        stats.avgPts = parseFloat((stats.pts / stats.s).toFixed(2));
+        stats.avgPtsc = parseFloat((stats.ptsc / stats.s).toFixed(2));
+      }
+      if (stats.pts > 0) {
+        stats.percentPos = parseFloat(((stats.ptsc / stats.pts) * 100).toFixed(1));
+        stats.percentAbts = parseFloat(((stats.abts / stats.pts) * 100).toFixed(1));
+      }
+      return stats;
+    }).sort((a, b) => {
+      if (b.pts !== a.pts) return b.pts - a.pts;
+      if (b.b !== a.b) return b.b - a.b;
+      if (b.abts !== a.abts) return b.abts - a.abts;
+      return a.lastPos - b.lastPos;
+    });
 };

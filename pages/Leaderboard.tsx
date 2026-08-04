@@ -77,8 +77,8 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
       setGeneralTop12(new Set(generalStats.slice(0, 12).map(s => s.name)));
 
       // 2. Calcular estatísticas filtradas para a exibição
-      const filteredDetails = data.details.filter(d => {
-        if (filters.team.length > 0 && !filters.team.includes(d.TIME)) return false;
+      let filteredDetails = data.details.filter(d => {
+        if (filters.team.length > 0 && !filters.team.some(t => normalize(t) === normalize(d.TIME))) return false;
         if (filters.map.length > 0 && !filters.map.some(m => normalize(m) === normalize(d.MAPA))) return false;
         if (filters.rodada.length > 0 && !filters.rodada.some(r => normalize(r) === normalize(d.RD))) return false;
         if (filters.queda.length > 0 && !filters.queda.some(q => normalize(q) === normalize(d.Q))) return false;
@@ -104,6 +104,18 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
 
         return true;
       });
+
+      // Fallback: se a fase filtrar tudo por incompatibilidade de nomes/rodadas, usar todos os dados
+      if (filteredDetails.length === 0 && phase !== 'ALL' && data.details.length > 0) {
+        filteredDetails = data.details.filter(d => {
+          if (filters.team.length > 0 && !filters.team.some(t => normalize(t) === normalize(d.TIME))) return false;
+          if (filters.map.length > 0 && !filters.map.some(m => normalize(m) === normalize(d.MAPA))) return false;
+          if (filters.rodada.length > 0 && !filters.rodada.some(r => normalize(r) === normalize(d.RD))) return false;
+          if (filters.queda.length > 0 && !filters.queda.some(q => normalize(q) === normalize(d.Q))) return false;
+          if (filters.confrontation.length > 0 && !filters.confrontation.some(c => normalize(c) === normalize(d.CONFRONTO))) return false;
+          return true;
+        });
+      }
 
       const filteredData = { ...data, details: filteredDetails };
       let calculatedStats = calculateTeamStats(filteredData);

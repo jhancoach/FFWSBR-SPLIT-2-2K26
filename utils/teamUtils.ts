@@ -1,21 +1,11 @@
 export const formatTeamName = (name: string): string => {
   if (!name) return '';
-  const upper = name.trim().toUpperCase();
-  if (upper.includes('SOLID') || upper === 'TS') {
-    return 'Team Solid (TS)';
-  }
-  if (upper.includes('FLUXO') || upper.includes('W7M') || upper === 'FX') {
-    return 'Fluxo W7M (FX)';
-  }
-  return name;
+  return name.trim();
 };
 
 export const formatTeamShortTag = (name: string): string => {
   if (!name) return '';
-  const upper = name.trim().toUpperCase();
-  if (upper.includes('SOLID') || upper === 'TS') return 'TS';
-  if (upper.includes('FLUXO') || upper.includes('W7M') || upper === 'FX') return 'FX';
-  return name;
+  return name.trim();
 };
 
 // Fallback high quality logos if missing from reference sheet
@@ -33,6 +23,8 @@ export const findTeamLogo = (teamName: string, teamsReference: Array<{ TIME: str
   const clean = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
   const targetNorm = clean(teamName);
 
+  if (!targetNorm) return '';
+
   // 1. Direct match in reference
   for (const ref of teamsReference) {
     if (!ref.TIME || !ref.IMG) continue;
@@ -40,26 +32,23 @@ export const findTeamLogo = (teamName: string, teamsReference: Array<{ TIME: str
     if (refNorm === targetNorm) return ref.IMG;
   }
 
-  // 2. Normalized / Alias match in reference
-  const isSolid = targetNorm.includes('solid') || targetNorm.includes('ts');
-  const isFluxo = targetNorm.includes('fluxo') || targetNorm.includes('w7m') || targetNorm.includes('fx');
-
+  // 2. Normalized / Contains match in reference
   for (const ref of teamsReference) {
     if (!ref.TIME || !ref.IMG) continue;
     const refNorm = clean(ref.TIME);
-    if (isSolid && (refNorm.includes('solid') || refNorm.includes('ts'))) return ref.IMG;
-    if (isFluxo && (refNorm.includes('fluxo') || refNorm.includes('w7m') || refNorm.includes('fx'))) return ref.IMG;
-    if (refNorm && (refNorm.includes(targetNorm) || targetNorm.includes(refNorm))) return ref.IMG;
+    if (refNorm && targetNorm && (refNorm.includes(targetNorm) || targetNorm.includes(refNorm))) {
+      return ref.IMG;
+    }
   }
 
-  // 3. Fallback logos for TS / FX
-  if (isSolid) {
-    return DEFAULT_TEAM_LOGOS['SOLID'];
-  }
-  if (isFluxo) {
-    return DEFAULT_TEAM_LOGOS['FLUXO'];
+  // 3. Fallback logos
+  for (const key of Object.keys(DEFAULT_TEAM_LOGOS)) {
+    if (targetNorm.includes(clean(key))) {
+      return DEFAULT_TEAM_LOGOS[key];
+    }
   }
 
   return '';
 };
+
 
