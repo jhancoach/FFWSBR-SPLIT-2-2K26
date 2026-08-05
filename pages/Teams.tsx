@@ -778,8 +778,8 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                     </button>
                                 </div>
 
-                                <div className="bg-black/30 rounded-2xl border border-gray-800 overflow-hidden shadow-inner">
-                                    <table className="w-full text-left border-collapse">
+                                <div className="bg-black/30 rounded-2xl border border-gray-800 overflow-hidden shadow-inner overflow-x-auto">
+                                    <table className="w-full text-left border-collapse whitespace-nowrap">
                                         <thead className="bg-black/80 text-[10px] text-gray-500 uppercase font-black tracking-widest">
                                             <tr>
                                                 <th className="px-6 py-4">{selectedMap ? "Partida" : "Mapa / Partida"}</th>
@@ -1004,8 +1004,8 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                     </div>
                                 </div>
                             </div>
-                            <div className="w-full">
-                                <table className="w-full text-left border-collapse table-fixed">
+                            <div className="w-full overflow-x-auto">
+                                <table className="w-full text-left border-collapse table-fixed min-w-[500px]">
                                     <thead className="bg-black/40 text-[8px] text-gray-500 uppercase font-black tracking-widest">
                                         <tr>
                                             <th className="px-2 py-3 w-8 text-center">#</th>

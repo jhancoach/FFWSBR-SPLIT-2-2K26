@@ -31,6 +31,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
   const [rankingSort, setRankingSort] = useState<{ field: string, direction: 'asc' | 'desc' }>({ field: 'kills', direction: 'desc' });
   const [comparePlayers, setComparePlayers] = useState<{p1: string, p2: string}>({p1: '', p2: ''});
   const [activeHabFilter, setActiveHabFilter] = useState<string>('All');
+  const [showLegend, setShowLegend] = useState(false);
   
   const [filters, setFilters] = useState({
     team: [] as string[],
@@ -535,6 +536,72 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
       </div>
 
       <FilterBar filters={filters} setFilters={setFilters} options={filterOptions} />
+
+      <div className="flex justify-between items-center no-print bg-black/20 p-4 rounded-2xl border border-white/5">
+        <div className="flex items-center gap-2">
+          <Info size={16} className="text-yellow-500" />
+          <span className="text-xs font-black text-white uppercase tracking-wider">Métricas e Estatísticas</span>
+          <span className="text-[10px] text-gray-500 hidden sm:inline">• Entenda o significado de cada coluna da tabela</span>
+        </div>
+        <button
+          onClick={() => setShowLegend(!showLegend)}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+            showLegend 
+              ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 scale-105' 
+              : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 border border-white/5'
+          }`}
+        >
+          {showLegend ? 'Ocultar Legenda' : 'Ver Legenda das Colunas'}
+        </button>
+      </div>
+
+      {showLegend && (
+        <div className="bg-[#1a1a1a] border border-gray-800 rounded-3xl p-6 animate-in fade-in slide-in-from-top-4 duration-300 space-y-6 shadow-2xl">
+          <div className="flex justify-between items-center pb-2 border-b border-white/5">
+            <div className="flex items-center gap-2">
+              <Sparkles size={16} className="text-yellow-500" />
+              <h4 className="text-xs font-black text-white uppercase tracking-widest">Significado de Cada Coluna</h4>
+            </div>
+            <button 
+              onClick={() => setShowLegend(false)}
+              className="text-gray-500 hover:text-white transition-colors"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {[
+              { abbrev: 'K', desc: 'Abates (Kills)', detail: 'Quantidade total de abates do jogador.' },
+              { abbrev: 'S', desc: 'Saldo de Abates', detail: 'Diferença entre abates totais e partidas jogadas (Abates - Partidas).' },
+              { abbrev: '% C', desc: 'Contribuição de Abates', detail: 'Percentual de abates do jogador em relação aos abates totais da equipe.' },
+              { abbrev: 'AVG K', desc: 'Média de Abates', detail: 'Média de abates por queda (partida) disputada.' },
+              { abbrev: 'Q. C/ KILL', desc: 'Quedas com Abate', detail: 'Número e percentual de partidas onde o jogador fez pelo menos 1 abate.' },
+              { abbrev: 'Q. ZERO', desc: 'Quedas Zeradas', detail: 'Número e percentual de partidas concluídas sem realizar abates.' },
+              { abbrev: 'DMG', desc: 'Dano Total', detail: 'Quantidade de dano total infligido aos adversários.' },
+              { abbrev: 'AVG D', desc: 'Média de Dano', detail: 'Média de dano causado por queda (partida) jogada.' },
+              { abbrev: 'AST', desc: 'Assistências', detail: 'Quantidade de assistências em abates realizadas.' },
+              { abbrev: 'HS', desc: 'Headshots', detail: 'Quantidade total de abates com tiro na cabeça.' },
+              { abbrev: 'KNK', desc: 'Deitados (Knockdowns)', detail: 'Quantidade de oponentes derrubados pelo jogador.' },
+              { abbrev: 'AVG KNK', desc: 'Média de Deitados', detail: 'Média de oponentes derrubados por queda jogada.' },
+              { abbrev: 'PJ', desc: 'Partidas Jogadas', detail: 'Quantidade total de quedas (salas) que o jogador disputou.' },
+              { abbrev: 'GLO', desc: 'Gelos Colocados', detail: 'Quantidade total de paredes de gelo colocadas pelo jogador.' },
+              { abbrev: 'DES', desc: 'Gelos Destruídos', detail: 'Quantidade de paredes de gelo adversárias destruídas pelo jogador.' },
+              { abbrev: 'REV', desc: 'Reviveu', detail: 'Vezes em que o jogador utilizou o sistema para reviver companheiros de equipe.' },
+              { abbrev: 'ALR', desc: 'Aliados Revividos', detail: 'Vezes em que o jogador levantou aliados que estavam caídos (deitados).' },
+              { abbrev: 'MVP', desc: 'Most Valuable Player', detail: 'Quantidade de vezes em que o jogador foi o destaque (MVP) de uma queda.' },
+              { abbrev: 'TOT S', desc: 'Total Safes', detail: 'Quantidade de abates realizados pelo jogador dentro das safe zones.' },
+              { abbrev: 'S1 a S8', desc: 'Safes Específicas', detail: 'Quantidade de abates do jogador em cada um dos círculos de safe zone.' },
+              { abbrev: 'OUT', desc: 'Fora de Safe', detail: 'Quantidade de abates realizados pelo jogador fora de qualquer círculo de safe zone.' }
+            ].map((item, index) => (
+              <div key={index} className="p-3 bg-black/40 rounded-2xl border border-white/5 hover:border-yellow-500/20 transition-all flex flex-col gap-1 group">
+                <span className="text-yellow-500 font-black text-xs uppercase tracking-wider group-hover:text-yellow-400 transition-colors">{item.abbrev}</span>
+                <span className="text-white font-bold text-[10px] leading-tight">{item.desc}</span>
+                <span className="text-gray-400 text-[9px] leading-normal">{item.detail}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="min-h-[600px]">
           {activeTab === 'roles' && (
