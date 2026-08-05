@@ -6,6 +6,7 @@ import { Trophy, Crown, User, Swords, Zap, BarChart2, Scale, Map as MapIcon, Sku
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, LabelList, Cell, YAxis, CartesianGrid } from 'recharts';
 import FilterBar from '../components/FilterBar';
 import { findTeamLogo } from '../utils/teamUtils';
+import { findDimImg } from '../utils/skillImages';
 
 interface PlayersProps {
   data: DashboardData;
@@ -89,11 +90,6 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
       data.characters.forEach(c => {
           if (!c.Player) return;
           const key = normalize(c.Player);
-          const findDimImg = (dims: any[], name: string) => {
-             if (!name) return undefined;
-             const target = cleanKey(name);
-             return dims.find(d => cleanKey(d.Name) === target)?.IMG;
-          };
           if (!m.has(key)) {
               m.set(key, {
                   ...c,
@@ -474,11 +470,6 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
         if (activeHabFilter !== 'All' && normalize(c.Hab1) !== normalize(activeHabFilter)) return false;
         return true;
     }).map(c => {
-         const findDimImg = (dims: any[], name: string) => {
-             if (!name) return undefined;
-             const target = cleanKey(name);
-             return dims.find(d => cleanKey(d.Name) === target)?.IMG;
-         }
          return {
              ...c,
              hab1Img: findDimImg(data.hab1, c.Hab1),
@@ -1554,23 +1545,40 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
   );
 };
 
-const PremiumLoadoutCard = ({ title, name, img, highlight }: any) => (
-  <div className={`flex flex-col items-center flex-shrink-0 group w-[110px]`}>
-    <div className={`w-full flex flex-col items-center p-4 rounded-2xl border transition-all duration-300 ${highlight ? 'bg-yellow-500/5 border-yellow-500 shadow-[0_0_25px_rgba(234,179,8,0.15)] scale-[1.05] z-10' : 'bg-[#121215] border-gray-800/60 hover:border-gray-600'}`}>
-        <span className={`text-[9px] font-black uppercase mb-4 tracking-[0.2em] ${highlight ? 'text-yellow-500/60' : 'text-gray-500'}`}>
-            {title}
-        </span>
-        <div className={`w-14 h-14 rounded-2xl bg-black/60 border border-gray-800/80 flex items-center justify-center p-1.5 shadow-inner mb-4 overflow-hidden group-hover:scale-110 transition-transform`}>
-            {img ? <img src={img} alt={name} className="w-full h-full object-contain" /> : <Zap size={16} className="text-gray-600 opacity-20" />}
-        </div>
-        <div className="w-full text-center overflow-hidden">
-            <span className={`text-[10px] font-black uppercase italic truncate block tracking-tighter ${highlight ? 'text-yellow-500 underline underline-offset-4 decoration-yellow-500/30' : 'text-gray-300'}`}>
-                {name || '-'}
-            </span>
-        </div>
+const PremiumLoadoutCard = ({ title, name, img, highlight }: any) => {
+  const displayImg = img || findDimImg([], name);
+  return (
+    <div className={`flex flex-col items-center flex-shrink-0 group w-[110px]`}>
+      <div className={`w-full flex flex-col items-center p-4 rounded-2xl border transition-all duration-300 ${highlight ? 'bg-yellow-500/5 border-yellow-500 shadow-[0_0_25px_rgba(234,179,8,0.15)] scale-[1.05] z-10' : 'bg-[#121215] border-gray-800/60 hover:border-gray-600'}`}>
+          <span className={`text-[9px] font-black uppercase mb-4 tracking-[0.2em] ${highlight ? 'text-yellow-500/60' : 'text-gray-500'}`}>
+              {title}
+          </span>
+          <div className={`w-14 h-14 rounded-2xl bg-black/60 border border-gray-800/80 flex items-center justify-center p-1.5 shadow-inner mb-4 overflow-hidden group-hover:scale-110 transition-transform`}>
+              {displayImg ? (
+                <img 
+                  src={displayImg} 
+                  alt={name || title} 
+                  className="w-full h-full object-contain" 
+                  onError={(e) => {
+                    const fallback = findDimImg([], name);
+                    if (fallback && fallback !== displayImg) {
+                      (e.target as HTMLImageElement).src = fallback;
+                    }
+                  }}
+                />
+              ) : (
+                <Zap size={16} className="text-gray-600 opacity-20" />
+              )}
+          </div>
+          <div className="w-full text-center overflow-hidden">
+              <span className={`text-[10px] font-black uppercase italic truncate block tracking-tighter ${highlight ? 'text-yellow-500 underline underline-offset-4 decoration-yellow-500/30' : 'text-gray-300'}`}>
+                  {name || '-'}
+              </span>
+          </div>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const PlayerProfile = ({ data, playerName, filters, characters }: any) => {
     const normalize = (val: string | undefined) => (val || '').trim().toUpperCase();
@@ -1660,12 +1668,6 @@ const PlayerProfile = ({ data, playerName, filters, characters }: any) => {
         });
         const teamTotalKills = teamRecords.reduce((acc: number, r: PlayerData) => acc + parseNumber(r.Abates), 0);
         const killContributionPct = teamTotalKills > 0 ? ((totalKills / teamTotalKills) * 100).toFixed(1) : '0.0';
-
-        const findDimImg = (dims: any[], name: string) => {
-            if (!name) return undefined;
-            const target = cleanKey(name);
-            return dims.find(d => cleanKey(d.Name) === target)?.IMG;
-        }
 
         const rawLoadout = characters.find((l: any) => normalize(l.Player) === normalize(playerName));
         const currentLoadout = rawLoadout ? {
