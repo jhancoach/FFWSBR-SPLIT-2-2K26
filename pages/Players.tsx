@@ -7,6 +7,7 @@ import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, LabelList, Cell, YA
 import FilterBar from '../components/FilterBar';
 import { findTeamLogo } from '../utils/teamUtils';
 import { findDimImg } from '../utils/skillImages';
+import { getPlayerCharacterHistory } from '../utils/characterUtils';
 
 interface PlayersProps {
   data: DashboardData;
@@ -1943,6 +1944,132 @@ const PlayerProfile = ({ data, playerName, filters, characters }: any) => {
                     </div>
                 </div>
             )}
+
+            {/* Histórico Completo de Personagens por Queda */}
+            {(() => {
+                const history = getPlayerCharacterHistory(data, playerName);
+                if (history.length === 0) return null;
+
+                const hab1Counts: Record<string, number> = {};
+                const petCounts: Record<string, number> = {};
+                const itemCounts: Record<string, number> = {};
+
+                history.forEach(h => {
+                    if (h.hab1) hab1Counts[h.hab1] = (hab1Counts[h.hab1] || 0) + 1;
+                    if (h.pet) petCounts[h.pet] = (petCounts[h.pet] || 0) + 1;
+                    if (h.item) itemCounts[h.item] = (itemCounts[h.item] || 0) + 1;
+                });
+
+                const totalQuedas = history.length;
+
+                return (
+                    <div className="bg-[#0e0e11] p-8 rounded-3xl border border-gray-800 shadow-2xl space-y-8 mt-6">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-6">
+                            <div>
+                                <h3 className="text-lg font-black text-white uppercase italic tracking-tight flex items-center gap-3">
+                                    <Sparkles size={20} className="text-yellow-500 animate-pulse" />
+                                    HISTÓRICO DE PERSONAGENS UTILIZADOS
+                                </h3>
+                                <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mt-1">
+                                    Acompanhe a variação de habilidades ativas, passivas, pets e itens em todas as {totalQuedas} quedas disputadas pelo jogador
+                                </p>
+                            </div>
+                            <div className="bg-yellow-500/10 border border-yellow-500/30 px-4 py-2 rounded-2xl flex items-center gap-2">
+                                <span className="text-[10px] font-black text-yellow-500 uppercase tracking-widest">TOTAL REGISTRADO:</span>
+                                <span className="text-sm font-black text-white italic">{totalQuedas} Quedas</span>
+                            </div>
+                        </div>
+
+                        {/* Preferências Frequentes do Jogador */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-black/40 p-4 rounded-2xl border border-white/5">
+                            <div className="bg-black/60 p-3.5 rounded-xl border border-white/5">
+                                <span className="text-[9px] font-black text-yellow-500 uppercase tracking-widest block mb-2 flex items-center gap-1.5">
+                                    <Zap size={12} /> ATIVAS FAVORITAS
+                                </span>
+                                <div className="space-y-1.5">
+                                    {Object.entries(hab1Counts).sort((a,b) => b[1] - a[1]).map(([hab, count]) => {
+                                        const pct = ((count / totalQuedas) * 100).toFixed(0);
+                                        return (
+                                            <div key={hab} className="flex justify-between items-center text-xs">
+                                                <span className="font-black text-white italic uppercase">{hab}</span>
+                                                <span className="text-yellow-500 font-bold text-[10px]">{count}x ({pct}%)</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            <div className="bg-black/60 p-3.5 rounded-xl border border-white/5">
+                                <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest block mb-2 flex items-center gap-1.5">
+                                    <Shield size={12} /> PETS FAVORITOS
+                                </span>
+                                <div className="space-y-1.5">
+                                    {Object.entries(petCounts).sort((a,b) => b[1] - a[1]).map(([pet, count]) => {
+                                        const pct = ((count / totalQuedas) * 100).toFixed(0);
+                                        return (
+                                            <div key={pet} className="flex justify-between items-center text-xs">
+                                                <span className="font-black text-gray-300 uppercase">{pet}</span>
+                                                <span className="text-blue-400 font-bold text-[10px]">{count}x ({pct}%)</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            <div className="bg-black/60 p-3.5 rounded-xl border border-white/5">
+                                <span className="text-[9px] font-black text-orange-400 uppercase tracking-widest block mb-2 flex items-center gap-1.5">
+                                    <Flame size={12} /> ITENS FAVORITOS
+                                </span>
+                                <div className="space-y-1.5">
+                                    {Object.entries(itemCounts).sort((a,b) => b[1] - a[1]).map(([item, count]) => {
+                                        const pct = ((count / totalQuedas) * 100).toFixed(0);
+                                        return (
+                                            <div key={item} className="flex justify-between items-center text-xs">
+                                                <span className="font-black text-gray-300 uppercase">{item}</span>
+                                                <span className="text-orange-400 font-bold text-[10px]">{count}x ({pct}%)</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Lista de Quedas com Loadouts */}
+                        <div className="space-y-4">
+                            {history.map((h, hIdx) => (
+                                <div key={hIdx} className="bg-black/50 p-5 rounded-2xl border border-gray-800 hover:border-yellow-500/30 transition-all flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+                                    <div className="flex items-center gap-4 min-w-[200px]">
+                                        <div className="w-12 h-12 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center font-black text-yellow-500 text-xs flex-shrink-0">
+                                            Q{h.q}
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs font-black text-white italic uppercase">RD {h.rd} • QUEDA {h.q}</span>
+                                            </div>
+                                            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block mt-0.5">{h.mapa}</span>
+                                            {(h.kills !== undefined || h.damage !== undefined) && (
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    {h.kills !== undefined && <span className="text-[10px] font-black text-red-500 italic">{h.kills} Kills</span>}
+                                                    {h.damage !== undefined && <span className="text-[10px] font-bold text-gray-500 italic">{h.damage} Dano</span>}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="flex-1 w-full flex items-center gap-3 overflow-x-auto pb-2 custom-scrollbar">
+                                        <PremiumLoadoutCard title="ATIVA" name={h.hab1} img={h.hab1Img} highlight />
+                                        <PremiumLoadoutCard title="HAB 2" name={h.hab2} img={h.hab2Img} />
+                                        <PremiumLoadoutCard title="HAB 3" name={h.hab3} img={h.hab3Img} />
+                                        <PremiumLoadoutCard title="HAB 4" name={h.hab4} img={h.hab4Img} />
+                                        <PremiumLoadoutCard title="PET" name={h.pet} img={h.petImg} />
+                                        <PremiumLoadoutCard title="ITEM" name={h.item} img={h.itemImg} />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            })()}
         </div>
     );
 };

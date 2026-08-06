@@ -7,6 +7,9 @@ import { Shield, TrendingUp, Users, ArrowLeft, Target, Award, Crosshair, Map as 
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, LabelList, PieChart, Pie, Cell, Legend, CartesianGrid, YAxis } from 'recharts';
 import FilterBar from '../components/FilterBar';
 import { formatTeamName } from '../utils/teamUtils';
+import { DropCompositionViewer } from '../components/DropComposition';
+import { getTeamDropComposition, getTeamCharacterSummary, getTeamCharacters } from '../utils/characterUtils';
+import { findDimImg } from '../utils/skillImages';
 
 interface TeamsProps {
   data: DashboardData;
@@ -43,6 +46,10 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
   const [activeTab, setActiveTab] = useState<'gallery' | 'mapRanking' | 'bottomRanking' | 'mapAnalysis' | 'safeAnalysis' | 'comparison' | 'pointsTable' | 'teamRounds'>('gallery');
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'pts', direction: 'desc' });
   const [compareTeamB, setCompareTeamB] = useState<string | null>(null);
+  const [compositionModal, setCompositionModal] = useState<{ teamName: string; round: string; drop: string; mapa?: string; confronto?: string } | null>(null);
+  const [expandedDropKey, setExpandedDropKey] = useState<string | null>(null);
+  const [teamRoundsMapFilter, setTeamRoundsMapFilter] = useState<string>('ALL');
+  const [expandAllLineups, setExpandAllLineups] = useState<boolean>(false);
 
   const normalize = (val: string | undefined) => (val || '').trim().toUpperCase();
 
@@ -152,14 +159,85 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
   }), [data.players, data.teamsReference, data.confrontationsDimension, data.killFeed, data.details, data.characters]);
 
   const selectedTeamName = filters.team.length === 1 ? filters.team[0] : null;
-  const selectedTeamStats = selectedTeamName ? filteredTeamStats.find(t => t.name === selectedTeamName) : null;
 
-  // Reset local states if team changes
+  const displayTeamStats = useMemo(() => {
+    if (filters.team.length === 0) return filteredTeamStats;
+    return filteredTeamStats.filter(t => {
+      const normT = normalize(t.name);
+      return filters.team.some(ft => {
+        const normFt = normalize(ft);
+        return normT === normFt || normT.includes(normFt) || normFt.includes(normT);
+      });
+    });
+  }, [filteredTeamStats, filters.team]);
+
+  const selectedTeamStats = useMemo(() => {
+    if (!selectedTeamName) return null;
+    const norm = normalize(selectedTeamName);
+    return filteredTeamStats.find(t => normalize(t.name) === norm) ||
+      filteredTeamStats.find(t => t.name.toLowerCase().includes(selectedTeamName.toLowerCase()) || selectedTeamName.toLowerCase().includes(t.name.toLowerCase())) ||
+      null;
+  }, [filteredTeamStats, selectedTeamName]);
+
+  const activeTeamName = selectedTeamStats?.name || selectedTeamName || '';
+
+  const teamCharSummary = useMemo(() => {
+    if (!activeTeamName) return null;
+    return getTeamCharacterSummary(data, activeTeamName);
+  }, [data, activeTeamName]);
+
+  const teamMapCharacterSummary = useMemo(() => {
+    if (!activeTeamName || !data.characters) return [];
+
+    const teamChars = getTeamCharacters(data, activeTeamName);
+    if (teamChars.length === 0) return [];
+
+    const maps = Array.from(new Set(teamChars.map(c => c.Mapa))).filter(Boolean) as string[];
+
+    return maps.map(mapName => {
+      const normMap = normalize(mapName);
+
+      const mapChars = teamChars.filter(c => {
+        if (!c.Mapa) return false;
+        return normalize(c.Mapa) === normMap || normalize(c.Mapa).includes(normMap) || normMap.includes(normalize(c.Mapa));
+      });
+
+      const hab1Map: Record<string, number> = {};
+      mapChars.forEach(c => {
+        if (c.Hab1) hab1Map[c.Hab1] = (hab1Map[c.Hab1] || 0) + 1;
+      });
+
+      const totalCount = mapChars.length || 1;
+      const topActives = Object.entries(hab1Map)
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, count]) => ({
+          name,
+          count,
+          pct: Math.round((count / totalCount) * 100),
+          img: findDimImg(data.hab1, name)
+        }));
+
+      const dropSet = new Set(mapChars.map(c => `${c.Rd || c.RD}-${c.Q || c.S}`));
+
+      return {
+        mapName,
+        dropCount: dropSet.size || 1,
+        topActives
+      };
+    }).sort((a, b) => b.dropCount - a.dropCount);
+  }, [data, activeTeamName]);
+
+  // Reset local states if team changes and switch tab to gallery if single team selected
   useEffect(() => {
     setSelectedMap(null);
     setSelectedDrop(null);
     setSelectedPosition(null);
-  }, [selectedTeamName]);
+    setTeamRoundsMapFilter('ALL');
+    setExpandAllLineups(false);
+    if (filters.team.length === 1 && activeTab !== 'comparison') {
+      setActiveTab('gallery');
+    }
+  }, [filters.team]);
 
   // Roster do time ordenado por kills
   const teamRosterData = useMemo(() => {
@@ -187,6 +265,14 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
 
       return rosters;
   }, [filteredData.players]);
+
+  const currentRoster = useMemo(() => {
+    if (!selectedTeamName) return [];
+    const norm = normalize(selectedTeamName);
+    const matchedKey = Object.keys(teamRosterData).find(k => normalize(k) === norm) ||
+      Object.keys(teamRosterData).find(k => normalize(k).includes(norm) || norm.includes(normalize(k)));
+    return matchedKey ? teamRosterData[matchedKey] : [];
+  }, [teamRosterData, selectedTeamName]);
 
   // Estatísticas de Posição (Quantidade de partidas por posição)
   const positionStatsData = useMemo(() => {
@@ -362,7 +448,7 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
 
   // Piores Times (Bottom Rankings)
   const bottomRankings = useMemo(() => {
-    const stats = [...filteredTeamStats];
+    const stats = [...displayTeamStats];
     return {
       pts: [...stats].sort((a, b) => a.pts - b.pts).slice(0, 12),
       ptsc: [...stats].sort((a, b) => a.ptsc - b.ptsc).slice(0, 12),
@@ -370,7 +456,7 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
       avgPts: [...stats].sort((a, b) => a.avgPts - b.avgPts).slice(0, 12),
       avgAbts: [...stats].sort((a, b) => a.avgAbts - b.avgAbts).slice(0, 12),
     };
-  }, [filteredTeamStats]);
+  }, [displayTeamStats]);
 
   // Lista ordenada de todas as rodadas / dias
   const sortedRoundsList = useMemo(() => {
@@ -513,8 +599,8 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
   }, [data.details, selectedTeamName]);
 
   const teamsList = useMemo(() => {
-    return filteredTeamStats.map(t => ({ name: t.name, image: t.image, grupo: t.grupo, pts: t.pts })).sort((a,b) => a.name.localeCompare(b.name));
-  }, [filteredTeamStats]);
+    return displayTeamStats.map(t => ({ name: t.name, image: t.image, grupo: t.grupo, pts: t.pts })).sort((a,b) => a.name.localeCompare(b.name));
+  }, [displayTeamStats]);
 
   // Análise de Mapas por Queda
   const mapAnalysisData = useMemo(() => {
@@ -644,7 +730,7 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
             </div>
         </div>
 
-        {selectedTeamName && selectedTeamStats && activeTab !== 'comparison' && activeTab !== 'teamRounds' ? (
+        {selectedTeamName && selectedTeamStats && activeTab !== 'comparison' ? (
             <div className="space-y-8 animate-in fade-in duration-500 pb-10">
                 {/* Header do Time */}
                 <div className="bg-[#1a1a1a] rounded-3xl p-8 border border-gray-800 shadow-2xl relative overflow-hidden bg-gradient-to-br from-[#1a1a1a] to-black">
@@ -710,8 +796,8 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                         <Users size={20} className="text-yellow-500"/> ROSTER PERFORMANCE (ORDENADO)
                     </h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
-                        {teamRosterData[selectedTeamName]?.map((player, idx) => {
-                            const totalKills = teamRosterData[selectedTeamName].reduce((acc, curr) => acc + curr.kills, 0) || 1;
+                        {currentRoster.map((player, idx) => {
+                            const totalKills = currentRoster.reduce((acc, curr) => acc + curr.kills, 0) || 1;
                             const percent = ((player.kills / totalKills) * 100).toFixed(1);
                             return (
                                 <div 
@@ -745,11 +831,142 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                 </div>
                             );
                         })}
-                        {(!teamRosterData[selectedTeamName] || teamRosterData[selectedTeamName].length === 0) && (
+                        {currentRoster.length === 0 && (
                             <div className="col-span-full py-8 text-center text-[10px] text-gray-700 font-black uppercase italic tracking-widest">Sem roster registrado</div>
                         )}
                     </div>
                 </div>
+
+                {/* Seção de Composição e Personagens da Equipe Selecionada */}
+                {teamCharSummary && (teamCharSummary.activeSkills.length > 0 || teamMapCharacterSummary.length > 0) && (
+                    <div className="bg-[#1a1a1a] p-8 rounded-3xl border border-gray-800 shadow-xl space-y-6">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-4">
+                            <div>
+                                <h3 className="text-white font-black text-base uppercase italic tracking-wider flex items-center gap-2">
+                                    <Zap size={20} className="text-yellow-500" />
+                                    COMPOSIÇÃO E HABILIDADES DA EQUIPE ({selectedTeamStats.name})
+                                </h3>
+                                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mt-0.5">
+                                    Resumo das habilidades ativas, pets e preferências da line-up em {teamCharSummary.totalDrops} quedas disputadas
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Ativas mais usadas pelo time */}
+                        {teamCharSummary.activeSkills.length > 0 && (
+                            <div>
+                                <span className="text-[9px] font-black text-yellow-500 uppercase tracking-widest block mb-3 flex items-center gap-1.5">
+                                    <Zap size={12} /> HABILIDADES ATIVAS MAIS USADAS PELA EQUIPE
+                                </span>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+                                    {teamCharSummary.activeSkills.slice(0, 6).map((sk) => (
+                                        <div key={sk.name} className="bg-black/60 p-3 rounded-2xl border border-yellow-500/20 flex flex-col items-center text-center shadow-md">
+                                            {sk.img ? (
+                                                <img src={sk.img} alt={sk.name} className="w-9 h-9 object-contain rounded-xl bg-black p-0.5 border border-yellow-500/30 mb-2" />
+                                            ) : (
+                                                <div className="w-9 h-9 rounded-xl bg-black border border-yellow-500/30 flex items-center justify-center mb-2">
+                                                    <Zap size={18} className="text-yellow-500" />
+                                                </div>
+                                            )}
+                                            <span className="text-xs font-black italic uppercase text-white truncate max-w-full">{sk.name}</span>
+                                            <span className="text-[10px] font-bold text-yellow-500 mt-0.5">{sk.count}x ({sk.pct}%)</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Preferências por jogador da line-up */}
+                        {teamCharSummary.players.length > 0 && (
+                            <div>
+                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest block mb-3 flex items-center gap-1.5">
+                                    <Users size={12} className="text-yellow-500" /> PREFERÊNCIAS POR JOGADOR NA LINE-UP
+                                </span>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                    {teamCharSummary.players.map((p) => {
+                                        const mainActive = p.activeSkills[0];
+                                        return (
+                                            <div key={p.name} className="bg-black/60 p-4 rounded-2xl border border-white/5 flex flex-col justify-between space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                    <div>
+                                                        <button
+                                                            onClick={() => handlePlayerClick(p.name)}
+                                                            className="text-xs font-black italic uppercase text-white hover:text-yellow-500 transition-colors block text-left"
+                                                        >
+                                                            {p.name}
+                                                        </button>
+                                                        {p.funcao && (
+                                                            <span className="text-[8px] font-bold text-gray-500 uppercase tracking-widest block">{p.funcao}</span>
+                                                        )}
+                                                    </div>
+                                                    <span className="text-[9px] font-black text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded border border-yellow-500/20">
+                                                        {p.totalDrops} Quedas
+                                                    </span>
+                                                </div>
+
+                                                {mainActive && (
+                                                    <div className="bg-yellow-500/5 p-2.5 rounded-xl border border-yellow-500/20 flex items-center gap-2">
+                                                        {mainActive.img ? (
+                                                            <img src={mainActive.img} className="w-6 h-6 object-contain rounded bg-black p-0.5 border border-yellow-500/30" alt={mainActive.name} />
+                                                        ) : (
+                                                            <Zap size={14} className="text-yellow-500" />
+                                                        )}
+                                                        <div className="min-w-0">
+                                                            <span className="text-[7px] text-yellow-500 font-black uppercase block leading-none">ATIVA MAIS USADA</span>
+                                                            <span className="text-[10px] font-black italic text-white uppercase truncate block mt-0.5">{mainActive.name} ({mainActive.pct}%)</span>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Composições de Habilidades por Mapa */}
+                        {teamMapCharacterSummary.length > 0 && (
+                            <div className="pt-2 border-t border-white/5">
+                                <span className="text-[9px] font-black text-yellow-500 uppercase tracking-widest block mb-3 flex items-center gap-1.5">
+                                    <MapIcon size={12} /> COMPOSIÇÕES DE HABILIDADES POR MAPA
+                                </span>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    {teamMapCharacterSummary.map((m) => {
+                                        const isSelected = selectedMap && normalize(selectedMap) === normalize(m.mapName);
+                                        return (
+                                            <button
+                                                key={m.mapName}
+                                                onClick={() => setSelectedMap(isSelected ? null : m.mapName)}
+                                                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+                                                    isSelected
+                                                        ? 'bg-yellow-500/15 border-yellow-500 ring-1 ring-yellow-500/50 shadow-lg shadow-yellow-500/5'
+                                                        : 'bg-black/60 border-white/5 hover:border-yellow-500/30'
+                                                }`}
+                                            >
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <span className="text-xs font-black italic uppercase text-white flex items-center gap-1.5">
+                                                        <MapPin size={12} className="text-yellow-500" /> {m.mapName}
+                                                    </span>
+                                                    <span className="text-[9px] font-bold text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded border border-yellow-500/20">
+                                                        {m.dropCount} Quedas
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                    {m.topActives.slice(0, 3).map((act) => (
+                                                        <span key={act.name} className="inline-flex items-center gap-1 bg-black/80 px-2 py-1 rounded-lg border border-yellow-500/20 text-[9px] font-bold text-white uppercase">
+                                                            {act.img && <img src={act.img} alt={act.name} className="w-3.5 h-3.5 object-contain" />}
+                                                            {act.name} ({act.pct}%)
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* Grid Principal */}
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -1492,7 +1709,7 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-800/40">
-                                {filteredTeamStats.map((team, index) => {
+                                {displayTeamStats.map((team, index) => {
                                     const rank = index + 1;
                                     const trend = rankTrends[team.name] || { change: 0, type: 'neutral' };
                                     
@@ -1652,13 +1869,197 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                 </div>
                             </div>
 
-                            {/* Lista de Rodadas */}
-                            <h4 className="text-white font-black uppercase tracking-widest text-xs mt-8 mb-4 border-l-2 border-yellow-500 pl-3">
-                                RODADAS DISPUTADAS ({selectedTeamRounds.length})
-                            </h4>
+                            {/* Seção de Personagens e Line-up da Equipe */}
+                            {teamCharSummary && teamCharSummary.activeSkills.length > 0 && (
+                                <div className="bg-[#0e0e11] p-6 rounded-3xl border border-gray-800 shadow-xl space-y-6">
+                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-4">
+                                        <div>
+                                            <h4 className="text-base font-black text-white uppercase italic tracking-wider flex items-center gap-2">
+                                                <Zap size={18} className="text-yellow-500" />
+                                                SÍNTESE DE PERSONAGENS & HABILIDADES DA EQUIPE
+                                            </h4>
+                                            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mt-0.5">
+                                                Resumo das habilidades ativas, pets e preferências da line-up em {teamCharSummary.totalDrops} quedas disputadas
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {/* Ativas mais usadas pelo time */}
+                                    <div>
+                                        <span className="text-[9px] font-black text-yellow-500 uppercase tracking-widest block mb-3 flex items-center gap-1.5">
+                                            <Zap size={12} /> HABILIDADES ATIVAS MAIS USADAS PELA EQUIPE
+                                        </span>
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+                                            {teamCharSummary.activeSkills.slice(0, 6).map((sk) => (
+                                                <div key={sk.name} className="bg-black/60 p-3 rounded-2xl border border-yellow-500/20 flex flex-col items-center text-center shadow-md">
+                                                    {sk.img ? (
+                                                        <img src={sk.img} alt={sk.name} className="w-9 h-9 object-contain rounded-xl bg-black p-0.5 border border-yellow-500/30 mb-2" />
+                                                    ) : (
+                                                        <div className="w-9 h-9 rounded-xl bg-black border border-yellow-500/30 flex items-center justify-center mb-2">
+                                                            <Zap size={18} className="text-yellow-500" />
+                                                        </div>
+                                                    )}
+                                                    <span className="text-xs font-black italic uppercase text-white truncate max-w-full">{sk.name}</span>
+                                                    <span className="text-[10px] font-bold text-yellow-500 mt-0.5">{sk.count}x ({sk.pct}%)</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Line-up de Jogadores da Equipe */}
+                                    {teamCharSummary.players.length > 0 && (
+                                        <div>
+                                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest block mb-3 flex items-center gap-1.5">
+                                                <Users size={12} className="text-yellow-500" /> PREFERÊNCIAS POR JOGADOR NA LINE-UP
+                                            </span>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                                {teamCharSummary.players.map((p) => {
+                                                    const mainActive = p.activeSkills[0];
+                                                    return (
+                                                        <div key={p.name} className="bg-black/60 p-4 rounded-2xl border border-white/5 flex flex-col justify-between space-y-3">
+                                                            <div className="flex items-center justify-between">
+                                                                <div>
+                                                                    <button
+                                                                        onClick={() => handlePlayerClick(p.name)}
+                                                                        className="text-xs font-black italic uppercase text-white hover:text-yellow-500 transition-colors block text-left"
+                                                                    >
+                                                                        {p.name}
+                                                                    </button>
+                                                                    {p.funcao && (
+                                                                        <span className="text-[8px] font-bold text-gray-500 uppercase tracking-widest block">{p.funcao}</span>
+                                                                    )}
+                                                                </div>
+                                                                <span className="text-[9px] font-black text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded border border-yellow-500/20">
+                                                                    {p.totalDrops} Quedas
+                                                                </span>
+                                                            </div>
+
+                                                            {mainActive && (
+                                                                <div className="bg-yellow-500/5 p-2.5 rounded-xl border border-yellow-500/20 flex items-center gap-2">
+                                                                    {mainActive.img ? (
+                                                                        <img src={mainActive.img} className="w-6 h-6 object-contain rounded bg-black p-0.5 border border-yellow-500/30" alt={mainActive.name} />
+                                                                    ) : (
+                                                                        <Zap size={14} className="text-yellow-500" />
+                                                                    )}
+                                                                    <div className="min-w-0">
+                                                                        <span className="text-[7px] text-yellow-500 font-black uppercase block leading-none">ATIVA MAIS USADA</span>
+                                                                        <span className="text-[10px] font-black italic text-white uppercase truncate block mt-0.5">{mainActive.name} ({mainActive.pct}%)</span>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                                     {/* Composições por Mapa */}
+                                     {teamMapCharacterSummary.length > 0 && (
+                                         <div className="pt-2 border-t border-white/5">
+                                             <span className="text-[9px] font-black text-yellow-500 uppercase tracking-widest block mb-3 flex items-center gap-1.5">
+                                                 <MapIcon size={12} /> COMPOSIÇÕES DE HABILIDADES POR MAPA
+                                             </span>
+                                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                                 {teamMapCharacterSummary.map((m) => {
+                                                     const isSelected = normalize(teamRoundsMapFilter) === normalize(m.mapName);
+                                                     return (
+                                                         <button
+                                                             key={m.mapName}
+                                                             onClick={() => setTeamRoundsMapFilter(isSelected ? 'ALL' : m.mapName)}
+                                                             className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+                                                                 isSelected
+                                                                     ? 'bg-yellow-500/15 border-yellow-500 ring-1 ring-yellow-500/50 shadow-lg shadow-yellow-500/5'
+                                                                     : 'bg-black/60 border-white/5 hover:border-yellow-500/30'
+                                                             }`}
+                                                         >
+                                                             <div className="flex justify-between items-center mb-2">
+                                                                 <span className="text-xs font-black italic uppercase text-white flex items-center gap-1.5">
+                                                                     <MapPin size={12} className="text-yellow-500" /> {m.mapName}
+                                                                 </span>
+                                                                 <span className="text-[9px] font-bold text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded border border-yellow-500/20">
+                                                                     {m.dropCount} Quedas
+                                                                 </span>
+                                                             </div>
+                                                             <div className="flex items-center gap-1.5 flex-wrap">
+                                                                 {m.topActives.slice(0, 3).map((act) => (
+                                                                     <span key={act.name} className="inline-flex items-center gap-1 bg-black/80 px-2 py-1 rounded-lg border border-yellow-500/20 text-[9px] font-bold text-white uppercase">
+                                                                         {act.img && <img src={act.img} alt={act.name} className="w-3.5 h-3.5 object-contain" />}
+                                                                         {act.name} ({act.pct}%)
+                                                                     </span>
+                                                                 ))}
+                                                             </div>
+                                                         </button>
+                                                     );
+                                                 })}
+                                             </div>
+                                         </div>
+                                     )}
+
+                             {/* Cabeçalho da Seção de Rodadas com Filtro de Mapa e Botão de Expandir Todas */}
+                             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mt-8 mb-4">
+                                 <h4 className="text-white font-black uppercase tracking-widest text-xs border-l-2 border-yellow-500 pl-3">
+                                     RODADAS DISPUTADAS ({selectedTeamRounds.length})
+                                 </h4>
+
+                                 <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                                     {/* Filtro por Mapa */}
+                                     <div className="flex items-center gap-1 bg-black/60 p-1 rounded-xl border border-white/10 overflow-x-auto max-w-full">
+                                         <button
+                                             onClick={() => setTeamRoundsMapFilter('ALL')}
+                                             className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
+                                                 teamRoundsMapFilter === 'ALL'
+                                                     ? 'bg-yellow-500 text-black shadow-md'
+                                                     : 'text-gray-400 hover:text-white'
+                                             }`}
+                                         >
+                                             Todos os Mapas
+                                         </button>
+                                         {teamMapCharacterSummary.map((m) => {
+                                             const isActive = normalize(teamRoundsMapFilter) === normalize(m.mapName);
+                                             return (
+                                                 <button
+                                                     key={m.mapName}
+                                                     onClick={() => setTeamRoundsMapFilter(isActive ? 'ALL' : m.mapName)}
+                                                     className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all whitespace-nowrap ${
+                                                         isActive
+                                                             ? 'bg-yellow-500 text-black shadow-md'
+                                                             : 'text-gray-400 hover:text-white'
+                                                     }`}
+                                                 >
+                                                     {m.mapName}
+                                                 </button>
+                                             );
+                                         })}
+                                     </div>
+
+                                     {/* Botão de Expandir / Recolher Todas as Line-ups */}
+                                     <button
+                                         onClick={() => setExpandAllLineups(!expandAllLineups)}
+                                         className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[9px] font-black uppercase tracking-wider transition-all shadow-sm active:scale-95 cursor-pointer whitespace-nowrap ${
+                                             expandAllLineups
+                                                 ? 'bg-yellow-500 text-black border-yellow-400 shadow-yellow-500/20'
+                                                 : 'bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 hover:text-yellow-300 border-yellow-500/30'
+                                         }`}
+                                     >
+                                         <Zap size={13} /> {expandAllLineups ? 'Recolher Line-ups' : 'Expandir Todas as Line-ups'}
+                                     </button>
+                                 </div>
+                             </div>
 
                             <div className="space-y-4">
-                                {selectedTeamRounds.map((rdData) => (
+                                {selectedTeamRounds.map((rdData) => {
+                                    const filteredMatches = rdData.matches.filter(m => {
+                                        if (teamRoundsMapFilter === 'ALL') return true;
+                                        const normF = normalize(teamRoundsMapFilter);
+                                        const normM = normalize(m.MAPA);
+                                        return normM === normF || normM.includes(normF) || normF.includes(normM);
+                                    });
+                                    if (filteredMatches.length === 0) return null;
+
+                                    return (
                                     <div key={rdData.round} className="bg-black/30 rounded-2xl border border-gray-800 overflow-hidden shadow-lg">
                                         {/* Cabeçalho da Rodada */}
                                         <div className="p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-[#141414] border-b border-gray-800">
@@ -1714,44 +2115,85 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                                         <th className="px-4 py-2.5 text-center text-red-500">Abates</th>
                                                         <th className="px-4 py-2.5 text-center">Booyah</th>
                                                         <th className="px-4 py-2.5">Onde Fechou</th>
+                                                        <th className="px-4 py-2.5 text-center text-yellow-500">Personagens</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-800/30 text-xs">
-                                                    {rdData.matches.map((m, mIdx) => (
-                                                        <tr key={mIdx} className="hover:bg-white/[0.02] transition-colors">
-                                                            <td className="px-4 py-3 font-semibold text-gray-400">Queda {m.Q}</td>
-                                                            <td className="px-4 py-3 font-bold text-white uppercase italic tracking-wider text-[10px]">{m.MAPA}</td>
-                                                            <td className="px-4 py-3 text-center">
-                                                                <span className={`inline-flex items-center justify-center w-7 h-7 rounded-lg font-black italic text-xs border ${parseInt(m.POS) === 1 ? 'bg-yellow-500 text-black border-yellow-600' : 'bg-gray-950 text-gray-400 border-gray-800'}`}>
-                                                                    {m.POS}º
-                                                                </span>
-                                                            </td>
-                                                            <td className="px-4 py-3 text-center font-black text-yellow-500">{m.PTS}</td>
-                                                            <td className="px-4 py-3 text-center font-black text-orange-400">{m.PTSC}</td>
-                                                            <td className="px-4 py-3 text-center font-black text-red-500">{m.ABTS}</td>
-                                                            <td className="px-4 py-3 text-center">
-                                                                {parseInt(m.B) > 0 ? (
-                                                                    <span className="bg-yellow-500 text-black px-1.5 py-0.5 rounded font-black text-[8px] uppercase tracking-tighter">BOOYAH</span>
-                                                                ) : (
-                                                                    <span className="text-gray-700 font-bold">-</span>
+                                                    {filteredMatches.map((m, mIdx) => {
+                                                        const dropKey = `${rdData.round}-${m.Q}`;
+                                                        const isExpanded = expandAllLineups || expandedDropKey === dropKey;
+                                                        const currentTeamName = selectedTeamStats?.name || selectedTeamName || '';
+
+                                                        return (
+                                                            <React.Fragment key={mIdx}>
+                                                                <tr className={`hover:bg-white/[0.02] transition-colors ${isExpanded ? 'bg-yellow-500/5' : ''}`}>
+                                                                    <td className="px-4 py-3 font-semibold text-gray-400">Queda {m.Q}</td>
+                                                                    <td className="px-4 py-3 font-bold text-white uppercase italic tracking-wider text-[10px]">{m.MAPA}</td>
+                                                                    <td className="px-4 py-3 text-center">
+                                                                        <span className={`inline-flex items-center justify-center w-7 h-7 rounded-lg font-black italic text-xs border ${parseInt(m.POS) === 1 ? 'bg-yellow-500 text-black border-yellow-600' : 'bg-gray-950 text-gray-400 border-gray-800'}`}>
+                                                                            {m.POS}º
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-center font-black text-yellow-500">{m.PTS}</td>
+                                                                    <td className="px-4 py-3 text-center font-black text-orange-400">{m.PTSC}</td>
+                                                                    <td className="px-4 py-3 text-center font-black text-red-500">{m.ABTS}</td>
+                                                                    <td className="px-4 py-3 text-center">
+                                                                        {parseInt(m.B) > 0 ? (
+                                                                            <span className="bg-yellow-500 text-black px-1.5 py-0.5 rounded font-black text-[8px] uppercase tracking-tighter">BOOYAH</span>
+                                                                        ) : (
+                                                                            <span className="text-gray-700 font-bold">-</span>
+                                                                        )}
+                                                                    </td>
+                                                                    <td className="px-4 py-3">
+                                                                        {m.ONDE_FECHOU ? (
+                                                                            <span className="bg-red-500/10 text-red-400 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded border border-red-500/20 shadow-md">
+                                                                                {m.ONDE_FECHOU}
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="text-gray-600 font-bold text-[10px]">-</span>
+                                                                        )}
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-center">
+                                                                        <button
+                                                                            onClick={() => setExpandedDropKey(isExpanded ? null : dropKey)}
+                                                                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border text-[9px] font-black uppercase tracking-wider transition-all shadow-sm active:scale-95 cursor-pointer ${isExpanded ? 'bg-yellow-500 text-black border-yellow-400' : 'bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 hover:text-yellow-300 border-yellow-500/30'}`}
+                                                                        >
+                                                                            <Zap size={12} /> {isExpanded ? 'Ocultar Line-up' : 'Ver Line-up'}
+                                                                        </button>
+                                                                    </td>
+                                                                </tr>
+
+                                                                {/* Linha Expandida com Composição dos 4 Jogadores na Queda */}
+                                                                {isExpanded && (
+                                                                    <tr className="bg-black/60 border-y border-yellow-500/20">
+                                                                        <td colSpan={9} className="p-4 sm:p-6">
+                                                                            <DropCompositionViewer
+                                                                                teamName={currentTeamName}
+                                                                                round={rdData.round}
+                                                                                drop={m.Q}
+                                                                                mapa={m.MAPA}
+                                                                                playersLoadout={getTeamDropComposition(
+                                                                                    data,
+                                                                                    currentTeamName,
+                                                                                    rdData.round,
+                                                                                    m.Q,
+                                                                                    m.CONFRONTO,
+                                                                                    m.MAPA
+                                                                                )}
+                                                                                onPlayerClick={(pName) => handlePlayerClick(pName)}
+                                                                            />
+                                                                        </td>
+                                                                    </tr>
                                                                 )}
-                                                            </td>
-                                                            <td className="px-4 py-3">
-                                                                {m.ONDE_FECHOU ? (
-                                                                    <span className="bg-red-500/10 text-red-400 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded border border-red-500/20 shadow-md">
-                                                                        {m.ONDE_FECHOU}
-                                                                    </span>
-                                                                ) : (
-                                                                    <span className="text-gray-600 font-bold text-[10px]">-</span>
-                                                                )}
-                                                            </td>
-                                                        </tr>
-                                                    ))}
+                                                            </React.Fragment>
+                                                        );
+                                                    })}
                                                 </tbody>
                                             </table>
                                         </div>
                                     </div>
-                                ))}
+                                );
+                            })}
                                 {selectedTeamRounds.length === 0 && (
                                     <div className="py-12 text-center text-[10px] text-gray-600 font-black uppercase italic tracking-widest bg-black/10 rounded-2xl border border-dashed border-gray-800">
                                         Nenhuma rodada encontrada para esta equipe no momento.
@@ -1793,7 +2235,7 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
         ) : (
             /* Galeria de Times */
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-in fade-in duration-500">
-                {filteredTeamStats.filter(t => filters.team.length === 0 || filters.team.includes(t.name)).map(team => (
+                {displayTeamStats.map(team => (
                     <div 
                         key={team.name} 
                         onClick={() => setFilters(prev => ({...prev, team: [team.name]}))}
@@ -1825,6 +2267,30 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                     </div>
                 ))}
             </div>
+        )}
+
+        {/* Modal de Composição por Queda (4 Jogadores) */}
+        {compositionModal && (
+          <DropCompositionViewer
+            isModal
+            teamName={compositionModal.teamName}
+            round={compositionModal.round}
+            drop={compositionModal.drop}
+            mapa={compositionModal.mapa}
+            playersLoadout={getTeamDropComposition(
+              data,
+              compositionModal.teamName,
+              compositionModal.round,
+              compositionModal.drop,
+              compositionModal.confronto,
+              compositionModal.mapa
+            )}
+            onPlayerClick={(pName) => {
+              setCompositionModal(null);
+              handlePlayerClick(pName);
+            }}
+            onClose={() => setCompositionModal(null)}
+          />
         )}
     </div>
   );

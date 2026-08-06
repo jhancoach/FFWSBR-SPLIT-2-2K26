@@ -56,6 +56,7 @@ export interface CharacterData {
   Pet: string;
   Item: string;
   Rd: string;        
+  RD?: string;
   Confronto: string; 
   Mapa: string;      
   S: string;  

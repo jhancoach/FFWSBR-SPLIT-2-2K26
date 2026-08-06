@@ -10,15 +10,13 @@ export const auth = getAuth(app);
 export const isFirebasePlaceholder = !firebaseConfig.projectId || firebaseConfig.projectId.includes('remixed');
 
 // Test Connection
-import { doc, getDocFromServer } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 async function testConnection() {
   if (isFirebasePlaceholder) return;
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if(error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration.");
-    }
+    await getDoc(doc(db, 'test', 'connection'));
+  } catch (_error) {
+    // Gracefully ignore offline/unavailable connection warnings during initial load
   }
 }
 testConnection();
