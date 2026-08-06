@@ -380,4 +380,177 @@ export const getTeamCharacterSummary = (data: DashboardData, teamName: string): 
   };
 };
 
+export interface TeamMapPlayerDetail {
+  player: string;
+  funcao?: string;
+  totalDropsOnMap: number;
+  mainHab1?: { name: string; img?: string; count: number; pct: number };
+  mainHab2?: { name: string; img?: string };
+  mainHab3?: { name: string; img?: string };
+  mainHab4?: { name: string; img?: string };
+  pet?: { name: string; img?: string };
+  item?: { name: string; img?: string };
+}
+
+export interface TeamMapSummaryDetail {
+  mapName: string;
+  dropCount: number;
+  topActives: { name: string; count: number; pct: number; img?: string }[];
+  players: TeamMapPlayerDetail[];
+  drops: {
+    rd: string;
+    q: string;
+    mapa: string;
+    confronto: string;
+    playersLoadout: PlayerLoadoutDetailed[];
+  }[];
+}
+
+/**
+ * Retorna detalhadamente os 4 jogadores e suas quedas em um mapa específico
+ */
+export const getTeamMapSummaryDetail = (data: DashboardData, teamName: string, mapName: string): TeamMapSummaryDetail => {
+  if (!data.characters || !teamName || !mapName) {
+    return { mapName, dropCount: 0, topActives: [], players: [], drops: [] };
+  }
+
+  const teamChars = getTeamCharacters(data, teamName);
+  const normMap = normalize(mapName);
+
+  const mapChars = teamChars.filter(c => {
+    if (!c.Mapa) return false;
+    const cMap = normalize(c.Mapa);
+    return cMap === normMap || cMap.includes(normMap) || normMap.includes(cMap);
+  });
+
+  if (mapChars.length === 0) {
+    return { mapName, dropCount: 0, topActives: [], players: [], drops: [] };
+  }
+
+  // Agrupa quedas únicas (rd - q)
+  const dropMap = new Map<string, { rd: string; q: string; mapa: string; confronto: string }>();
+  mapChars.forEach(c => {
+    const rd = (c.Rd || c.RD || '1').toString().replace(/\D/g, '');
+    const q = (c.Q || c.S || '1').toString().replace(/\D/g, '');
+    const key = `${rd}-${q}`;
+    if (!dropMap.has(key)) {
+      dropMap.set(key, {
+        rd: c.Rd || c.RD || '1',
+        q: c.Q || c.S || '1',
+        mapa: c.Mapa || mapName,
+        confronto: c.Confronto || 'N/A'
+      });
+    }
+  });
+
+  const drops = Array.from(dropMap.values()).map(d => {
+    const playersLoadout = getTeamDropComposition(data, teamName, d.rd, d.q, d.confronto, d.mapa);
+    return {
+      rd: d.rd,
+      q: d.q,
+      mapa: d.mapa,
+      confronto: d.confronto,
+      playersLoadout
+    };
+  }).sort((a, b) => {
+    const rdA = parseInt(a.rd.replace(/\D/g, '')) || 0;
+    const rdB = parseInt(b.rd.replace(/\D/g, '')) || 0;
+    if (rdA !== rdB) return rdA - rdB;
+    const qA = parseInt(a.q.replace(/\D/g, '')) || 0;
+    const qB = parseInt(b.q.replace(/\D/g, '')) || 0;
+    return qA - qB;
+  });
+
+  // Top ativas no mapa
+  const hab1Count: Record<string, number> = {};
+  mapChars.forEach(c => {
+    if (c.Hab1) hab1Count[c.Hab1] = (hab1Count[c.Hab1] || 0) + 1;
+  });
+  const totalCount = mapChars.length || 1;
+  const topActives = Object.entries(hab1Count)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, count]) => ({
+      name,
+      count,
+      pct: Math.round((count / totalCount) * 100),
+      img: findDimImg(data.hab1, name)
+    }));
+
+  // Jogadores e suas habilidades mais usadas no mapa
+  const playerStats: Record<string, {
+    name: string;
+    drops: number;
+    hab1: Record<string, number>;
+    hab2: Record<string, number>;
+    hab3: Record<string, number>;
+    hab4: Record<string, number>;
+    pet: Record<string, number>;
+    item: Record<string, number>;
+  }> = {};
+
+  mapChars.forEach(c => {
+    if (!c.Player) return;
+    const pKey = normalize(c.Player);
+    if (!playerStats[pKey]) {
+      playerStats[pKey] = {
+        name: c.Player,
+        drops: 0,
+        hab1: {},
+        hab2: {},
+        hab3: {},
+        hab4: {},
+        pet: {},
+        item: {}
+      };
+    }
+    playerStats[pKey].drops += 1;
+    if (c.Hab1) playerStats[pKey].hab1[c.Hab1] = (playerStats[pKey].hab1[c.Hab1] || 0) + 1;
+    if (c.Hab2) playerStats[pKey].hab2[c.Hab2] = (playerStats[pKey].hab2[c.Hab2] || 0) + 1;
+    if (c.Hab3) playerStats[pKey].hab3[c.Hab3] = (playerStats[pKey].hab3[c.Hab3] || 0) + 1;
+    if (c.Hab4) playerStats[pKey].hab4[c.Hab4] = (playerStats[pKey].hab4[c.Hab4] || 0) + 1;
+    if (c.Pet) playerStats[pKey].pet[c.Pet] = (playerStats[pKey].pet[c.Pet] || 0) + 1;
+    if (c.Item) playerStats[pKey].item[c.Item] = (playerStats[pKey].item[c.Item] || 0) + 1;
+  });
+
+  const getTop = (mapObj: Record<string, number>, dimList: any[]) => {
+    const sorted = Object.entries(mapObj).sort((a, b) => b[1] - a[1]);
+    if (sorted.length === 0) return undefined;
+    return {
+      name: sorted[0][0],
+      img: findDimImg(dimList, sorted[0][0])
+    };
+  };
+
+  const players: TeamMapPlayerDetail[] = Object.values(playerStats).map(p => {
+    const dim = data.playersDimension.find((d: any) => normalize(d.Name) === normalize(p.name));
+    const pTotal = p.drops || 1;
+    const topH1 = Object.entries(p.hab1).sort((a, b) => b[1] - a[1])[0];
+
+    return {
+      player: p.name,
+      funcao: dim?.Funcao,
+      totalDropsOnMap: p.drops,
+      mainHab1: topH1 ? {
+        name: topH1[0],
+        img: findDimImg(data.hab1, topH1[0]),
+        count: topH1[1],
+        pct: Math.round((topH1[1] / pTotal) * 100)
+      } : undefined,
+      mainHab2: getTop(p.hab2, data.hab2),
+      mainHab3: getTop(p.hab3, data.hab3),
+      mainHab4: getTop(p.hab4, data.hab4),
+      pet: getTop(p.pet, data.pets),
+      item: getTop(p.item, data.items)
+    };
+  }).sort((a, b) => b.totalDropsOnMap - a.totalDropsOnMap);
+
+  return {
+    mapName,
+    dropCount: drops.length,
+    topActives,
+    players,
+    drops
+  };
+};
+
 

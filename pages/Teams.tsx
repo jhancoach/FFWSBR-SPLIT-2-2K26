@@ -8,7 +8,7 @@ import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, LabelList, PieChart
 import FilterBar from '../components/FilterBar';
 import { formatTeamName } from '../utils/teamUtils';
 import { DropCompositionViewer } from '../components/DropComposition';
-import { getTeamDropComposition, getTeamCharacterSummary, getTeamCharacters } from '../utils/characterUtils';
+import { getTeamDropComposition, getTeamCharacterSummary, getTeamCharacters, getTeamMapSummaryDetail } from '../utils/characterUtils';
 import { findDimImg } from '../utils/skillImages';
 
 interface TeamsProps {
@@ -194,37 +194,8 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
 
     const maps = Array.from(new Set(teamChars.map(c => c.Mapa))).filter(Boolean) as string[];
 
-    return maps.map(mapName => {
-      const normMap = normalize(mapName);
-
-      const mapChars = teamChars.filter(c => {
-        if (!c.Mapa) return false;
-        return normalize(c.Mapa) === normMap || normalize(c.Mapa).includes(normMap) || normMap.includes(normalize(c.Mapa));
-      });
-
-      const hab1Map: Record<string, number> = {};
-      mapChars.forEach(c => {
-        if (c.Hab1) hab1Map[c.Hab1] = (hab1Map[c.Hab1] || 0) + 1;
-      });
-
-      const totalCount = mapChars.length || 1;
-      const topActives = Object.entries(hab1Map)
-        .sort((a, b) => b[1] - a[1])
-        .map(([name, count]) => ({
-          name,
-          count,
-          pct: Math.round((count / totalCount) * 100),
-          img: findDimImg(data.hab1, name)
-        }));
-
-      const dropSet = new Set(mapChars.map(c => `${c.Rd || c.RD}-${c.Q || c.S}`));
-
-      return {
-        mapName,
-        dropCount: dropSet.size || 1,
-        topActives
-      };
-    }).sort((a, b) => b.dropCount - a.dropCount);
+    return maps.map(mapName => getTeamMapSummaryDetail(data, activeTeamName, mapName))
+      .sort((a, b) => b.dropCount - a.dropCount);
   }, [data, activeTeamName]);
 
   // Reset local states if team changes and switch tab to gallery if single team selected
@@ -904,19 +875,47 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                                     </span>
                                                 </div>
 
-                                                {mainActive && (
-                                                    <div className="bg-yellow-500/5 p-2.5 rounded-xl border border-yellow-500/20 flex items-center gap-2">
-                                                        {mainActive.img ? (
-                                                            <img src={mainActive.img} className="w-6 h-6 object-contain rounded bg-black p-0.5 border border-yellow-500/30" alt={mainActive.name} />
-                                                        ) : (
-                                                            <Zap size={14} className="text-yellow-500" />
-                                                        )}
-                                                        <div className="min-w-0">
-                                                            <span className="text-[7px] text-yellow-500 font-black uppercase block leading-none">ATIVA MAIS USADA</span>
-                                                            <span className="text-[10px] font-black italic text-white uppercase truncate block mt-0.5">{mainActive.name} ({mainActive.pct}%)</span>
+                                                <div className="space-y-2">
+                                                    {mainActive && (
+                                                        <div className="bg-yellow-500/5 p-2 rounded-xl border border-yellow-500/20 flex items-center gap-2">
+                                                            {mainActive.img ? (
+                                                                <img src={mainActive.img} className="w-6 h-6 object-contain rounded bg-black p-0.5 border border-yellow-500/30" alt={mainActive.name} />
+                                                            ) : (
+                                                                <Zap size={14} className="text-yellow-500" />
+                                                            )}
+                                                            <div className="min-w-0">
+                                                                <span className="text-[7px] text-yellow-500 font-black uppercase block leading-none">ATIVA MAIS USADA</span>
+                                                                <span className="text-[10px] font-black italic text-white uppercase truncate block mt-0.5">{mainActive.name} ({mainActive.pct}%)</span>
+                                                            </div>
                                                         </div>
+                                                    )}
+                                                    
+                                                    {p.passives && p.passives.length > 0 && (
+                                                        <div className="flex flex-wrap gap-1.5 pt-1">
+                                                            {p.passives.map(pass => (
+                                                                <div key={pass.name} className="flex items-center gap-1 bg-black/40 px-1.5 py-1 rounded border border-white/5" title={`${pass.name} (${pass.pct}%)`}>
+                                                                    {pass.img && <img src={pass.img} alt={pass.name} className="w-4 h-4 object-contain rounded-full" />}
+                                                                    <span className="text-[9px] text-gray-300 font-bold truncate max-w-[60px]">{pass.name}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    <div className="flex items-center gap-2 pt-1 border-t border-white/5">
+                                                        {p.topPet && (
+                                                            <div className="flex items-center gap-1">
+                                                                {p.topPet.img && <img src={p.topPet.img} alt={p.topPet.name} className="w-4 h-4 object-contain" />}
+                                                                <span className="text-[9px] text-gray-400 font-bold truncate max-w-[50px]">{p.topPet.name}</span>
+                                                            </div>
+                                                        )}
+                                                        {p.topItem && (
+                                                            <div className="flex items-center gap-1">
+                                                                {p.topItem.img && <img src={p.topItem.img} alt={p.topItem.name} className="w-4 h-4 object-contain" />}
+                                                                <span className="text-[9px] text-gray-400 font-bold truncate max-w-[50px]">{p.topItem.name}</span>
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                )}
+                                                </div>
                                             </div>
                                         );
                                     })}
@@ -934,32 +933,97 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                     {teamMapCharacterSummary.map((m) => {
                                         const isSelected = selectedMap && normalize(selectedMap) === normalize(m.mapName);
                                         return (
-                                            <button
+                                            <div
                                                 key={m.mapName}
-                                                onClick={() => setSelectedMap(isSelected ? null : m.mapName)}
-                                                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+                                                className={`p-3.5 rounded-2xl border text-left transition-all ${
                                                     isSelected
-                                                        ? 'bg-yellow-500/15 border-yellow-500 ring-1 ring-yellow-500/50 shadow-lg shadow-yellow-500/5'
+                                                        ? 'bg-yellow-500/10 border-yellow-500 shadow-lg shadow-yellow-500/5'
                                                         : 'bg-black/60 border-white/5 hover:border-yellow-500/30'
                                                 }`}
                                             >
-                                                <div className="flex justify-between items-center mb-2">
-                                                    <span className="text-xs font-black italic uppercase text-white flex items-center gap-1.5">
-                                                        <MapPin size={12} className="text-yellow-500" /> {m.mapName}
-                                                    </span>
-                                                    <span className="text-[9px] font-bold text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded border border-yellow-500/20">
-                                                        {m.dropCount} Quedas
-                                                    </span>
-                                                </div>
-                                                <div className="flex items-center gap-1.5 flex-wrap">
-                                                    {m.topActives.slice(0, 3).map((act) => (
-                                                        <span key={act.name} className="inline-flex items-center gap-1 bg-black/80 px-2 py-1 rounded-lg border border-yellow-500/20 text-[9px] font-bold text-white uppercase">
-                                                            {act.img && <img src={act.img} alt={act.name} className="w-3.5 h-3.5 object-contain" />}
-                                                            {act.name} ({act.pct}%)
+                                                <div 
+                                                    className="cursor-pointer"
+                                                    onClick={() => setSelectedMap(isSelected ? null : m.mapName)}
+                                                >
+                                                    <div className="flex justify-between items-center mb-2">
+                                                        <span className="text-xs font-black italic uppercase text-white flex items-center gap-1.5">
+                                                            <MapPin size={12} className="text-yellow-500" /> {m.mapName}
                                                         </span>
-                                                    ))}
+                                                        <span className="text-[9px] font-bold text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded border border-yellow-500/20">
+                                                            {m.dropCount} Quedas
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                        {m.topActives.map((act) => (
+                                                            <span key={act.name} className="inline-flex items-center gap-1 bg-black/80 px-2 py-1 rounded-lg border border-yellow-500/20 text-[9px] font-bold text-white uppercase">
+                                                                {act.img && <img src={act.img} alt={act.name} className="w-3.5 h-3.5 object-contain" />}
+                                                                {act.name} ({act.pct}%)
+                                                            </span>
+                                                        ))}
+                                                    </div>
                                                 </div>
-                                            </button>
+                                                
+                                                {isSelected && m.players && m.players.length > 0 && (
+                                                    <div className="mt-4 pt-4 border-t border-yellow-500/20 grid gap-3">
+                                                        <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest block flex items-center gap-1.5">
+                                                            <Users size={10} className="text-yellow-500" /> PREFERÊNCIAS NO MAPA
+                                                        </span>
+                                                        {m.players.map((p) => {
+                                                            const mainActive = p.activeSkills?.[0];
+                                                            return (
+                                                                <div key={p.name} className="bg-black/60 p-2.5 rounded-xl border border-white/5">
+                                                                    <div className="flex items-center justify-between mb-2">
+                                                                        <span className="text-[10px] font-black italic uppercase text-white">{p.name}</span>
+                                                                        {p.funcao && <span className="text-[8px] font-bold text-gray-500 uppercase">{p.funcao}</span>}
+                                                                    </div>
+                                                                    <div className="space-y-2">
+                                                                        {mainActive && (
+                                                                            <div className="bg-yellow-500/5 p-1.5 rounded-lg border border-yellow-500/20 flex items-center gap-2">
+                                                                                {mainActive.img ? (
+                                                                                    <img src={mainActive.img} className="w-5 h-5 object-contain rounded bg-black p-0.5 border border-yellow-500/30" alt={mainActive.name} />
+                                                                                ) : (
+                                                                                    <Zap size={12} className="text-yellow-500" />
+                                                                                )}
+                                                                                <div className="min-w-0 flex-1 flex justify-between items-center">
+                                                                                    <div>
+                                                                                        <span className="text-[6px] text-yellow-500 font-black uppercase block leading-none">ATIVA</span>
+                                                                                        <span className="text-[9px] font-black italic text-white uppercase truncate block mt-0.5">{mainActive.name}</span>
+                                                                                    </div>
+                                                                                    <span className="text-[9px] font-bold text-yellow-500">{mainActive.pct}%</span>
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+                                                                        {p.passives && p.passives.length > 0 && (
+                                                                            <div className="flex flex-wrap gap-1.5 pt-1">
+                                                                                {p.passives.map(pass => (
+                                                                                    <div key={pass.name} className="flex items-center gap-1 bg-black/40 px-1.5 py-1 rounded border border-white/5" title={`${pass.name} (${pass.pct}%)`}>
+                                                                                        {pass.img && <img src={pass.img} alt={pass.name} className="w-3.5 h-3.5 object-contain rounded-full" />}
+                                                                                        <span className="text-[8px] text-gray-300 font-bold truncate max-w-[50px]">{pass.name}</span>
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        )}
+                                                                        <div className="flex items-center gap-2 pt-1.5 border-t border-white/5">
+                                                                            {p.topPet && (
+                                                                                <div className="flex items-center gap-1">
+                                                                                    {p.topPet.img && <img src={p.topPet.img} alt={p.topPet.name} className="w-3.5 h-3.5 object-contain" />}
+                                                                                    <span className="text-[8px] text-gray-400 font-bold truncate max-w-[50px]">{p.topPet.name}</span>
+                                                                                </div>
+                                                                            )}
+                                                                            {p.topItem && (
+                                                                                <div className="flex items-center gap-1">
+                                                                                    {p.topItem.img && <img src={p.topItem.img} alt={p.topItem.name} className="w-3.5 h-3.5 object-contain" />}
+                                                                                    <span className="text-[8px] text-gray-400 font-bold truncate max-w-[50px]">{p.topItem.name}</span>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
                                         );
                                     })}
                                 </div>
@@ -1007,26 +1071,57 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-800">
-                                            {(selectedMap ? selectedMapMatchDetails : selectedDrop ? selectedDropMatchDetails : selectedPositionMatchDetails).map((match, idx) => (
-                                                <tr key={idx} className="hover:bg-white/5 transition-colors group">
-                                                    <td className="px-6 py-4">
-                                                        <div className="flex flex-col">
-                                                            <span className="text-xs font-black text-white uppercase italic">
-                                                                {selectedMap ? `Queda ${match.Q}` : `${match.MAPA} (Q${match.Q})`}
-                                                            </span>
-                                                            <span className="text-[9px] text-gray-600 font-bold uppercase">Rodada {match.RD}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4 text-center">
-                                                        <div className={`inline-flex items-center justify-center w-8 h-8 rounded-lg font-black italic text-xs border ${parseInt(match.POS) === 1 ? 'bg-yellow-500 text-black border-yellow-600 shadow-[0_0_10px_rgba(234,179,8,0.5)]' : 'bg-gray-900 text-gray-400 border-gray-800'}`}>
-                                                            {match.POS}º
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4 text-center font-black text-yellow-500 italic">{match.PTS}</td>
-                                                    <td className="px-6 py-4 text-center font-black text-orange-500 italic">{match.PTSC}</td>
-                                                    <td className="px-6 py-4 text-center font-black text-red-500 italic">{match.ABTS}</td>
-                                                </tr>
-                                            ))}
+                                            {(selectedMap ? selectedMapMatchDetails : selectedDrop ? selectedDropMatchDetails : selectedPositionMatchDetails).map((match, idx) => {
+                                                const dKey = `${match.RD}-${match.Q}`;
+                                                const isExp = expandedDropKey === dKey;
+                                                return (
+                                                <React.Fragment key={idx}>
+                                                    <tr 
+                                                        onClick={() => setExpandedDropKey(isExp ? null : dKey)}
+                                                        className="hover:bg-white/5 transition-colors group cursor-pointer"
+                                                    >
+                                                        <td className="px-6 py-4">
+                                                            <div className="flex flex-col">
+                                                                <span className="text-xs font-black text-white uppercase italic">
+                                                                    {selectedMap ? `Queda ${match.Q}` : `${match.MAPA} (Q${match.Q})`}
+                                                                </span>
+                                                                <span className="text-[9px] text-gray-600 font-bold uppercase">Rodada {match.RD}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-6 py-4 text-center">
+                                                            <div className={`inline-flex items-center justify-center w-8 h-8 rounded-lg font-black italic text-xs border ${parseInt(match.POS) === 1 ? 'bg-yellow-500 text-black border-yellow-600 shadow-[0_0_10px_rgba(234,179,8,0.5)]' : 'bg-gray-900 text-gray-400 border-gray-800'}`}>
+                                                                {match.POS}º
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-6 py-4 text-center font-black text-yellow-500 italic">{match.PTS}</td>
+                                                        <td className="px-6 py-4 text-center font-black text-orange-500 italic">{match.PTSC}</td>
+                                                        <td className="px-6 py-4 text-center font-black text-red-500 italic flex items-center justify-center gap-3">
+                                                            {match.ABTS}
+                                                            <ChevronDown size={14} className={`text-gray-500 transition-transform ${isExp ? 'rotate-180' : ''}`} />
+                                                        </td>
+                                                    </tr>
+                                                    {isExp && (
+                                                        <tr className="bg-black/60 border-y border-yellow-500/20">
+                                                            <td colSpan={5} className="p-4 sm:p-6">
+                                                                <DropCompositionViewer
+                                                                    teamName={activeTeamName}
+                                                                    round={match.RD}
+                                                                    drop={match.Q}
+                                                                    mapa={match.MAPA}
+                                                                    playersLoadout={getTeamDropComposition(
+                                                                        data,
+                                                                        activeTeamName,
+                                                                        match.RD,
+                                                                        match.Q,
+                                                                        match.CONFRONTO,
+                                                                        match.MAPA
+                                                                    )}
+                                                                />
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </React.Fragment>
+                                            )})}
                                         </tbody>
                                     </table>
                                 </div>
@@ -1934,19 +2029,47 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                                                 </span>
                                                             </div>
 
-                                                            {mainActive && (
-                                                                <div className="bg-yellow-500/5 p-2.5 rounded-xl border border-yellow-500/20 flex items-center gap-2">
-                                                                    {mainActive.img ? (
-                                                                        <img src={mainActive.img} className="w-6 h-6 object-contain rounded bg-black p-0.5 border border-yellow-500/30" alt={mainActive.name} />
-                                                                    ) : (
-                                                                        <Zap size={14} className="text-yellow-500" />
-                                                                    )}
-                                                                    <div className="min-w-0">
-                                                                        <span className="text-[7px] text-yellow-500 font-black uppercase block leading-none">ATIVA MAIS USADA</span>
-                                                                        <span className="text-[10px] font-black italic text-white uppercase truncate block mt-0.5">{mainActive.name} ({mainActive.pct}%)</span>
+                                                            <div className="space-y-2">
+                                                                {mainActive && (
+                                                                    <div className="bg-yellow-500/5 p-2 rounded-xl border border-yellow-500/20 flex items-center gap-2">
+                                                                        {mainActive.img ? (
+                                                                            <img src={mainActive.img} className="w-6 h-6 object-contain rounded bg-black p-0.5 border border-yellow-500/30" alt={mainActive.name} />
+                                                                        ) : (
+                                                                            <Zap size={14} className="text-yellow-500" />
+                                                                        )}
+                                                                        <div className="min-w-0">
+                                                                            <span className="text-[7px] text-yellow-500 font-black uppercase block leading-none">ATIVA MAIS USADA</span>
+                                                                            <span className="text-[10px] font-black italic text-white uppercase truncate block mt-0.5">{mainActive.name} ({mainActive.pct}%)</span>
+                                                                        </div>
                                                                     </div>
+                                                                )}
+                                                                
+                                                                {p.passives && p.passives.length > 0 && (
+                                                                    <div className="flex flex-wrap gap-1.5 pt-1">
+                                                                        {p.passives.map(pass => (
+                                                                            <div key={pass.name} className="flex items-center gap-1 bg-black/40 px-1.5 py-1 rounded border border-white/5" title={`${pass.name} (${pass.pct}%)`}>
+                                                                                {pass.img && <img src={pass.img} alt={pass.name} className="w-4 h-4 object-contain rounded-full" />}
+                                                                                <span className="text-[9px] text-gray-300 font-bold truncate max-w-[60px]">{pass.name}</span>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+
+                                                                <div className="flex items-center gap-2 pt-1 border-t border-white/5">
+                                                                    {p.topPet && (
+                                                                        <div className="flex items-center gap-1">
+                                                                            {p.topPet.img && <img src={p.topPet.img} alt={p.topPet.name} className="w-4 h-4 object-contain" />}
+                                                                            <span className="text-[9px] text-gray-400 font-bold truncate max-w-[50px]">{p.topPet.name}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {p.topItem && (
+                                                                        <div className="flex items-center gap-1">
+                                                                            {p.topItem.img && <img src={p.topItem.img} alt={p.topItem.name} className="w-4 h-4 object-contain" />}
+                                                                            <span className="text-[9px] text-gray-400 font-bold truncate max-w-[50px]">{p.topItem.name}</span>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
-                                                            )}
+                                                            </div>
                                                         </div>
                                                     );
                                                 })}
@@ -1966,32 +2089,97 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                                  {teamMapCharacterSummary.map((m) => {
                                                      const isSelected = normalize(teamRoundsMapFilter) === normalize(m.mapName);
                                                      return (
-                                                         <button
+                                                         <div
                                                              key={m.mapName}
-                                                             onClick={() => setTeamRoundsMapFilter(isSelected ? 'ALL' : m.mapName)}
-                                                             className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+                                                             className={`p-3.5 rounded-2xl border text-left transition-all ${
                                                                  isSelected
-                                                                     ? 'bg-yellow-500/15 border-yellow-500 ring-1 ring-yellow-500/50 shadow-lg shadow-yellow-500/5'
+                                                                     ? 'bg-yellow-500/10 border-yellow-500 shadow-lg shadow-yellow-500/5'
                                                                      : 'bg-black/60 border-white/5 hover:border-yellow-500/30'
                                                              }`}
                                                          >
-                                                             <div className="flex justify-between items-center mb-2">
-                                                                 <span className="text-xs font-black italic uppercase text-white flex items-center gap-1.5">
-                                                                     <MapPin size={12} className="text-yellow-500" /> {m.mapName}
-                                                                 </span>
-                                                                 <span className="text-[9px] font-bold text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded border border-yellow-500/20">
-                                                                     {m.dropCount} Quedas
-                                                                 </span>
-                                                             </div>
-                                                             <div className="flex items-center gap-1.5 flex-wrap">
-                                                                 {m.topActives.slice(0, 3).map((act) => (
-                                                                     <span key={act.name} className="inline-flex items-center gap-1 bg-black/80 px-2 py-1 rounded-lg border border-yellow-500/20 text-[9px] font-bold text-white uppercase">
-                                                                         {act.img && <img src={act.img} alt={act.name} className="w-3.5 h-3.5 object-contain" />}
-                                                                         {act.name} ({act.pct}%)
+                                                             <div 
+                                                                 className="cursor-pointer"
+                                                                 onClick={() => setTeamRoundsMapFilter(isSelected ? 'ALL' : m.mapName)}
+                                                             >
+                                                                 <div className="flex justify-between items-center mb-2">
+                                                                     <span className="text-xs font-black italic uppercase text-white flex items-center gap-1.5">
+                                                                         <MapPin size={12} className="text-yellow-500" /> {m.mapName}
                                                                      </span>
-                                                                 ))}
+                                                                     <span className="text-[9px] font-bold text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded border border-yellow-500/20">
+                                                                         {m.dropCount} Quedas
+                                                                     </span>
+                                                                 </div>
+                                                                 <div className="flex items-center gap-1.5 flex-wrap">
+                                                                     {m.topActives.map((act) => (
+                                                                         <span key={act.name} className="inline-flex items-center gap-1 bg-black/80 px-2 py-1 rounded-lg border border-yellow-500/20 text-[9px] font-bold text-white uppercase">
+                                                                             {act.img && <img src={act.img} alt={act.name} className="w-3.5 h-3.5 object-contain" />}
+                                                                             {act.name} ({act.pct}%)
+                                                                         </span>
+                                                                     ))}
+                                                                 </div>
                                                              </div>
-                                                         </button>
+                                                             
+                                                             {isSelected && m.players && m.players.length > 0 && (
+                                                                 <div className="mt-4 pt-4 border-t border-yellow-500/20 grid gap-3">
+                                                                     <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest block flex items-center gap-1.5">
+                                                                         <Users size={10} className="text-yellow-500" /> PREFERÊNCIAS NO MAPA
+                                                                     </span>
+                                                                     {m.players.map((p) => {
+                                                                         const mainActive = p.activeSkills?.[0];
+                                                                         return (
+                                                                             <div key={p.name} className="bg-black/60 p-2.5 rounded-xl border border-white/5">
+                                                                                 <div className="flex items-center justify-between mb-2">
+                                                                                     <span className="text-[10px] font-black italic uppercase text-white">{p.name}</span>
+                                                                                     {p.funcao && <span className="text-[8px] font-bold text-gray-500 uppercase">{p.funcao}</span>}
+                                                                                 </div>
+                                                                                 <div className="space-y-2">
+                                                                                     {mainActive && (
+                                                                                         <div className="bg-yellow-500/5 p-1.5 rounded-lg border border-yellow-500/20 flex items-center gap-2">
+                                                                                             {mainActive.img ? (
+                                                                                                 <img src={mainActive.img} className="w-5 h-5 object-contain rounded bg-black p-0.5 border border-yellow-500/30" alt={mainActive.name} />
+                                                                                             ) : (
+                                                                                                 <Zap size={12} className="text-yellow-500" />
+                                                                                             )}
+                                                                                             <div className="min-w-0 flex-1 flex justify-between items-center">
+                                                                                                 <div>
+                                                                                                     <span className="text-[6px] text-yellow-500 font-black uppercase block leading-none">ATIVA</span>
+                                                                                                     <span className="text-[9px] font-black italic text-white uppercase truncate block mt-0.5">{mainActive.name}</span>
+                                                                                                 </div>
+                                                                                                 <span className="text-[9px] font-bold text-yellow-500">{mainActive.pct}%</span>
+                                                                                             </div>
+                                                                                         </div>
+                                                                                     )}
+                                                                                     {p.passives && p.passives.length > 0 && (
+                                                                                         <div className="flex flex-wrap gap-1.5 pt-1">
+                                                                                             {p.passives.map(pass => (
+                                                                                                 <div key={pass.name} className="flex items-center gap-1 bg-black/40 px-1.5 py-1 rounded border border-white/5" title={`${pass.name} (${pass.pct}%)`}>
+                                                                                                     {pass.img && <img src={pass.img} alt={pass.name} className="w-3.5 h-3.5 object-contain rounded-full" />}
+                                                                                                     <span className="text-[8px] text-gray-300 font-bold truncate max-w-[50px]">{pass.name}</span>
+                                                                                                 </div>
+                                                                                             ))}
+                                                                                         </div>
+                                                                                     )}
+                                                                                     <div className="flex items-center gap-2 pt-1.5 border-t border-white/5">
+                                                                                         {p.topPet && (
+                                                                                             <div className="flex items-center gap-1">
+                                                                                                 {p.topPet.img && <img src={p.topPet.img} alt={p.topPet.name} className="w-3.5 h-3.5 object-contain" />}
+                                                                                                 <span className="text-[8px] text-gray-400 font-bold truncate max-w-[50px]">{p.topPet.name}</span>
+                                                                                             </div>
+                                                                                         )}
+                                                                                         {p.topItem && (
+                                                                                             <div className="flex items-center gap-1">
+                                                                                                 {p.topItem.img && <img src={p.topItem.img} alt={p.topItem.name} className="w-3.5 h-3.5 object-contain" />}
+                                                                                                 <span className="text-[8px] text-gray-400 font-bold truncate max-w-[50px]">{p.topItem.name}</span>
+                                                                                             </div>
+                                                                                         )}
+                                                                                     </div>
+                                                                                 </div>
+                                                                             </div>
+                                                                         );
+                                                                     })}
+                                                                 </div>
+                                                             )}
+                                                         </div>
                                                      );
                                                  })}
                                              </div>

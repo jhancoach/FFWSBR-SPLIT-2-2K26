@@ -246,6 +246,7 @@ export const getTeamDropComposition = (
 export interface TeamCharacterSummary {
   totalDrops: number;
   activeSkills: { name: string; count: number; pct: number; img?: string }[];
+  passives: { name: string; count: number; pct: number; img?: string }[];
   pets: { name: string; count: number; pct: number; img?: string }[];
   items: { name: string; count: number; pct: number; img?: string }[];
   players: {
@@ -253,6 +254,7 @@ export interface TeamCharacterSummary {
     totalDrops: number;
     funcao?: string;
     activeSkills: { name: string; count: number; pct: number; img?: string }[];
+    passives: { name: string; count: number; pct: number; img?: string }[];
     topPet?: { name: string; img?: string };
     topItem?: { name: string; img?: string };
   }[];
@@ -282,6 +284,7 @@ export const getTeamCharacterSummary = (data: DashboardData, teamName: string): 
   const totalDrops = dropSet.size || 1;
 
   const hab1Map: Record<string, number> = {};
+  const passiveMap: Record<string, number> = {};
   const petMap: Record<string, number> = {};
   const itemMap: Record<string, number> = {};
 
@@ -289,12 +292,16 @@ export const getTeamCharacterSummary = (data: DashboardData, teamName: string): 
     name: string;
     totalDrops: number;
     hab1: Record<string, number>;
+    passives: Record<string, number>;
     pets: Record<string, number>;
     items: Record<string, number>;
   }> = {};
 
   teamChars.forEach(c => {
     if (c.Hab1) hab1Map[c.Hab1] = (hab1Map[c.Hab1] || 0) + 1;
+    if (c.Hab2) passiveMap[c.Hab2] = (passiveMap[c.Hab2] || 0) + 1;
+    if (c.Hab3) passiveMap[c.Hab3] = (passiveMap[c.Hab3] || 0) + 1;
+    if (c.Hab4) passiveMap[c.Hab4] = (passiveMap[c.Hab4] || 0) + 1;
     if (c.Pet) petMap[c.Pet] = (petMap[c.Pet] || 0) + 1;
     if (c.Item) itemMap[c.Item] = (itemMap[c.Item] || 0) + 1;
 
@@ -305,12 +312,16 @@ export const getTeamCharacterSummary = (data: DashboardData, teamName: string): 
           name: c.Player,
           totalDrops: 0,
           hab1: {},
+          passives: {},
           pets: {},
           items: {}
         };
       }
       playerMap[pKey].totalDrops += 1;
       if (c.Hab1) playerMap[pKey].hab1[c.Hab1] = (playerMap[pKey].hab1[c.Hab1] || 0) + 1;
+      if (c.Hab2) playerMap[pKey].passives[c.Hab2] = (playerMap[pKey].passives[c.Hab2] || 0) + 1;
+      if (c.Hab3) playerMap[pKey].passives[c.Hab3] = (playerMap[pKey].passives[c.Hab3] || 0) + 1;
+      if (c.Hab4) playerMap[pKey].passives[c.Hab4] = (playerMap[pKey].passives[c.Hab4] || 0) + 1;
       if (c.Pet) playerMap[pKey].pets[c.Pet] = (playerMap[pKey].pets[c.Pet] || 0) + 1;
       if (c.Item) playerMap[pKey].items[c.Item] = (playerMap[pKey].items[c.Item] || 0) + 1;
     }
@@ -325,6 +336,15 @@ export const getTeamCharacterSummary = (data: DashboardData, teamName: string): 
       count,
       pct: Math.round((count / totalCharsCount) * 100),
       img: findDimImg(data.hab1, name)
+    }));
+
+  const passives = Object.entries(passiveMap)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, count]) => ({
+      name,
+      count,
+      pct: Math.round((count / (totalCharsCount * 3)) * 100),
+      img: findDimImg([...(data.hab2 || []), ...(data.hab3 || []), ...(data.hab4 || [])], name)
     }));
 
   const pets = Object.entries(petMap)
@@ -358,6 +378,15 @@ export const getTeamCharacterSummary = (data: DashboardData, teamName: string): 
         img: findDimImg(data.hab1, name)
       }));
 
+    const pPassives = Object.entries(p.passives)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => ({
+        name,
+        count,
+        pct: Math.round((count / (pTotal * 3)) * 100),
+        img: findDimImg([...(data.hab2 || []), ...(data.hab3 || []), ...(data.hab4 || [])], name)
+      }));
+
     const topPetEntry = Object.entries(p.pets).sort((a, b) => b[1] - a[1])[0];
     const topItemEntry = Object.entries(p.items).sort((a, b) => b[1] - a[1])[0];
 
@@ -366,6 +395,7 @@ export const getTeamCharacterSummary = (data: DashboardData, teamName: string): 
       totalDrops: p.totalDrops,
       funcao: dim?.Funcao,
       activeSkills: pActives,
+      passives: pPassives,
       topPet: topPetEntry ? { name: topPetEntry[0], img: findDimImg(data.pets, topPetEntry[0]) } : undefined,
       topItem: topItemEntry ? { name: topItemEntry[0], img: findDimImg(data.items, topItemEntry[0]) } : undefined,
     };
@@ -374,8 +404,180 @@ export const getTeamCharacterSummary = (data: DashboardData, teamName: string): 
   return {
     totalDrops,
     activeSkills,
+    passives,
     pets,
     items,
     players
+  };
+};
+
+export interface TeamMapPlayerDetail {
+  name: string;
+  funcao?: string;
+  totalDropsOnMap: number;
+  activeSkills: { name: string; count: number; pct: number; img?: string }[];
+  passives: { name: string; count: number; pct: number; img?: string }[];
+  topPet?: { name: string; img?: string };
+  topItem?: { name: string; img?: string };
+}
+
+export interface TeamMapSummaryDetail {
+  mapName: string;
+  dropCount: number;
+  topActives: { name: string; count: number; pct: number; img?: string }[];
+  players: TeamMapPlayerDetail[];
+  drops: {
+    rd: string;
+    q: string;
+    mapa: string;
+    confronto: string;
+    playersLoadout: PlayerLoadoutDetailed[];
+  }[];
+}
+
+/**
+ * Retorna detalhadamente os 4 jogadores e suas quedas em um mapa específico
+ */
+export const getTeamMapSummaryDetail = (data: DashboardData, teamName: string, mapName: string): TeamMapSummaryDetail => {
+  if (!data.characters || !teamName || !mapName) {
+    return { mapName, dropCount: 0, topActives: [], players: [], drops: [] };
+  }
+
+  const teamChars = getTeamCharacters(data, teamName);
+  const normMap = normalize(mapName);
+
+  const mapChars = teamChars.filter(c => {
+    if (!c.Mapa) return false;
+    const cMap = normalize(c.Mapa);
+    return cMap === normMap || cMap.includes(normMap) || normMap.includes(cMap);
+  });
+
+  if (mapChars.length === 0) {
+    return { mapName, dropCount: 0, topActives: [], players: [], drops: [] };
+  }
+
+  // Agrupa quedas únicas (rd - q)
+  const dropMap = new Map<string, { rd: string; q: string; mapa: string; confronto: string }>();
+  mapChars.forEach(c => {
+    const rd = (c.Rd || c.RD || '1').toString().replace(/\D/g, '');
+    const q = (c.Q || c.S || '1').toString().replace(/\D/g, '');
+    const key = `${rd}-${q}`;
+    if (!dropMap.has(key)) {
+      dropMap.set(key, {
+        rd: c.Rd || c.RD || '1',
+        q: c.Q || c.S || '1',
+        mapa: c.Mapa || mapName,
+        confronto: c.Confronto || 'N/A'
+      });
+    }
+  });
+
+  const drops = Array.from(dropMap.values()).map(d => {
+    const playersLoadout = getTeamDropComposition(data, teamName, d.rd, d.q, d.confronto, d.mapa);
+    return {
+      rd: d.rd,
+      q: d.q,
+      mapa: d.mapa,
+      confronto: d.confronto,
+      playersLoadout
+    };
+  }).sort((a, b) => {
+    const rdA = parseInt(a.rd.replace(/\D/g, '')) || 0;
+    const rdB = parseInt(b.rd.replace(/\D/g, '')) || 0;
+    if (rdA !== rdB) return rdA - rdB;
+    const qA = parseInt(a.q.replace(/\D/g, '')) || 0;
+    const qB = parseInt(b.q.replace(/\D/g, '')) || 0;
+    return qA - qB;
+  });
+
+  // Top ativas no mapa
+  const hab1Count: Record<string, number> = {};
+  mapChars.forEach(c => {
+    if (c.Hab1) hab1Count[c.Hab1] = (hab1Count[c.Hab1] || 0) + 1;
+  });
+  const totalCount = mapChars.length || 1;
+  const topActives = Object.entries(hab1Count)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, count]) => ({
+      name,
+      count,
+      pct: Math.round((count / totalCount) * 100),
+      img: findDimImg(data.hab1, name)
+    }));
+
+  // Jogadores e suas habilidades mais usadas no mapa
+  const playerStats: Record<string, {
+    name: string;
+    drops: number;
+    hab1: Record<string, number>;
+    passives: Record<string, number>;
+    pet: Record<string, number>;
+    item: Record<string, number>;
+  }> = {};
+
+  mapChars.forEach(c => {
+    if (!c.Player) return;
+    const pKey = normalize(c.Player);
+    if (!playerStats[pKey]) {
+      playerStats[pKey] = {
+        name: c.Player,
+        drops: 0,
+        hab1: {},
+        passives: {},
+        pet: {},
+        item: {}
+      };
+    }
+    playerStats[pKey].drops += 1;
+    if (c.Hab1) playerStats[pKey].hab1[c.Hab1] = (playerStats[pKey].hab1[c.Hab1] || 0) + 1;
+    if (c.Hab2) playerStats[pKey].passives[c.Hab2] = (playerStats[pKey].passives[c.Hab2] || 0) + 1;
+    if (c.Hab3) playerStats[pKey].passives[c.Hab3] = (playerStats[pKey].passives[c.Hab3] || 0) + 1;
+    if (c.Hab4) playerStats[pKey].passives[c.Hab4] = (playerStats[pKey].passives[c.Hab4] || 0) + 1;
+    if (c.Pet) playerStats[pKey].pet[c.Pet] = (playerStats[pKey].pet[c.Pet] || 0) + 1;
+    if (c.Item) playerStats[pKey].item[c.Item] = (playerStats[pKey].item[c.Item] || 0) + 1;
+  });
+
+  const players: TeamMapPlayerDetail[] = Object.values(playerStats).map(p => {
+    const dim = data.playersDimension.find((d: any) => normalize(d.Name) === normalize(p.name));
+    const pTotal = p.drops || 1;
+    
+    const pActives = Object.entries(p.hab1)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => ({
+        name,
+        count,
+        pct: Math.round((count / pTotal) * 100),
+        img: findDimImg(data.hab1, name)
+      }));
+
+    const pPassives = Object.entries(p.passives)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => ({
+        name,
+        count,
+        pct: Math.round((count / (pTotal * 3)) * 100),
+        img: findDimImg([...(data.hab2 || []), ...(data.hab3 || []), ...(data.hab4 || [])], name)
+      }));
+
+    const topPetEntry = Object.entries(p.pet).sort((a, b) => b[1] - a[1])[0];
+    const topItemEntry = Object.entries(p.item).sort((a, b) => b[1] - a[1])[0];
+
+    return {
+      name: p.name,
+      funcao: dim?.Funcao,
+      totalDropsOnMap: p.drops,
+      activeSkills: pActives,
+      passives: pPassives,
+      topPet: topPetEntry ? { name: topPetEntry[0], img: findDimImg(data.pets, topPetEntry[0]) } : undefined,
+      topItem: topItemEntry ? { name: topItemEntry[0], img: findDimImg(data.items, topItemEntry[0]) } : undefined
+    };
+  }).sort((a, b) => b.totalDropsOnMap - a.totalDropsOnMap);
+
+  return {
+    mapName,
+    dropCount: drops.length,
+    topActives,
+    players,
+    drops
   };
 };
