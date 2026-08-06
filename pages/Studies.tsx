@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Map, Trash2, Crosshair, ZoomIn, ZoomOut, Move, LogIn, LogOut, X, Download, Upload, Tv, Play, Plus, ExternalLink, Youtube, Film, Info } from 'lucide-react';
+import { Map, Trash2, Crosshair, ZoomIn, ZoomOut, Move, LogIn, LogOut, X, Download, Upload, Tv, Play, Plus, ExternalLink, Youtube, Film, Info, Shield } from 'lucide-react';
 import { doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db, auth, isFirebasePlaceholder } from '../firebase';
 import { OperationType, handleFirestoreError } from '../utils/firestoreError';
+import { DashboardData } from '../types';
+import { findTeamLogo } from '../utils/teamUtils';
+import { getRestedTeamsInRound, parseRoundNumber } from '../utils/scheduleData';
 
 const MAPS = [
     { id: 'BER', name: 'Bermuda', url: 'https://i.ibb.co/q34yct8f/BERMUDA-MAPA.png' },
@@ -66,7 +69,11 @@ interface SafePoint {
     count: number;
 }
 
-const Studies: React.FC = () => {
+interface StudiesProps {
+    data?: DashboardData;
+}
+
+const Studies: React.FC<StudiesProps> = ({ data }) => {
     const [activeMainTab, setActiveMainTab] = useState<'safe' | 'mapstream'>('safe');
 
     // Safe Studies State
@@ -540,8 +547,8 @@ const Studies: React.FC = () => {
             )}
 
             {/* Top Navigation Tabs: Estudos de Safe vs MapStream */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-gray-800 pb-4">
-                <div className="flex bg-black/50 p-1.5 rounded-2xl border border-white/5 shadow-inner w-full sm:w-auto">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4 border-b border-gray-800 pb-4">
+                <div className="flex bg-black/50 p-1.5 rounded-2xl border border-white/5 shadow-inner w-full md:w-auto">
                     <button
                         onClick={() => setActiveMainTab('safe')}
                         className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
@@ -569,26 +576,39 @@ const Studies: React.FC = () => {
                     </button>
                 </div>
 
-                {activeMainTab === 'mapstream' ? (
-                    <button
-                        onClick={() => setShowAddStreamModal(true)}
-                        className="w-full sm:w-auto bg-yellow-500 hover:bg-yellow-400 text-black px-5 py-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-lg shadow-yellow-500/20"
+                <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-end">
+                    <a
+                        href="https://drive.google.com/drive/folders/1jEmQK1mLpQf8aler6-KlsTgd4CIWaK3k?usp=sharing"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white border border-blue-400/30 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-500/20 hover:scale-[1.02]"
                     >
-                        <Plus size={16} /> Adicionar MapStream
-                    </button>
-                ) : (
-                    <div className="flex items-center gap-2">
-                        {isAdmin ? (
-                            <button onClick={() => setIsAdmin(false)} className="text-xs font-bold text-red-400 bg-red-500/10 hover:bg-red-500/20 px-3 py-2 rounded-xl flex items-center gap-2 transition-colors border border-red-500/20">
-                                <LogOut size={12} /> Sair (Admin)
-                            </button>
-                        ) : (
-                            <button onClick={() => setShowAuthModal(true)} className="text-xs font-bold text-yellow-400 bg-yellow-500/10 hover:bg-yellow-500/20 px-3 py-2 rounded-xl flex items-center gap-2 transition-colors border border-yellow-500/20">
-                                <LogIn size={12} /> Login Admin
-                            </button>
-                        )}
-                    </div>
-                )}
+                        <Film size={16} />
+                        <span>DRIVE DE REPLAYS DA FFWSBR 2026</span>
+                        <ExternalLink size={14} />
+                    </a>
+
+                    {activeMainTab === 'mapstream' ? (
+                        <button
+                            onClick={() => setShowAddStreamModal(true)}
+                            className="w-full sm:w-auto bg-yellow-500 hover:bg-yellow-400 text-black px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-lg shadow-yellow-500/20"
+                        >
+                            <Plus size={16} /> Adicionar MapStream
+                        </button>
+                    ) : (
+                        <div className="flex items-center gap-2">
+                            {isAdmin ? (
+                                <button onClick={() => setIsAdmin(false)} className="text-xs font-bold text-red-400 bg-red-500/10 hover:bg-red-500/20 px-3 py-2 rounded-xl flex items-center gap-2 transition-colors border border-red-500/20">
+                                    <LogOut size={12} /> Sair (Admin)
+                                </button>
+                            ) : (
+                                <button onClick={() => setShowAuthModal(true)} className="text-xs font-bold text-yellow-400 bg-yellow-500/10 hover:bg-yellow-500/20 px-3 py-2 rounded-xl flex items-center gap-2 transition-colors border border-yellow-500/20">
+                                    <LogIn size={12} /> Login Admin
+                                </button>
+                            )}
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* TAB 1: ESTUDOS DE SAFE */}
@@ -783,62 +803,119 @@ const Studies: React.FC = () => {
                         {/* Main Video Player Container */}
                         <div className="lg:col-span-8 space-y-4">
                             {activeStream ? (
-                                <div className="bg-[#1a1a1a] border border-gray-800 rounded-3xl p-4 sm:p-6 shadow-2xl space-y-4">
-                                    <div className="flex items-center justify-between flex-wrap gap-2">
-                                        <div className="flex items-center gap-3">
-                                            <span className="bg-yellow-500 text-black font-black text-xs px-3 py-1 rounded-lg uppercase tracking-wider shadow-md">
-                                                {activeStream.rodada}
-                                            </span>
-                                            <h3 className="text-lg font-black text-white uppercase italic tracking-wider">
-                                                {activeStream.title}
-                                            </h3>
-                                        </div>
-                                        <a 
-                                            href={activeStream.url} 
-                                            target="_blank" 
-                                            rel="noopener noreferrer"
-                                            className="inline-flex items-center gap-2 text-xs font-bold text-yellow-400 hover:text-yellow-300 bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/30 px-3 py-1.5 rounded-xl transition-all"
-                                        >
-                                            <ExternalLink size={14} /> Abrir no YouTube
-                                        </a>
-                                    </div>
+                                (() => {
+                                    const activeRoundNum = parseRoundNumber(activeStream.rodada) || parseRoundNumber(activeStream.title) || parseRoundNumber(activeStream.id);
+                                    const activeRestedTeams = activeRoundNum ? getRestedTeamsInRound(activeRoundNum) : [];
 
-                                    {/* Video Embed Iframe */}
-                                    <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-black border border-gray-800 shadow-inner">
-                                        {getYouTubeVideoId(activeStream.url) ? (
-                                            <iframe
-                                                src={getYouTubeEmbedUrl(activeStream.url)}
-                                                title={activeStream.title}
-                                                className="w-full h-full border-0"
-                                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                                                allowFullScreen
-                                            ></iframe>
-                                        ) : (
-                                            <div className="w-full h-full flex flex-col items-center justify-center gap-4 text-center p-6 bg-gradient-to-b from-gray-900 to-black">
-                                                <Youtube size={48} className="text-red-500 opacity-80" />
-                                                <div>
-                                                    <p className="text-white font-bold text-sm">Não foi possível gerar player automático</p>
-                                                    <p className="text-gray-500 text-xs mt-1">Acesse diretamente pelo link oficial do YouTube</p>
+                                    return (
+                                        <div className="bg-[#1a1a1a] border border-gray-800 rounded-3xl p-4 sm:p-6 shadow-2xl space-y-4">
+                                            <div className="flex items-center justify-between flex-wrap gap-2">
+                                                <div className="flex items-center gap-3">
+                                                    <span className="bg-yellow-500 text-black font-black text-xs px-3 py-1 rounded-lg uppercase tracking-wider shadow-md">
+                                                        {activeStream.rodada}
+                                                    </span>
+                                                    <h3 className="text-lg font-black text-white uppercase italic tracking-wider">
+                                                        {activeStream.title}
+                                                    </h3>
                                                 </div>
                                                 <a 
                                                     href={activeStream.url} 
                                                     target="_blank" 
                                                     rel="noopener noreferrer"
-                                                    className="bg-red-600 hover:bg-red-500 text-white font-black text-xs px-5 py-2.5 rounded-xl uppercase tracking-widest flex items-center gap-2 shadow-lg shadow-red-600/30 transition-all"
+                                                    className="inline-flex items-center gap-2 text-xs font-bold text-yellow-400 hover:text-yellow-300 bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/30 px-3 py-1.5 rounded-xl transition-all"
                                                 >
-                                                    <Play size={14} /> Assistir no YouTube
+                                                    <ExternalLink size={14} /> Abrir no YouTube
                                                 </a>
                                             </div>
-                                        )}
-                                    </div>
 
-                                    {activeStream.description && (
-                                        <div className="bg-black/40 border border-white/5 rounded-2xl p-4 text-xs text-gray-300 space-y-1">
-                                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block">Sobre esta transmissão</span>
-                                            <p className="leading-relaxed font-medium">{activeStream.description}</p>
+                                            {/* Video Embed Iframe */}
+                                            <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-black border border-gray-800 shadow-inner">
+                                                {getYouTubeVideoId(activeStream.url) ? (
+                                                    <iframe
+                                                        src={getYouTubeEmbedUrl(activeStream.url)}
+                                                        title={activeStream.title}
+                                                        className="w-full h-full border-0"
+                                                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                                        allowFullScreen
+                                                    ></iframe>
+                                                ) : (
+                                                    <div className="w-full h-full flex flex-col items-center justify-center gap-4 text-center p-6 bg-gradient-to-b from-gray-900 to-black">
+                                                        <Youtube size={48} className="text-red-500 opacity-80" />
+                                                        <div>
+                                                            <p className="text-white font-bold text-sm">Não foi possível gerar player automático</p>
+                                                            <p className="text-gray-500 text-xs mt-1">Acesse diretamente pelo link oficial do YouTube</p>
+                                                        </div>
+                                                        <a 
+                                                            href={activeStream.url} 
+                                                            target="_blank" 
+                                                            rel="noopener noreferrer"
+                                                            className="bg-red-600 hover:bg-red-500 text-white font-black text-xs px-5 py-2.5 rounded-xl uppercase tracking-widest flex items-center gap-2 shadow-lg shadow-red-600/30 transition-all"
+                                                        >
+                                                            <Play size={14} /> Assistir no YouTube
+                                                        </a>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Rested Teams Block for Active Round */}
+                                            {activeRoundNum && (
+                                                <div className="bg-[#121215] border border-yellow-500/30 rounded-2xl p-4 space-y-3 shadow-xl">
+                                                    <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-white/10">
+                                                        <div className="flex items-center gap-2">
+                                                            <Shield size={18} className="text-yellow-500" />
+                                                            <h4 className="text-xs font-black uppercase tracking-wider text-yellow-400">
+                                                                Times que Folgaram ({activeStream.rodada || `Rodada ${activeRoundNum}`})
+                                                            </h4>
+                                                        </div>
+                                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-yellow-500/10 px-2.5 py-0.5 rounded-full border border-yellow-500/20">
+                                                            {activeRestedTeams.length} {activeRestedTeams.length === 1 ? 'Time' : 'Times'} em Folga
+                                                        </span>
+                                                    </div>
+
+                                                    {activeRestedTeams.length > 0 ? (
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                            {activeRestedTeams.map((teamName) => {
+                                                                const logo = findTeamLogo(teamName, data?.teamsReference);
+                                                                return (
+                                                                    <div
+                                                                        key={teamName}
+                                                                        className="flex items-center gap-3 bg-black/60 border border-white/10 hover:border-yellow-500/40 p-3 rounded-xl transition-all shadow-inner"
+                                                                    >
+                                                                        <div className="w-10 h-10 rounded-xl bg-black border border-white/10 flex items-center justify-center p-1.5 shrink-0 overflow-hidden shadow-md">
+                                                                            {logo ? (
+                                                                                <img src={logo} alt={teamName} className="w-full h-full object-contain" />
+                                                                            ) : (
+                                                                                <Shield size={18} className="text-yellow-500/60" />
+                                                                            )}
+                                                                        </div>
+                                                                        <div className="min-w-0 flex-1">
+                                                                            <span className="text-xs font-black text-white uppercase italic truncate block">
+                                                                                {teamName}
+                                                                            </span>
+                                                                            <span className="text-[10px] font-bold text-yellow-400/90 uppercase tracking-wider flex items-center gap-1 mt-0.5">
+                                                                                <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse"></span>
+                                                                                Folga Oficial
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    ) : (
+                                                        <p className="text-xs text-gray-500 italic">Nenhum time em folga nesta rodada.</p>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {activeStream.description && (
+                                                <div className="bg-black/40 border border-white/5 rounded-2xl p-4 text-xs text-gray-300 space-y-1">
+                                                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block">Sobre esta transmissão</span>
+                                                    <p className="leading-relaxed font-medium">{activeStream.description}</p>
+                                                </div>
+                                            )}
                                         </div>
-                                    )}
-                                </div>
+                                    );
+                                })()
                             ) : (
                                 <div className="bg-[#1a1a1a] border border-gray-800 rounded-3xl p-12 text-center space-y-4">
                                     <Film size={48} className="text-gray-600 mx-auto" />
@@ -869,56 +946,100 @@ const Studies: React.FC = () => {
                                         const videoId = getYouTubeVideoId(stream.url);
                                         const isSelected = stream.id === selectedStreamId;
                                         const thumbUrl = videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : '';
+                                        const roundNum = parseRoundNumber(stream.rodada) || parseRoundNumber(stream.title) || parseRoundNumber(stream.id);
+                                        const restedTeams = roundNum ? getRestedTeamsInRound(roundNum) : [];
 
                                         return (
                                             <div
                                                 key={stream.id}
                                                 onClick={() => setSelectedStreamId(stream.id)}
-                                                className={`group relative p-3 rounded-2xl border transition-all cursor-pointer flex gap-3 ${
+                                                className={`group relative p-3 rounded-2xl border transition-all cursor-pointer flex flex-col gap-2 ${
                                                     isSelected
                                                     ? 'bg-yellow-500/10 border-yellow-500 shadow-lg shadow-yellow-500/10'
                                                     : 'bg-black/30 border-white/5 hover:border-gray-700 hover:bg-white/5'
                                                 }`}
                                             >
-                                                {/* Thumbnail preview */}
-                                                <div className="relative w-24 h-16 rounded-xl overflow-hidden bg-black shrink-0 border border-white/10 flex items-center justify-center">
-                                                    {thumbUrl ? (
-                                                        <img src={thumbUrl} alt={stream.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                                                    ) : (
-                                                        <Youtube size={24} className="text-red-500 opacity-60" />
-                                                    )}
-                                                    <div className={`absolute inset-0 flex items-center justify-center ${isSelected ? 'bg-yellow-500/30' : 'bg-black/40 group-hover:bg-black/20'} transition-all`}>
-                                                        <Play size={18} className={isSelected ? 'text-yellow-400 fill-yellow-400' : 'text-white opacity-80'} />
+                                                <div className="flex gap-3">
+                                                    {/* Thumbnail preview */}
+                                                    <div className="relative w-24 h-16 rounded-xl overflow-hidden bg-black shrink-0 border border-white/10 flex items-center justify-center">
+                                                        {thumbUrl ? (
+                                                            <img src={thumbUrl} alt={stream.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                                                        ) : (
+                                                            <Youtube size={24} className="text-red-500 opacity-60" />
+                                                        )}
+                                                        <div className={`absolute inset-0 flex items-center justify-center ${isSelected ? 'bg-yellow-500/30' : 'bg-black/40 group-hover:bg-black/20'} transition-all`}>
+                                                            <Play size={18} className={isSelected ? 'text-yellow-400 fill-yellow-400' : 'text-white opacity-80'} />
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
+                                                        <div>
+                                                            <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
+                                                                isSelected ? 'bg-yellow-500 text-black' : 'bg-white/10 text-gray-300'
+                                                            }`}>
+                                                                {stream.rodada}
+                                                            </span>
+                                                            <h5 className="text-xs font-bold text-white uppercase italic truncate mt-1">
+                                                                {stream.title}
+                                                            </h5>
+                                                        </div>
+                                                        <div className="flex items-center justify-between text-[10px] text-gray-500 font-mono mt-1">
+                                                            <span className="truncate">YouTube Stream</span>
+                                                            <button
+                                                                onClick={(e) => handleDeleteStream(stream.id, e)}
+                                                                className="text-gray-600 hover:text-red-400 p-1 transition-colors"
+                                                                title="Remover vídeo"
+                                                            >
+                                                                <Trash2 size={12} />
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                 </div>
 
-                                                <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
-                                                    <div>
-                                                        <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
-                                                            isSelected ? 'bg-yellow-500 text-black' : 'bg-white/10 text-gray-300'
-                                                        }`}>
-                                                            {stream.rodada}
+                                                {/* Rested teams badge inside list card */}
+                                                {restedTeams.length > 0 && (
+                                                    <div className="pt-2 border-t border-white/10 flex items-center gap-1.5 flex-wrap">
+                                                        <span className="text-[9px] font-black text-yellow-500 uppercase tracking-wider flex items-center gap-1">
+                                                            <Shield size={10} /> Folgam:
                                                         </span>
-                                                        <h5 className="text-xs font-bold text-white uppercase italic truncate mt-1">
-                                                            {stream.title}
-                                                        </h5>
+                                                        {restedTeams.map((team) => (
+                                                            <span
+                                                                key={team}
+                                                                className="text-[9px] font-bold text-gray-300 bg-black/60 px-1.5 py-0.5 rounded border border-white/10 truncate max-w-[120px]"
+                                                                title={team}
+                                                            >
+                                                                {team}
+                                                            </span>
+                                                        ))}
                                                     </div>
-                                                    <div className="flex items-center justify-between text-[10px] text-gray-500 font-mono mt-1">
-                                                        <span className="truncate">YouTube Stream</span>
-                                                        <button
-                                                            onClick={(e) => handleDeleteStream(stream.id, e)}
-                                                            className="text-gray-600 hover:text-red-400 p-1 transition-colors"
-                                                            title="Remover vídeo"
-                                                        >
-                                                            <Trash2 size={12} />
-                                                        </button>
-                                                    </div>
-                                                </div>
+                                                )}
                                             </div>
                                         );
                                     })}
                                 </div>
                             </div>
+
+                            <a
+                                href="https://drive.google.com/drive/folders/1jEmQK1mLpQf8aler6-KlsTgd4CIWaK3k?usp=sharing"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="group block bg-gradient-to-br from-blue-950/60 to-indigo-950/60 border border-blue-500/30 hover:border-blue-400/60 rounded-2xl p-4 transition-all shadow-xl hover:scale-[1.02]"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2.5 bg-blue-500/20 text-blue-400 rounded-xl border border-blue-500/30 shrink-0 group-hover:scale-110 transition-transform">
+                                        <Film size={20} />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-1.5 text-blue-400 font-black text-[11px] uppercase tracking-wider">
+                                            <span>DRIVE DE REPLAYS DA FFWSBR 2026</span>
+                                            <ExternalLink size={12} />
+                                        </div>
+                                        <p className="text-[10px] text-gray-400 font-medium truncate mt-0.5">
+                                            Acesse o diretório completo com replays e arquivos de vídeo
+                                        </p>
+                                    </div>
+                                </div>
+                            </a>
 
                             <div className="bg-black/40 border border-white/5 rounded-2xl p-4 text-xs text-gray-400 space-y-2">
                                 <div className="flex items-center gap-2 text-yellow-500 font-bold">

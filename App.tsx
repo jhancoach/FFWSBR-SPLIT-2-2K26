@@ -65,7 +65,7 @@ const App: React.FC = () => {
           <Route path="/players" element={<Players data={data} />} />
           <Route path="/teams" element={<Teams data={data} />} />
           <Route path="/killfeed" element={<KillFeedPage data={data} />} />
-          <Route path="/estudos" element={<Studies />} />
+          <Route path="/estudos" element={<Studies data={data} />} />
           <Route path="/admin" element={<Admin onRefresh={loadData} />} />
         </Routes>
       </Layout>

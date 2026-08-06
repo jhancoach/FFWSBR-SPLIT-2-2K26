@@ -2,77 +2,11 @@ import React, { useState } from 'react';
 import { DashboardData } from '../types';
 import { Calendar, Check, X, Star, Filter, Info, Shield, Trophy, Flame } from 'lucide-react';
 import { findTeamLogo } from '../utils/teamUtils';
+import { OFFICIAL_SCHEDULE, TeamSchedule } from '../utils/scheduleData';
 
 interface ScheduleProps {
   data: DashboardData;
 }
-
-interface TeamSchedule {
-  name: string;
-  isLoud?: boolean;
-  rounds: { [key: number]: boolean }; // true = plays, false = rests
-}
-
-// Complete 14 Round Schedule Matrix from official image
-const OFFICIAL_SCHEDULE: TeamSchedule[] = [
-  {
-    name: 'Sx Gaming',
-    rounds: { 1: false, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true, 9: true, 10: true, 11: true, 12: true, 13: true, 14: false }
-  },
-  {
-    name: 'INTZ',
-    rounds: { 1: false, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true, 9: true, 10: true, 11: true, 12: true, 13: false, 14: true }
-  },
-  {
-    name: 'Civis',
-    rounds: { 1: true, 2: false, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true, 9: true, 10: false, 11: true, 12: true, 13: true, 14: true }
-  },
-  {
-    name: 'CPT Vox',
-    rounds: { 1: true, 2: false, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true, 9: true, 10: true, 11: false, 12: true, 13: true, 14: true }
-  },
-  {
-    name: 'Rush Gaming',
-    rounds: { 1: true, 2: true, 3: false, 4: true, 5: true, 6: true, 7: true, 8: true, 9: true, 10: true, 11: true, 12: true, 13: false, 14: true }
-  },
-  {
-    name: 'Loud Snickers',
-    isLoud: true,
-    rounds: { 1: true, 2: true, 3: false, 4: true, 5: true, 6: true, 7: true, 8: true, 9: true, 10: false, 11: true, 12: true, 13: true, 14: true }
-  },
-  {
-    name: 'AfroGames',
-    rounds: { 1: true, 2: true, 3: true, 4: false, 5: true, 6: true, 7: true, 8: true, 9: true, 10: true, 11: false, 12: true, 13: true, 14: true }
-  },
-  {
-    name: 'LOS',
-    rounds: { 1: true, 2: true, 3: true, 4: false, 5: true, 6: true, 7: true, 8: true, 9: true, 10: true, 11: true, 12: true, 13: true, 14: false }
-  },
-  {
-    name: 'Alpha7',
-    rounds: { 1: true, 2: true, 3: true, 4: true, 5: false, 6: true, 7: true, 8: true, 9: true, 10: true, 11: true, 12: false, 13: true, 14: true }
-  },
-  {
-    name: 'Team Solid (TS)',
-    rounds: { 1: true, 2: true, 3: true, 4: true, 5: false, 6: true, 7: true, 8: true, 9: false, 10: true, 11: true, 12: true, 13: true, 14: true }
-  },
-  {
-    name: 'Loops',
-    rounds: { 1: true, 2: true, 3: true, 4: true, 5: true, 6: false, 7: true, 8: true, 9: true, 10: true, 11: true, 12: false, 13: true, 14: true }
-  },
-  {
-    name: 'Fluxo W7M (FX)',
-    rounds: { 1: true, 2: true, 3: true, 4: true, 5: true, 6: false, 7: true, 8: false, 9: true, 10: true, 11: true, 12: true, 13: true, 14: true }
-  },
-  {
-    name: 'Influence Rage',
-    rounds: { 1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: false, 8: false, 9: true, 10: true, 11: true, 12: true, 13: true, 14: true }
-  },
-  {
-    name: 'Rise Gaming',
-    rounds: { 1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: false, 8: true, 9: false, 10: true, 11: true, 12: true, 13: true, 14: true }
-  }
-];
 
 const Schedule: React.FC<ScheduleProps> = ({ data }) => {
   const [selectedRound, setSelectedRound] = useState<number | null>(null);
