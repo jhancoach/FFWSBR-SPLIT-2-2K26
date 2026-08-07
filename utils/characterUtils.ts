@@ -266,12 +266,12 @@ export interface TeamCharacterSummary {
  */
 export const getTeamCharacterSummary = (data: DashboardData, teamName: string): TeamCharacterSummary => {
   if (!data.characters || !teamName) {
-    return { totalDrops: 0, activeSkills: [], pets: [], items: [], players: [] };
+    return { totalDrops: 0, activeSkills: [], passives: [], pets: [], items: [], players: [] };
   }
 
   const teamChars = getTeamCharacters(data, teamName);
   if (teamChars.length === 0) {
-    return { totalDrops: 0, activeSkills: [], pets: [], items: [], players: [] };
+    return { totalDrops: 0, activeSkills: [], passives: [], pets: [], items: [], players: [] };
   }
 
   const dropSet = new Set<string>();

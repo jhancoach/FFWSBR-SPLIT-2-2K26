@@ -60,9 +60,18 @@ const uncorruptKey = (key: string): string => {
 const parseNumber = (val: string | number | undefined | null): number => {
   if (val === undefined || val === null) return 0;
   if (typeof val === 'number') return isNaN(val) ? 0 : Math.round(val);
-  const str = val.toString().trim().replace(',', '.');
+  
+  let str = val.toString().trim();
   if (!str) return 0;
+  
+  if (/^-?\d{1,3}([.,]\d{3})+$/.test(str)) {
+      str = str.replace(/[.,]/g, '');
+  } else {
+      str = str.replace(',', '.');
+  }
+
   if (/^-?\d+$/.test(str)) return parseInt(str, 10);
+  
   const num = parseFloat(str);
   return isNaN(num) ? 0 : Math.round(num);
 };
