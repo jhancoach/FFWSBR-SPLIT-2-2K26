@@ -859,16 +859,27 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                         return (
                                             <div key={p.name} className="bg-black/60 p-4 rounded-2xl border border-white/5 flex flex-col justify-between space-y-3">
                                                 <div className="flex items-center justify-between">
-                                                    <div>
-                                                        <button
-                                                            onClick={() => handlePlayerClick(p.name)}
-                                                            className="text-xs font-black italic uppercase text-white hover:text-yellow-500 transition-colors block text-left"
-                                                        >
-                                                            {p.name}
-                                                        </button>
-                                                        {p.funcao && (
-                                                            <span className="text-[8px] font-bold text-gray-500 uppercase tracking-widest block">{p.funcao}</span>
+                                                    <div className="flex items-center gap-3">
+                                                        {p.img ? (
+                                                            <div className="w-10 h-10 rounded-full border border-yellow-500/30 overflow-hidden flex-shrink-0 bg-black">
+                                                                <img src={p.img} alt={p.name} className="w-full h-full object-cover" />
+                                                            </div>
+                                                        ) : (
+                                                            <div className="w-10 h-10 rounded-full border border-gray-800 bg-gray-900 flex items-center justify-center flex-shrink-0 text-gray-500">
+                                                                <Users size={16} />
+                                                            </div>
                                                         )}
+                                                        <div>
+                                                            <button
+                                                                onClick={() => handlePlayerClick(p.name)}
+                                                                className="text-xs font-black italic uppercase text-white hover:text-yellow-500 transition-colors block text-left"
+                                                            >
+                                                                {p.name}
+                                                            </button>
+                                                            {p.funcao && (
+                                                                <span className="text-[8px] font-bold text-gray-500 uppercase tracking-widest block">{p.funcao}</span>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                     <span className="text-[9px] font-black text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded border border-yellow-500/20">
                                                         {p.totalDrops} Quedas
@@ -973,7 +984,16 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                                             return (
                                                                 <div key={p.name} className="bg-black/60 p-2.5 rounded-xl border border-white/5">
                                                                     <div className="flex items-center justify-between mb-2">
-                                                                        <span className="text-[10px] font-black italic uppercase text-white">{p.name}</span>
+                                                                        <div className="flex items-center gap-2">
+                                                                            {p.img ? (
+                                                                                <img src={p.img} alt={p.name} className="w-6 h-6 object-cover rounded-full border border-yellow-500/30" />
+                                                                            ) : (
+                                                                                <div className="w-6 h-6 rounded-full border border-gray-800 bg-gray-900 flex items-center justify-center text-gray-500">
+                                                                                    <Users size={10} />
+                                                                                </div>
+                                                                            )}
+                                                                            <span className="text-[10px] font-black italic uppercase text-white">{p.name}</span>
+                                                                        </div>
                                                                         {p.funcao && <span className="text-[8px] font-bold text-gray-500 uppercase">{p.funcao}</span>}
                                                                     </div>
                                                                     <div className="space-y-2">
@@ -2013,16 +2033,27 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                                     return (
                                                         <div key={p.name} className="bg-black/60 p-4 rounded-2xl border border-white/5 flex flex-col justify-between space-y-3">
                                                             <div className="flex items-center justify-between">
-                                                                <div>
-                                                                    <button
-                                                                        onClick={() => handlePlayerClick(p.name)}
-                                                                        className="text-xs font-black italic uppercase text-white hover:text-yellow-500 transition-colors block text-left"
-                                                                    >
-                                                                        {p.name}
-                                                                    </button>
-                                                                    {p.funcao && (
-                                                                        <span className="text-[8px] font-bold text-gray-500 uppercase tracking-widest block">{p.funcao}</span>
+                                                                <div className="flex items-center gap-3">
+                                                                    {p.img ? (
+                                                                        <div className="w-10 h-10 rounded-full border border-yellow-500/30 overflow-hidden flex-shrink-0 bg-black">
+                                                                            <img src={p.img} alt={p.name} className="w-full h-full object-cover" />
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="w-10 h-10 rounded-full border border-gray-800 bg-gray-900 flex items-center justify-center flex-shrink-0 text-gray-500">
+                                                                            <Users size={16} />
+                                                                        </div>
                                                                     )}
+                                                                    <div>
+                                                                        <button
+                                                                            onClick={() => handlePlayerClick(p.name)}
+                                                                            className="text-xs font-black italic uppercase text-white hover:text-yellow-500 transition-colors block text-left"
+                                                                        >
+                                                                            {p.name}
+                                                                        </button>
+                                                                        {p.funcao && (
+                                                                            <span className="text-[8px] font-bold text-gray-500 uppercase tracking-widest block">{p.funcao}</span>
+                                                                        )}
+                                                                    </div>
                                                                 </div>
                                                                 <span className="text-[9px] font-black text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded border border-yellow-500/20">
                                                                     {p.totalDrops} Quedas
@@ -2129,7 +2160,16 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                                                          return (
                                                                              <div key={p.name} className="bg-black/60 p-2.5 rounded-xl border border-white/5">
                                                                                  <div className="flex items-center justify-between mb-2">
-                                                                                     <span className="text-[10px] font-black italic uppercase text-white">{p.name}</span>
+                                                                                     <div className="flex items-center gap-2">
+                                                                                         {p.img ? (
+                                                                                             <img src={p.img} alt={p.name} className="w-6 h-6 object-cover rounded-full border border-yellow-500/30" />
+                                                                                         ) : (
+                                                                                             <div className="w-6 h-6 rounded-full border border-gray-800 bg-gray-900 flex items-center justify-center text-gray-500">
+                                                                                                 <Users size={10} />
+                                                                                         </div>
+                                                                                         )}
+                                                                                         <span className="text-[10px] font-black italic uppercase text-white">{p.name}</span>
+                                                                                     </div>
                                                                                      {p.funcao && <span className="text-[8px] font-bold text-gray-500 uppercase">{p.funcao}</span>}
                                                                                  </div>
                                                                                  <div className="space-y-2">

@@ -259,6 +259,8 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
 
         return {
             name, 
+            playerImg: findDimImg(data.playersDimension, name),
+            teamImg: findTeamLogo(stat.team, data.teamsReference),
             team: stat.team, 
             kills: stat.kills, 
             diff: stat.kills - stat.matches,
@@ -479,6 +481,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
              hab4Img: findDimImg(data.hab4, c.Hab4),
              petImg: findDimImg(data.pets, c.Pet),
              itemImg: findDimImg(data.items, c.Item),
+             playerImg: findDimImg(data.playersDimension, c.Player),
              teamImg: findTeamLogo(c.Time, data.teamsReference)
          };
     });
@@ -817,9 +820,11 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                           </select>
                           {compareData.p1 && (
                               <div className="mt-8 flex flex-col items-center">
-                                  <div className="w-32 h-32 rounded-full border-4 border-yellow-500/20 overflow-hidden shadow-[0_0_30px_rgba(234,179,8,0.1)] mb-4">
-                                      {compareData.p1.img ? (
-                                          <img src={compareData.p1.img} className="w-full h-full object-cover" alt={compareData.p1.name} referrerPolicy="no-referrer" />
+                                  <div className="w-32 h-32 rounded-full border-4 border-yellow-500/20 overflow-hidden shadow-[0_0_30px_rgba(234,179,8,0.1)] mb-4 bg-black flex-shrink-0">
+                                      {compareData.p1.playerImg ? (
+                                          <img src={compareData.p1.playerImg} className="w-full h-full object-cover" alt={compareData.p1.name} referrerPolicy="no-referrer" />
+                                      ) : compareData.p1.teamImg ? (
+                                          <img src={compareData.p1.teamImg} className="w-full h-full object-contain p-2" alt={compareData.p1.team} referrerPolicy="no-referrer" />
                                       ) : (
                                           <div className="w-full h-full flex items-center justify-center text-gray-700 bg-black"><User size={48} /></div>
                                       )}
@@ -845,9 +850,11 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                           </select>
                           {compareData.p2 && (
                               <div className="mt-8 flex flex-col items-center">
-                                  <div className="w-32 h-32 rounded-full border-4 border-blue-500/20 overflow-hidden shadow-[0_0_30px_rgba(59,130,246,0.1)] mb-4">
-                                      {compareData.p2.img ? (
-                                          <img src={compareData.p2.img} className="w-full h-full object-cover" alt={compareData.p2.name} referrerPolicy="no-referrer" />
+                                  <div className="w-32 h-32 rounded-full border-4 border-blue-500/20 overflow-hidden shadow-[0_0_30px_rgba(59,130,246,0.1)] mb-4 bg-black flex-shrink-0">
+                                      {compareData.p2.playerImg ? (
+                                          <img src={compareData.p2.playerImg} className="w-full h-full object-cover" alt={compareData.p2.name} referrerPolicy="no-referrer" />
+                                      ) : compareData.p2.teamImg ? (
+                                          <img src={compareData.p2.teamImg} className="w-full h-full object-contain p-2" alt={compareData.p2.team} referrerPolicy="no-referrer" />
                                       ) : (
                                           <div className="w-full h-full flex items-center justify-center text-gray-700 bg-black"><User size={48} /></div>
                                       )}
@@ -1271,16 +1278,28 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                                         </span>
                                     </td>
                                     <td className="px-4 py-3 font-bold uppercase italic flex items-center gap-2">
-                                        <span className={(player.team?.toLowerCase().includes('loud') || player.name?.toLowerCase().includes('loud')) ? 'text-yellow-400 font-black text-xs font-display flex items-center gap-1' : 'text-white'}>
-                                            {player.name}
-                                            {(player.team?.toLowerCase().includes('loud') || player.name?.toLowerCase().includes('loud')) && <Star size={12} className="fill-yellow-400 text-yellow-400" />}
-                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            {player.playerImg ? (
+                                                <img src={player.playerImg} alt={player.name} className="w-6 h-6 object-cover rounded-full border border-gray-800" />
+                                            ) : (
+                                                <div className="w-6 h-6 rounded-full bg-gray-900 border border-gray-800 flex items-center justify-center text-gray-600"><User size={12}/></div>
+                                            )}
+                                            <span className={(player.team?.toLowerCase().includes('loud') || player.name?.toLowerCase().includes('loud')) ? 'text-yellow-400 font-black text-xs font-display flex items-center gap-1' : 'text-white'}>
+                                                {player.name}
+                                                {(player.team?.toLowerCase().includes('loud') || player.name?.toLowerCase().includes('loud')) && <Star size={12} className="fill-yellow-400 text-yellow-400" />}
+                                            </span>
+                                        </div>
                                         <ChevronRight size={12} className="text-yellow-500 opacity-0 group-hover:opacity-100 transition-opacity" />
                                     </td>
                                     <td className="px-4 py-3 uppercase text-[9px] tracking-widest font-bold">
-                                        <span className={(player.team?.toLowerCase().includes('loud') || player.name?.toLowerCase().includes('loud')) ? 'text-yellow-300 font-black flex items-center gap-1' : 'text-gray-400'}>
-                                            {player.team} {(player.team?.toLowerCase().includes('loud') || player.name?.toLowerCase().includes('loud')) && '★'}
-                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            {player.teamImg && (
+                                                <img src={player.teamImg} alt={player.team} className="w-5 h-5 object-contain" />
+                                            )}
+                                            <span className={(player.team?.toLowerCase().includes('loud') || player.name?.toLowerCase().includes('loud')) ? 'text-yellow-300 font-black flex items-center gap-1' : 'text-gray-400'}>
+                                                {player.team} {(player.team?.toLowerCase().includes('loud') || player.name?.toLowerCase().includes('loud')) && '★'}
+                                            </span>
+                                        </div>
                                     </td>
                                     <td className="px-4 py-3 text-center">
                                         <div className="flex flex-col items-center">
@@ -1422,9 +1441,18 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                                 {auditData.map((row, idx) => (
                                     <tr key={idx} className="hover:bg-white/5 transition-colors group">
                                         <td className="px-6 py-4">
-                                            <div className="flex flex-col">
-                                                <span className="font-black text-white uppercase italic">{row.name}</span>
-                                                <span className="text-[9px] text-gray-600 font-bold uppercase tracking-widest">{row.team}</span>
+                                            <div className="flex items-center gap-3">
+                                                {row.playerImg ? (
+                                                    <img src={row.playerImg} alt={row.name} className="w-8 h-8 object-cover rounded-full border border-gray-800" />
+                                                ) : row.teamImg ? (
+                                                    <img src={row.teamImg} alt={row.team} className="w-8 h-8 object-contain rounded-full border border-gray-800 p-1" />
+                                                ) : (
+                                                    <div className="w-8 h-8 rounded-full bg-gray-900 border border-gray-800 flex items-center justify-center text-gray-600"><User size={14}/></div>
+                                                )}
+                                                <div className="flex flex-col">
+                                                    <span className="font-black text-white uppercase italic">{row.name}</span>
+                                                    <span className="text-[9px] text-gray-600 font-bold uppercase tracking-widest">{row.team}</span>
+                                                </div>
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 text-center font-mono text-gray-300">{row.factKills}</td>
@@ -1496,7 +1524,15 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                             <div key={idx} className="bg-[#0e0e11] rounded-2xl p-6 border border-gray-800/60 flex flex-col md:flex-row gap-8 items-center hover:border-yellow-500/20 transition-all shadow-2xl group">
                                 <div className="w-full md:w-64 flex items-center gap-5 border-b md:border-b-0 md:border-r border-gray-800/60 pb-5 md:pb-0 pr-0 md:pr-8">
                                     <div className="h-20 w-20 rounded-full bg-gradient-to-br from-[#1a1a1a] to-black flex items-center justify-center overflow-hidden border-2 border-yellow-500/30 shadow-[0_0_20px_rgba(234,179,8,0.1)] p-1 flex-shrink-0 group-hover:scale-105 transition-transform">
-                                        {char.teamImg ? <img src={char.teamImg} className="w-full h-full object-contain" alt={char.Time}/> : <div className="bg-gray-800 w-full h-full rounded-full flex items-center justify-center"><User className="text-gray-500" size={32}/></div>}
+                                        {char.playerImg ? (
+                                            <img src={char.playerImg} className="w-full h-full object-cover rounded-full" alt={char.Player}/>
+                                        ) : char.teamImg ? (
+                                            <img src={char.teamImg} className="w-full h-full object-contain" alt={char.Time}/>
+                                        ) : (
+                                            <div className="bg-gray-800 w-full h-full rounded-full flex items-center justify-center">
+                                                <User className="text-gray-500" size={32}/>
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="overflow-hidden">
                                         <h3 className="font-black text-white text-2xl truncate uppercase italic leading-none tracking-tighter group-hover:text-yellow-500 transition-colors">{char.Player}</h3>
@@ -1658,6 +1694,7 @@ const PlayerProfile = ({ data, playerName, filters, characters }: any) => {
         const withKillsPct = totalMatches > 0 ? ((withKillsMatches / totalMatches) * 100).toFixed(1) : '0.0';
 
         const team = records[0]?.TIME || data.players.find(p => normalize(p.PLAYER) === normalize(playerName))?.TIME || 'N/A';
+        const playerImg = findDimImg(data.playersDimension, playerName);
         const teamImg = findTeamLogo(team, data.teamsReference);
 
         const teamRecords = data.players.filter((p: PlayerData) => {
@@ -1689,6 +1726,7 @@ const PlayerProfile = ({ data, playerName, filters, characters }: any) => {
 
         return { 
             team, 
+            playerImg,
             teamImg, 
             funcao,
             funcao2,
@@ -1725,8 +1763,14 @@ const PlayerProfile = ({ data, playerName, filters, characters }: any) => {
                      <User size={200} className="text-yellow-500" />
                 </div>
                 <div className="flex items-center gap-6 relative z-10">
-                    <div className="w-24 h-24 rounded-full bg-black border-4 border-yellow-500/50 flex items-center justify-center overflow-hidden p-1 shadow-lg">
-                        {stats.teamImg ? <img src={stats.teamImg} className="w-full h-full object-contain" alt={stats.team}/> : <User className="text-gray-500" size={40} />}
+                    <div className="w-24 h-24 rounded-full bg-black border-4 border-yellow-500/50 flex items-center justify-center overflow-hidden p-1 shadow-lg flex-shrink-0">
+                        {stats.playerImg ? (
+                            <img src={stats.playerImg} className="w-full h-full object-cover rounded-full" alt={playerName}/>
+                        ) : stats.teamImg ? (
+                            <img src={stats.teamImg} className="w-full h-full object-contain" alt={stats.team}/>
+                        ) : (
+                            <User className="text-gray-500" size={40} />
+                        )}
                     </div>
                     <div>
                         <div className="flex items-center gap-3">

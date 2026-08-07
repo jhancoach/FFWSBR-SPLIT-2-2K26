@@ -732,7 +732,7 @@ const RenderList = ({ title, items, icon, totalCount, getImage, isTeam, isPlayer
                         <span className={`text-[10px] font-mono font-bold w-4 ${isActive ? 'text-yellow-500' : 'text-gray-600'}`}>#{i+1}</span>
                         {(isTeam || isPlayer) && (
                             <div className={`w-8 h-8 rounded border p-1 flex items-center justify-center shrink-0 transition-colors bg-black ${isActive ? 'border-yellow-500' : 'border-gray-800'}`}>
-                                {img ? <img src={img} className="w-full h-full object-contain" alt={item.name}/> : isTeam ? <Shield size={12} className="opacity-20" /> : <User size={12} className="opacity-20" />}
+                                {img ? <img src={img} className={`w-full h-full ${isPlayer ? 'object-cover rounded-full' : 'object-contain'}`} alt={item.name}/> : isTeam ? <Shield size={12} className="opacity-20" /> : <User size={12} className="opacity-20" />}
                             </div>
                         )}
                         <div className="flex-1 min-w-0 pr-2">

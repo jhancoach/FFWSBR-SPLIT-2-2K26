@@ -251,6 +251,7 @@ export interface TeamCharacterSummary {
   items: { name: string; count: number; pct: number; img?: string }[];
   players: {
     name: string;
+    img?: string;
     totalDrops: number;
     funcao?: string;
     activeSkills: { name: string; count: number; pct: number; img?: string }[];
@@ -392,6 +393,7 @@ export const getTeamCharacterSummary = (data: DashboardData, teamName: string): 
 
     return {
       name: p.name,
+      img: dim?.IMG,
       totalDrops: p.totalDrops,
       funcao: dim?.Funcao,
       activeSkills: pActives,
@@ -413,6 +415,7 @@ export const getTeamCharacterSummary = (data: DashboardData, teamName: string): 
 
 export interface TeamMapPlayerDetail {
   name: string;
+  img?: string;
   funcao?: string;
   totalDropsOnMap: number;
   activeSkills: { name: string; count: number; pct: number; img?: string }[];
@@ -564,6 +567,7 @@ export const getTeamMapSummaryDetail = (data: DashboardData, teamName: string, m
 
     return {
       name: p.name,
+      img: dim?.IMG,
       funcao: dim?.Funcao,
       totalDropsOnMap: p.drops,
       activeSkills: pActives,

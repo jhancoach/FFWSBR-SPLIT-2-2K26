@@ -60,7 +60,15 @@ export interface CharacterData {
   Confronto: string; 
   Mapa: string;      
   S: string;  
-  Q: string;       
+  Q: string;
+  playerImg?: string;
+  teamImg?: string;
+  hab1Img?: string;
+  hab2Img?: string;
+  hab3Img?: string;
+  hab4Img?: string;
+  petImg?: string;
+  itemImg?: string;
 }
 
 export interface TeamReference {
