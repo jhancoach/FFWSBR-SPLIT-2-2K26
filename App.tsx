@@ -8,6 +8,7 @@ import Players from './pages/Players';
 import Teams from './pages/Teams';
 import KillFeedPage from './pages/KillFeedPage';
 import Studies from './pages/Studies';
+import Banners from './pages/Banners';
 import Admin from './pages/Admin';
 import SplashScreen from './components/SplashScreen';
 import { fetchDashboardData, getAppConfig } from './services/dataService';
@@ -66,6 +67,7 @@ const App: React.FC = () => {
           <Route path="/teams" element={<Teams data={data} />} />
           <Route path="/killfeed" element={<KillFeedPage data={data} />} />
           <Route path="/estudos" element={<Studies data={data} />} />
+          <Route path="/banners" element={<Banners data={data} />} />
           <Route path="/admin" element={<Admin onRefresh={loadData} />} />
         </Routes>
       </Layout>
