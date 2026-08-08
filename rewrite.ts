@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useRef } from 'react';
+import fs from 'fs';
+const content = `import React, { useState, useMemo, useRef } from 'react';
 import { DashboardData } from '../types';
 import { Download, Image as ImageIcon } from 'lucide-react';
 import html2canvas from 'html2canvas';
@@ -15,13 +16,13 @@ const parseNumber = (val: string | number | undefined | null): number => {
   let str = val.toString().trim();
   if (!str) return 0;
   
-  if (/^-?\d{1,3}([.,]\d{3})+$/.test(str)) {
+  if (/^-?\\d{1,3}([.,]\\d{3})+$/.test(str)) {
       str = str.replace(/[.,]/g, '');
   } else {
       str = str.replace(',', '.');
   }
 
-  if (/^-?\d+$/.test(str)) return parseInt(str, 10);
+  if (/^-?\\d+$/.test(str)) return parseInt(str, 10);
   
   const num = parseFloat(str);
   return isNaN(num) ? 0 : Math.round(num);
@@ -33,17 +34,17 @@ const PlayerStatCard = ({ title, data, statKey, avgKey, statLabel, color }: any)
   const shadowClass = color === 'red' ? 'shadow-[0_10px_30px_rgba(239,68,68,0.3)]' : color === 'orange' ? 'shadow-[0_10px_30px_rgba(249,115,22,0.3)]' : color === 'purple' ? 'shadow-[0_10px_30px_rgba(168,85,247,0.3)]' : 'shadow-[0_10px_30px_rgba(59,130,246,0.3)]';
 
   return (
-    <div className={`bg-black/50 p-6 rounded-3xl border ${borderClass} backdrop-blur-sm relative flex flex-col h-full`}>
-      <div className={`absolute -top-6 left-6 ${titleClass} text-white px-4 py-2 rounded-xl font-black text-xl uppercase tracking-widest italic ${shadowClass}`}>
+    <div className={\`bg-black/50 p-6 rounded-3xl border \${borderClass} backdrop-blur-sm relative flex flex-col h-full\`}>
+      <div className={\`absolute -top-6 left-6 \${titleClass} text-white px-4 py-2 rounded-xl font-black text-xl uppercase tracking-widest italic \${shadowClass}\`}>
         {title}
       </div>
       <div className="flex-1 flex flex-col justify-evenly mt-4 gap-6">
         {data.map((player: any, idx: number) => {
           const isFirst = idx === 0;
           return (
-            <div key={player.name} className={`flex items-center gap-4 ${isFirst ? 'scale-105 origin-left' : 'opacity-90'}`}>
+            <div key={player.name} className={\`flex items-center gap-4 \${isFirst ? 'scale-105 origin-left' : 'opacity-90'}\`}>
               <div className="text-gray-400 font-bold text-xl w-8 text-right">#{idx + 1}</div>
-              <div className={`w-20 h-20 rounded-full border-4 ${isFirst ? 'border-white' : 'border-white/20'} bg-black overflow-hidden flex-shrink-0 relative`}>
+              <div className={\`w-20 h-20 rounded-full border-4 \${isFirst ? 'border-white' : 'border-white/20'} bg-black overflow-hidden flex-shrink-0 relative\`}>
                 {player.playerImg ? (
                   <img src={player.playerImg} alt={player.name} className="w-full h-full object-cover" />
                 ) : (
@@ -104,7 +105,7 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
     }
   }, [availableTeams, selectedTeam]);
 
-      const bannerTeamPerfData = useMemo(() => {
+  const bannerTeamPerfData = useMemo(() => {
     if (!selectedTeam) return null;
     
     let totalPtsc = 0;
@@ -112,33 +113,14 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
     let totalBooyahs = 0;
     let matches = 0;
 
-    const mapStatsMap = new Map<string, { mapName: string, matches: number, ptsc: number, abts: number, pts: number, booyahs: number }>();
-
     data.details.forEach(d => {
       if (d.TIME?.toLowerCase() !== selectedTeam.toLowerCase()) return;
       if (selectedRd !== 'all' && d.RD?.toString() !== selectedRd) return;
       
-      const ptsc = parseNumber(d.PTSC);
-      const abts = parseNumber(d.ABTS);
-      const booyahs = parseNumber(d.B);
-      const pts = ptsc + abts;
-
-      totalPtsc += ptsc;
-      totalAbts += abts;
-      totalBooyahs += booyahs;
+      totalPtsc += parseNumber(d.PTSC);
+      totalAbts += parseNumber(d.ABTS);
+      totalBooyahs += parseNumber(d.B);
       matches++;
-      
-      const mapName = d.MAPA || 'Desconhecido';
-      if (!mapStatsMap.has(mapName)) {
-        mapStatsMap.set(mapName, { mapName, matches: 0, ptsc: 0, abts: 0, pts: 0, booyahs: 0 });
-      }
-      
-      const mStat = mapStatsMap.get(mapName)!;
-      mStat.matches++;
-      mStat.ptsc += ptsc;
-      mStat.abts += abts;
-      mStat.pts += pts;
-      mStat.booyahs += booyahs;
     });
 
     const playerStats = new Map<string, { name: string, img: string, kills: number, dmg: number, hs: number, knocks: number, matches: number }>();
@@ -169,18 +151,10 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
       avgHs: p.matches > 0 ? (p.hs / p.matches).toFixed(2) : '0.00',
       avgKnocks: p.matches > 0 ? (p.knocks / p.matches).toFixed(2) : '0.00'
     }));
-    
-    const maps = Array.from(mapStatsMap.values()).sort((a, b) => b.pts - a.pts).map(m => ({
-      ...m,
-      avgPts: m.matches > 0 ? (m.pts / m.matches).toFixed(1) : '0.0',
-      avgPtsc: m.matches > 0 ? (m.ptsc / m.matches).toFixed(1) : '0.0',
-      avgAbts: m.matches > 0 ? (m.abts / m.matches).toFixed(1) : '0.0',
-      avgBooyahs: m.matches > 0 ? (m.booyahs / m.matches).toFixed(2) : '0.00'
-    }));
 
     const teamImg = findTeamLogo(selectedTeam, data.teamsReference);
 
-    return { teamName: selectedTeam, teamImg, ptsc: totalPtsc, abts: totalAbts, pts: totalPtsc + totalAbts, booyahs: totalBooyahs, matches, players, maps };
+    return { teamName: selectedTeam, teamImg, ptsc: totalPtsc, abts: totalAbts, booyahs: totalBooyahs, matches, players };
   }, [data.details, data.players, data.teamsReference, data.playersDimension, selectedTeam, selectedRd]);
 
   const bannerPlayerData = useMemo(() => {
@@ -258,7 +232,7 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
 
     const topPtsc = [...allTeams].sort((a, b) => b.ptsc - a.ptsc).slice(0, 3);
     const topAbts = [...allTeams].sort((a, b) => b.abts - a.abts).slice(0, 3);
-    const topBooyahs = [...allTeams].filter(t => t.booyahs > 0).sort((a, b) => b.booyahs - a.booyahs).slice(0, 3);
+    const topBooyahs = [...allTeams].sort((a, b) => b.booyahs - a.booyahs).slice(0, 3);
 
     return { topPtsc, topAbts, topBooyahs };
   }, [data.details, data.teamsReference, selectedRd]);
@@ -274,7 +248,7 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
       });
       const dataUrl = canvas.toDataURL('image/png');
       const link = document.createElement('a');
-      link.download = `Stories_Banner_${activeTab}_${selectedRd}.png`;
+      link.download = \`Stories_Banner_\${activeTab}_\${selectedRd}.png\`;
       link.href = dataUrl;
       link.click();
     } catch (error) {
@@ -300,25 +274,25 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
           <div className="flex bg-black p-1 rounded-xl border border-white/10 shrink-0">
             <button
               onClick={() => setActiveTab('teams')}
-              className={`px-4 py-2 rounded-lg font-bold text-sm uppercase tracking-wider transition-all ${
+              className={\`px-4 py-2 rounded-lg font-bold text-sm uppercase tracking-wider transition-all \${
                 activeTab === 'teams' ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'
-              }`}
+              }\`}
             >
               Equipes
             </button>
             <button
               onClick={() => setActiveTab('players')}
-              className={`px-4 py-2 rounded-lg font-bold text-sm uppercase tracking-wider transition-all ${
+              className={\`px-4 py-2 rounded-lg font-bold text-sm uppercase tracking-wider transition-all \${
                 activeTab === 'players' ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'
-              }`}
+              }\`}
             >
               Jogadores
             </button>
             <button
               onClick={() => setActiveTab('team_perf')}
-              className={`px-4 py-2 rounded-lg font-bold text-sm uppercase tracking-wider transition-all ${
+              className={\`px-4 py-2 rounded-lg font-bold text-sm uppercase tracking-wider transition-all \${
                 activeTab === 'team_perf' ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'
-              }`}
+              }\`}
             >
               Por Equipe
             </button>
@@ -361,7 +335,7 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
       </div>
 
       {/* Preview Container */}
-      <div className="flex md:justify-center bg-black/40 p-4 md:p-8 rounded-3xl border border-white/5 overflow-x-auto">
+      <div className="flex justify-center bg-black/40 p-4 md:p-8 rounded-3xl border border-white/5 overflow-hidden">
         
         {/* Banner Real (Scale down for preview, full size for render) */}
         <div className="relative origin-top transform scale-[0.4] sm:scale-[0.5] md:scale-[0.6] lg:scale-[0.7] -mb-[1152px] sm:-mb-[960px] md:-mb-[768px] lg:-mb-[576px]">
@@ -396,9 +370,9 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
                     {bannerData.topPtsc.map((team, idx) => {
                       const isFirst = idx === 0;
                       return (
-                        <div key={team.name} className={`flex flex-col items-center gap-4 ${isFirst ? 'order-2 scale-110 -translate-y-8' : idx === 1 ? 'order-1' : 'order-3'}`}>
+                        <div key={team.name} className={\`flex flex-col items-center gap-4 \${isFirst ? 'order-2 scale-110 -translate-y-8' : idx === 1 ? 'order-1' : 'order-3'}\`}>
                           <span className="text-gray-400 font-bold text-2xl">#{idx + 1}</span>
-                          <div className={`w-32 h-32 rounded-full border-4 ${isFirst ? 'border-yellow-400' : 'border-white/20'} bg-black overflow-hidden p-4 shadow-xl flex items-center justify-center`}>
+                          <div className={\`w-32 h-32 rounded-full border-4 \${isFirst ? 'border-yellow-400' : 'border-white/20'} bg-black overflow-hidden p-4 shadow-xl flex items-center justify-center\`}>
                              {team.img ? (
                                <img src={team.img} alt={team.name} className="w-full h-full object-contain" />
                              ) : (
@@ -424,9 +398,9 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
                     {bannerData.topAbts.map((team, idx) => {
                       const isFirst = idx === 0;
                       return (
-                        <div key={team.name} className={`flex flex-col items-center gap-4 ${isFirst ? 'order-2 scale-110 -translate-y-8' : idx === 1 ? 'order-1' : 'order-3'}`}>
+                        <div key={team.name} className={\`flex flex-col items-center gap-4 \${isFirst ? 'order-2 scale-110 -translate-y-8' : idx === 1 ? 'order-1' : 'order-3'}\`}>
                           <span className="text-gray-400 font-bold text-2xl">#{idx + 1}</span>
-                          <div className={`w-32 h-32 rounded-full border-4 ${isFirst ? 'border-red-400' : 'border-white/20'} bg-black overflow-hidden p-4 shadow-xl flex items-center justify-center`}>
+                          <div className={\`w-32 h-32 rounded-full border-4 \${isFirst ? 'border-red-400' : 'border-white/20'} bg-black overflow-hidden p-4 shadow-xl flex items-center justify-center\`}>
                              {team.img ? (
                                <img src={team.img} alt={team.name} className="w-full h-full object-contain" />
                              ) : (
@@ -452,9 +426,9 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
                     {bannerData.topBooyahs.map((team, idx) => {
                       const isFirst = idx === 0;
                       return (
-                        <div key={team.name} className={`flex flex-col items-center gap-4 ${isFirst ? 'order-2 scale-110 -translate-y-8' : idx === 1 ? 'order-1' : 'order-3'}`}>
+                        <div key={team.name} className={\`flex flex-col items-center gap-4 \${isFirst ? 'order-2 scale-110 -translate-y-8' : idx === 1 ? 'order-1' : 'order-3'}\`}>
                           <span className="text-gray-400 font-bold text-2xl">#{idx + 1}</span>
-                          <div className={`w-32 h-32 rounded-full border-4 ${isFirst ? 'border-blue-400' : 'border-white/20'} bg-black overflow-hidden p-4 shadow-xl flex items-center justify-center`}>
+                          <div className={\`w-32 h-32 rounded-full border-4 \${isFirst ? 'border-blue-400' : 'border-white/20'} bg-black overflow-hidden p-4 shadow-xl flex items-center justify-center\`}>
                              {team.img ? (
                                <img src={team.img} alt={team.name} className="w-full h-full object-contain" />
                              ) : (
@@ -480,83 +454,79 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
                 <PlayerStatCard title="Top 3 - Deitados" data={bannerPlayerData.topKnocks} statKey="knocks" avgKey="avgKnocks" statLabel="deitados" color="blue" />
               </div>
             ) : activeTab === 'team_perf' && bannerTeamPerfData ? (
-              <div className="flex-1 flex flex-col justify-start gap-4 relative z-10 w-full">
+              <div className="flex-1 flex flex-col justify-start gap-8 relative z-10 w-full">
                 
                 {/* Cabeçalho da Equipe e Resumo Coletivo */}
-                <div className="bg-black/50 p-6 rounded-3xl border border-yellow-500/30 backdrop-blur-sm flex items-center justify-between shadow-[0_10px_30px_rgba(234,179,8,0.2)]">
-                  <div className="flex items-center gap-6">
-                    <div className="w-32 h-32 rounded-full border-4 border-yellow-400 bg-black overflow-hidden p-4 shadow-[0_0_20px_rgba(234,179,8,0.4)] flex items-center justify-center">
+                <div className="bg-black/50 p-8 rounded-3xl border border-yellow-500/30 backdrop-blur-sm flex items-center justify-between shadow-[0_10px_30px_rgba(234,179,8,0.2)]">
+                  <div className="flex items-center gap-8">
+                    <div className="w-40 h-40 rounded-full border-4 border-yellow-400 bg-black overflow-hidden p-6 shadow-[0_0_20px_rgba(234,179,8,0.4)] flex items-center justify-center">
                       {bannerTeamPerfData.teamImg ? (
                         <img src={bannerTeamPerfData.teamImg} alt={bannerTeamPerfData.teamName} className="w-full h-full object-contain" />
                       ) : (
-                        <span className="text-white text-4xl font-black uppercase">{bannerTeamPerfData.teamName.substring(0,3)}</span>
+                        <span className="text-white text-5xl font-black uppercase">{bannerTeamPerfData.teamName.substring(0,3)}</span>
                       )}
                     </div>
                     <div>
-                      <h2 className="text-white font-black text-4xl uppercase tracking-wider">{bannerTeamPerfData.teamName}</h2>
-                      <div className="text-gray-400 font-bold text-xl mt-1 uppercase tracking-widest">{bannerTeamPerfData.matches} Quedas Jogadas</div>
+                      <h2 className="text-white font-black text-5xl uppercase tracking-wider">{bannerTeamPerfData.teamName}</h2>
+                      <div className="text-gray-400 font-bold text-2xl mt-2 uppercase tracking-widest">{bannerTeamPerfData.matches} Quedas Jogadas</div>
                     </div>
                   </div>
                   
-                  <div className="flex gap-8 text-center">
+                  <div className="flex gap-12 text-center">
                      <div>
-                       <p className="text-gray-400 font-bold text-lg uppercase mb-1">Pts Totais</p>
-                       <p className="text-white font-black text-4xl">{bannerTeamPerfData.pts}</p>
+                       <p className="text-gray-400 font-bold text-xl uppercase mb-1">Pontos</p>
+                       <p className="text-yellow-400 font-black text-5xl">{bannerTeamPerfData.ptsc}</p>
                      </div>
                      <div>
-                       <p className="text-gray-400 font-bold text-lg uppercase mb-1">Colocação</p>
-                       <p className="text-yellow-400 font-black text-4xl">{bannerTeamPerfData.ptsc}</p>
+                       <p className="text-gray-400 font-bold text-xl uppercase mb-1">Abates</p>
+                       <p className="text-red-400 font-black text-5xl">{bannerTeamPerfData.abts}</p>
                      </div>
                      <div>
-                       <p className="text-gray-400 font-bold text-lg uppercase mb-1">Abates</p>
-                       <p className="text-red-400 font-black text-4xl">{bannerTeamPerfData.abts}</p>
-                     </div>
-                     <div>
-                       <p className="text-gray-400 font-bold text-lg uppercase mb-1">Booyahs</p>
-                       <p className="text-blue-400 font-black text-4xl">{bannerTeamPerfData.booyahs}</p>
+                       <p className="text-gray-400 font-bold text-xl uppercase mb-1">Booyahs</p>
+                       <p className="text-blue-400 font-black text-5xl">{bannerTeamPerfData.booyahs}</p>
                      </div>
                   </div>
                 </div>
 
                 {/* Desempenho Individual (Grid) */}
-                <div className="bg-black/50 p-6 rounded-3xl border border-white/10 backdrop-blur-sm flex-1 flex flex-col">
-                  <h3 className="text-white font-black text-2xl uppercase tracking-widest italic mb-4 flex items-center gap-4 shrink-0">
-                    <span className="w-2 h-6 bg-yellow-500 rounded-full"></span>
+                <div className="bg-black/50 p-8 rounded-3xl border border-white/10 backdrop-blur-sm flex-1">
+                  <h3 className="text-white font-black text-3xl uppercase tracking-widest italic mb-8 flex items-center gap-4">
+                    <span className="w-2 h-8 bg-yellow-500 rounded-full"></span>
                     Desempenho Individual
                   </h3>
                   
-                  <div className="flex flex-col gap-3 flex-1 overflow-hidden justify-center">
-                    {bannerTeamPerfData.players.slice(0, 5).map((player, idx) => (
-                      <div key={player.name} className="flex items-center gap-4 bg-white/5 border border-white/5 rounded-2xl p-3">
-                         <div className="text-gray-500 font-black text-2xl w-10 text-right">#{idx + 1}</div>
-                         <div className="w-16 h-16 rounded-full border-2 border-white/20 bg-black overflow-hidden flex items-center justify-center shrink-0">
+                  <div className="flex flex-col gap-4">
+                    {bannerTeamPerfData.players.slice(0, 6).map((player, idx) => (
+                      <div key={player.name} className="flex items-center gap-6 bg-white/5 border border-white/5 rounded-2xl p-4">
+                         <div className="text-gray-500 font-black text-3xl w-12 text-right">#{idx + 1}</div>
+                         <div className="w-20 h-20 rounded-full border-2 border-white/20 bg-black overflow-hidden flex items-center justify-center shrink-0">
                             {player.img ? (
                               <img src={player.img} alt={player.name} className="w-full h-full object-cover" />
                             ) : (
-                              <span className="text-white text-lg font-black uppercase">{player.name.substring(0,3)}</span>
+                              <span className="text-white text-xl font-black uppercase">{player.name.substring(0,3)}</span>
                             )}
                          </div>
                          <div className="flex-1 min-w-0">
-                           <h4 className="text-white font-black text-2xl uppercase truncate">{player.name}</h4>
-                           <div className="text-gray-400 font-bold text-base">{player.matches} Quedas</div>
+                           <h4 className="text-white font-black text-3xl uppercase truncate">{player.name}</h4>
+                           <div className="text-gray-400 font-bold text-lg mt-1">{player.matches} Quedas</div>
                          </div>
                          
-                         <div className="flex gap-4 text-center shrink-0 pr-4">
-                           <div className="w-28">
-                             <p className="text-gray-500 font-bold text-xs uppercase mb-0.5">Abates</p>
-                             <p className="text-white font-black text-2xl">{player.kills} <span className="text-gray-500 text-xs">({player.avgKills})</span></p>
+                         <div className="flex gap-8 text-center shrink-0 pr-8">
+                           <div className="w-32">
+                             <p className="text-gray-500 font-bold text-sm uppercase mb-1">Abates</p>
+                             <p className="text-white font-black text-3xl">{player.kills} <span className="text-gray-500 text-sm">({player.avgKills})</span></p>
                            </div>
-                           <div className="w-28">
-                             <p className="text-gray-500 font-bold text-xs uppercase mb-0.5">Dano</p>
-                             <p className="text-white font-black text-2xl">{player.dmg} <span className="text-gray-500 text-xs">({player.avgDmg})</span></p>
+                           <div className="w-32">
+                             <p className="text-gray-500 font-bold text-sm uppercase mb-1">Dano</p>
+                             <p className="text-white font-black text-3xl">{player.dmg} <span className="text-gray-500 text-sm">({player.avgDmg})</span></p>
                            </div>
-                           <div className="w-28">
-                             <p className="text-gray-500 font-bold text-xs uppercase mb-0.5">Deitados</p>
-                             <p className="text-white font-black text-2xl">{player.knocks} <span className="text-gray-500 text-xs">({player.avgKnocks})</span></p>
+                           <div className="w-32">
+                             <p className="text-gray-500 font-bold text-sm uppercase mb-1">Deitados</p>
+                             <p className="text-white font-black text-3xl">{player.knocks} <span className="text-gray-500 text-sm">({player.avgKnocks})</span></p>
                            </div>
-                           <div className="w-28">
-                             <p className="text-gray-500 font-bold text-xs uppercase mb-0.5">HS</p>
-                             <p className="text-white font-black text-2xl">{player.hs} <span className="text-gray-500 text-xs">({player.avgHs})</span></p>
+                           <div className="w-32">
+                             <p className="text-gray-500 font-bold text-sm uppercase mb-1">HS</p>
+                             <p className="text-white font-black text-3xl">{player.hs} <span className="text-gray-500 text-sm">({player.avgHs})</span></p>
                            </div>
                          </div>
                       </div>
@@ -564,45 +534,6 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
                   </div>
                 </div>
 
-                {/* Desempenho por Mapa */}
-                {bannerTeamPerfData.maps && bannerTeamPerfData.maps.length > 0 && (
-                  <div className="bg-black/50 p-6 rounded-3xl border border-white/10 backdrop-blur-sm flex-1 flex flex-col">
-                    <h3 className="text-white font-black text-2xl uppercase tracking-widest italic mb-4 flex items-center gap-4 shrink-0">
-                      <span className="w-2 h-6 bg-blue-500 rounded-full"></span>
-                      Desempenho por Mapa
-                    </h3>
-                    
-                    <div className="flex flex-col gap-3 flex-1 overflow-hidden justify-center">
-                      {bannerTeamPerfData.maps.slice(0, 5).map((map, idx) => (
-                        <div key={map.mapName} className="flex items-center gap-4 bg-white/5 border border-white/5 rounded-2xl p-3 shadow-lg">
-                           <div className="w-40 shrink-0 border-r border-white/10 pr-4">
-                             <h4 className="text-white font-black text-2xl uppercase truncate">{map.mapName}</h4>
-                             <div className="text-gray-400 font-bold text-base">{map.matches} Quedas</div>
-                           </div>
-                           
-                           <div className="flex-1 flex gap-4 text-center justify-between">
-                             <div className="flex-1 bg-black/40 px-3 py-2 rounded-xl border border-white/5">
-                               <div className="text-gray-500 font-bold text-xs uppercase mb-0.5">Pts Totais</div>
-                               <div className="text-white font-black text-xl">{map.pts} <span className="text-gray-500 text-xs">({map.avgPts})</span></div>
-                             </div>
-                             <div className="flex-1 bg-black/40 px-3 py-2 rounded-xl border border-white/5">
-                               <div className="text-gray-500 font-bold text-xs uppercase mb-0.5">Colocação</div>
-                               <div className="text-yellow-400 font-black text-xl">{map.ptsc} <span className="text-gray-500 text-xs">({map.avgPtsc})</span></div>
-                             </div>
-                             <div className="flex-1 bg-black/40 px-3 py-2 rounded-xl border border-white/5">
-                               <div className="text-gray-500 font-bold text-xs uppercase mb-0.5">Abates</div>
-                               <div className="text-red-400 font-black text-xl">{map.abts} <span className="text-gray-500 text-xs">({map.avgAbts})</span></div>
-                             </div>
-                             <div className="flex-1 bg-black/40 px-3 py-2 rounded-xl border border-white/5">
-                               <div className="text-gray-500 font-bold text-xs uppercase mb-0.5">Booyahs</div>
-                               <div className="text-blue-400 font-black text-xl">{map.booyahs} <span className="text-gray-500 text-xs">({map.avgBooyahs})</span></div>
-                             </div>
-                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             ) : null}
 
@@ -619,3 +550,6 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
 };
 
 export default Banners;
+`
+
+fs.writeFileSync('pages/Banners.tsx', content);

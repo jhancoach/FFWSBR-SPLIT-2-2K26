@@ -38,7 +38,7 @@ const Layout: React.FC<LayoutProps> = ({ children, onRefresh, loading, lastUpdat
   };
 
   return (
-    <div className="min-h-screen text-gray-100 flex flex-col bg-transparent">
+    <div className="min-h-screen w-fit min-w-full text-gray-100 flex flex-col bg-transparent">
       {/* Developer Credit Top Bar */}
       <div className="bg-gradient-to-r from-yellow-500/15 via-amber-500/20 to-yellow-500/15 border-b border-yellow-500/30 py-1.5 px-4 sm:px-6 no-print shadow-sm">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">

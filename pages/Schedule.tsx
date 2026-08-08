@@ -412,7 +412,7 @@ const Schedule: React.FC<ScheduleProps> = ({ data }) => {
 
       {/* Main Participation Matrix Table */}
       <div className="bg-[#121215] border border-gray-800 rounded-2xl overflow-hidden shadow-2xl">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto custom-scrollbar">
           <table className="w-full text-left border-collapse min-w-[900px]">
             <thead>
               <tr className="bg-[#18181c] border-b border-gray-800 text-xs font-black uppercase tracking-wider text-gray-400">

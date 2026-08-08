@@ -1726,7 +1726,7 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                     <div className="w-2 h-2 rounded-full bg-blue-500" />
                                 </div>
                             </div>
-                            <div className="overflow-x-auto">
+                            <div className="overflow-x-auto custom-scrollbar">
                                 <table className="w-full text-left border-collapse">
                                     <tbody className="divide-y divide-gray-800/30">
                                         {[

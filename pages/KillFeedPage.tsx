@@ -620,7 +620,7 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
                     <span className="text-[10px] font-mono text-gray-500 uppercase tracking-widest">{totalEvents} Eventos Filtrados</span>
                 </div>
             </div>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto custom-scrollbar">
                 <table className="w-full text-left border-collapse">
                     <thead className="bg-[#050505] text-[10px] text-gray-500 uppercase font-bold tracking-[0.2em]">
                         <tr>

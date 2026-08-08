@@ -543,7 +543,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
                 <span className="text-[9px] text-gray-600 uppercase font-bold">Resumo Competitivo</span>
             </div>
           </div>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto custom-scrollbar">
             <table className="w-full text-left whitespace-nowrap">
               <TableHeader />
               <tbody className="divide-y divide-gray-800 text-sm font-medium">
@@ -568,7 +568,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
               </span>
               <Shield size={14} className="text-gray-600 opacity-50" />
             </div>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto custom-scrollbar">
               <table className="w-full text-left whitespace-nowrap">
                 <TableHeader />
                 <tbody className="divide-y divide-gray-800 text-sm font-medium">

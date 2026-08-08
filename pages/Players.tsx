@@ -1426,7 +1426,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                   </div>
 
                   <div className="bg-[#1a1a1a] rounded-2xl overflow-hidden border border-gray-800 shadow-xl">
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto custom-scrollbar">
                         <table className="w-full text-left whitespace-nowrap">
                             <thead className="bg-[#0a0a0a] text-gray-500 text-[10px] uppercase font-bold tracking-widest">
                                 <tr>
