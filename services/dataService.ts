@@ -9,8 +9,18 @@ export const getActiveUrls = () => {
     const saved = localStorage.getItem('MUNDIAL_DASHBOARD_URLS');
     if (saved) {
       const parsed = JSON.parse(saved);
+      let changed = false;
+      Object.keys(parsed).forEach(k => {
+        if (typeof parsed[k] === 'string' && parsed[k].includes('/export?format=csv')) {
+          parsed[k] = parsed[k].replace('/export?format=csv', '/gviz/tq?tqx=out:csv');
+          changed = true;
+        }
+      });
       if (!parsed.fDetalhes || parsed.fDetalhes.includes('1aG4Gl14KUL93l_ovqhA_4Dx4P-BBG-eewcy1OAJ_L4M')) {
         parsed.fDetalhes = CSV_URLS.fDetalhes;
+        changed = true;
+      }
+      if (changed) {
         localStorage.setItem('MUNDIAL_DASHBOARD_URLS', JSON.stringify(parsed));
       }
       return { ...CSV_URLS, ...parsed };
@@ -124,10 +134,18 @@ const normalizeDim = (data: any[], keyName: string): GenericDimData[] => {
   }).filter(r => r.Name && r.Name.trim() !== '');
 };
 
-const safeFetch = async (url: string): Promise<string> => {
-  if (!url || typeof url !== 'string') return "";
+const transformToGviz = (url: string): string => {
+  if (!url) return '';
+  if (url.includes('/export?format=csv')) {
+    return url.replace('/export?format=csv', '/gviz/tq?tqx=out:csv');
+  }
+  return url;
+};
 
-  // Helper to validate if returned text looks like valid CSV rather than HTML error page
+const safeFetch = async (rawUrl: string): Promise<string> => {
+  if (!rawUrl || typeof rawUrl !== 'string') return "";
+  const url = transformToGviz(rawUrl);
+
   const isValidCsv = (text: string): boolean => {
     if (!text || !text.trim()) return false;
     const trimmed = text.trim();
@@ -143,53 +161,63 @@ const safeFetch = async (url: string): Promise<string> => {
     return true;
   };
 
-  // Generate candidate URLs to try
-  const urlsToTry: string[] = [url];
+  const cacheKey = `CSV_CACHE_${rawUrl}`;
 
-  // If it's a Google Sheets export URL, add gviz endpoint alternative
-  if (url.includes('/export?format=csv')) {
-    urlsToTry.push(url.replace('/export?format=csv', '/gviz/tq?tqx=out:csv'));
-  } else if (url.includes('/pub?') && !url.includes('/gviz/tq')) {
-    // If it's a published sheet URL, can also try converting to gviz if pub fails
-    urlsToTry.push(url.replace('/pub?', '/gviz/tq?tqx=out:csv&'));
+  const fetchWithTimeout = async (targetUrl: string, timeoutMs: number): Promise<string> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(targetUrl, { redirect: 'follow', signal: controller.signal });
+      clearTimeout(timer);
+      if (res.ok) {
+        const text = await res.text();
+        if (isValidCsv(text)) return text;
+      }
+    } catch (e) {
+      clearTimeout(timer);
+    }
+    return "";
+  };
+
+  // 1. Primary Direct fetch (Fastest: ~100-300ms) with 2.5s timeout
+  const directText = await fetchWithTimeout(url, 2500);
+  if (directText) {
+    try { localStorage.setItem(cacheKey, directText); } catch (e) {}
+    return directText;
   }
 
-  for (const targetUrl of urlsToTry) {
-    // Strategy 1: Direct fetch with follow redirect
-    try {
-      const res = await fetch(targetUrl, { redirect: 'follow' });
-      if (res.ok) {
-        const text = await res.text();
-        if (isValidCsv(text)) return text;
-      }
-    } catch (e) {
-      // Direct fetch failed (e.g. CORS)
-    }
-
-    // Strategy 2: AllOrigins proxy
-    try {
-      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
-      const res = await fetch(proxyUrl);
-      if (res.ok) {
-        const text = await res.text();
-        if (isValidCsv(text)) return text;
-      }
-    } catch (e) {
-      // Proxy failed
-    }
-
-    // Strategy 3: CorsProxy.io
-    try {
-      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
-      const res = await fetch(proxyUrl);
-      if (res.ok) {
-        const text = await res.text();
-        if (isValidCsv(text)) return text;
-      }
-    } catch (e) {
-      // Proxy failed
+  // 2. Fallback to rawUrl if different
+  if (rawUrl !== url) {
+    const rawText = await fetchWithTimeout(rawUrl, 2500);
+    if (rawText) {
+      try { localStorage.setItem(cacheKey, rawText); } catch (e) {}
+      return rawText;
     }
   }
+
+  // 3. Parallel Proxy Race with 3.5s timeout
+  const proxyUrls = [
+    `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
+  ];
+
+  try {
+    const proxyResults = await Promise.all(proxyUrls.map(pUrl => fetchWithTimeout(pUrl, 3500)));
+    const validResult = proxyResults.find(r => r && r.length > 0);
+    if (validResult) {
+      try { localStorage.setItem(cacheKey, validResult); } catch (e) {}
+      return validResult;
+    }
+  } catch (e) {}
+
+  // 4. Instant Cache Fallback if network issue occurs
+  try {
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      console.warn(`Usando dados em cache para: ${url}`);
+      return cached;
+    }
+  } catch (e) {}
 
   console.warn(`Aviso: Não foi possível carregar os dados da URL (${url}). Usando dados padrão.`);
   return "";
