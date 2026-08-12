@@ -657,6 +657,8 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             matches: 0,
             zeroKills: 0,
             withKills: 0,
+            mapKills: {} as Record<string, number>,
+            safeKills: {} as Record<string, number>,
         };
         
         const filtered = data.players.filter(p => {
@@ -677,7 +679,8 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
         filtered.forEach(p => {
             stats.team = p.TIME;
             stats.matches++;
-            stats.kills += parseNumber(p.Abates);
+            const pKills = parseNumber(p.Abates);
+            stats.kills += pKills;
             stats.damage += parseNumber(p.Dano);
             stats.hs += parseNumber(p.HS);
             stats.knocks += parseNumber(p.Deitados);
@@ -687,6 +690,19 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             stats.reviveu += parseNumber(p.Reviveu);
             stats.aliadosRevividos += parseNumber(p.AliadosRevividos);
             stats.mvp += parseNumber(p.MVP);
+            const m = normalize(p.MAPA) || 'N/A';
+            stats.mapKills[m] = (stats.mapKills[m] || 0) + pKills;
+        });
+        
+        data.killFeed.forEach(k => {
+            if (normalize(k.PLAYER) === normalize(pName)) {
+                if (habFilter !== 'All') {
+                    const key = `${normalize(pName)}|${normalize(k.RD)}|${normalize(k.Q)}`;
+                    if (!validMatchKeys.has(key)) return;
+                }
+                const safeVal = k.SAFE || 'OUT';
+                stats.safeKills[safeVal] = (stats.safeKills[safeVal] || 0) + 1;
+            }
         });
         
         // Use rankingData fallback if habFilter is 'All' so we get exactly the same baseline as before for global
@@ -1181,18 +1197,17 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                                   <h3 className="text-sm font-black text-yellow-500 uppercase tracking-[0.3em] italic">Abates por Safe</h3>
                               </div>
                               <div className="p-8 space-y-6">
-                                  {[1, 2, 3, 4, 5, 6, 7, 8].map(safeNum => {
-                                      const key = `safe${safeNum}`;
-                                      const val1 = compareData.p1!.safeKills[key] || 0;
-                                      const val2 = compareData.p2!.safeKills[key] || 0;
+                                  {allSafeNames.map(safeName => {
+                                      const val1 = compareData.p1!.safeKills[safeName] || 0;
+                                      const val2 = compareData.p2!.safeKills[safeName] || 0;
                                       const isP1Better = val1 > val2;
                                       const isP2Better = val2 > val1;
 
                                       return (
-                                          <div key={key} className="space-y-2">
+                                          <div key={safeName} className="space-y-2">
                                               <div className="flex justify-between text-[10px] font-black text-gray-500 uppercase tracking-widest">
                                                   <span className={isP1Better ? 'text-yellow-500' : ''}>{val1}</span>
-                                                  <span className="text-white">Safe {safeNum}</span>
+                                                  <span className="text-white">{safeName === 'OUT' ? 'OUT' : `Safe ${safeName}`}</span>
                                                   <span className={isP2Better ? 'text-blue-500' : ''}>{val2}</span>
                                               </div>
                                               <div className="h-2 bg-black rounded-full overflow-hidden flex">
