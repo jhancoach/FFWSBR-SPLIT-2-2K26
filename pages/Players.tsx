@@ -489,7 +489,22 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
       dmg: number;
       knocks: number;
       assists: number;
+      safeKills?: Record<string, number>;
+      teamTotalKills: number;
     }>();
+
+    const teamKillsByMatch = new Map<string, number>();
+    data.players.forEach(p => {
+      const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => normalize(r) === normalize(p.RD));
+      const matchQ = filters.queda.length === 0 || filters.queda.some(q => normalize(q) === normalize(p.Q));
+      const matchMap = filters.map.length === 0 || filters.map.some(m => normalize(m) === normalize(p.MAPA));
+      const matchTeam = filters.team.length === 0 || filters.team.some(t => normalize(t) === normalize(p.TIME));
+      
+      if (!matchRD || !matchQ || !matchMap || !matchTeam) return;
+
+      const teamKey = `${normalize(p.TIME)}|${normalize(p.RD)}|${normalize(p.Q)}`;
+      teamKillsByMatch.set(teamKey, (teamKillsByMatch.get(teamKey) || 0) + parseNumber(p.Abates));
+    });
 
     data.players.forEach(p => {
       const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => normalize(r) === normalize(p.RD));
@@ -512,7 +527,8 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
              kills: 0,
              dmg: 0,
              knocks: 0,
-             assists: 0
+             assists: 0,
+             teamTotalKills: 0
            });
         }
         const st = playerMap.get(pName)!;
@@ -521,14 +537,37 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
         st.dmg += parseNumber(p.Dano);
         st.knocks += parseNumber(p.Deitados);
         st.assists += parseNumber(p.Assistencias);
+        st.teamTotalKills += teamKillsByMatch.get(`${normalize(p.TIME)}|${normalize(p.RD)}|${normalize(p.Q)}`) || 0;
+      }
+    });
+
+    // Populate safeKills for activeHabStats
+    data.killFeed.forEach(k => {
+      const killer = k.PLAYER;
+      if (!killer) return;
+      const key = `${normalize(killer)}|${normalize(k.RD)}|${normalize(k.Q)}`;
+      if (habUsage.has(key)) {
+        if (playerMap.has(killer)) {
+            const st = playerMap.get(killer)!;
+            const safeVal = k.SAFE || 'OUT';
+            if (!st.safeKills) st.safeKills = {};
+            st.safeKills[safeVal] = (st.safeKills[safeVal] || 0) + 1;
+        }
       }
     });
 
     
     const arr = Array.from(playerMap.values());
     arr.sort((a, b) => {
-        let valA = a[activeHabSort.field as keyof typeof a];
-        let valB = b[activeHabSort.field as keyof typeof b];
+        if (activeHabSort.field.startsWith('safe_')) {
+            const safeName = activeHabSort.field.replace('safe_', '');
+            const sA = a.safeKills?.[safeName] || 0;
+            const sB = b.safeKills?.[safeName] || 0;
+            return activeHabSort.direction === 'desc' ? sB - sA : sA - sB;
+        }
+
+        let valA = a[activeHabSort.field as keyof typeof a] as any;
+        let valB = b[activeHabSort.field as keyof typeof b] as any;
         
         // Handling edge cases where val is a string (like name or team)
         if (typeof valA === 'string' && typeof valB === 'string') {
@@ -1729,6 +1768,11 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                                              <th className="pb-3 text-xs font-bold text-gray-500 uppercase tracking-widest text-center text-blue-500 cursor-pointer hover:text-blue-400 transition-colors" onClick={() => handleHabSort('knocks')}>
                                                  <div className="flex items-center justify-center gap-1">Deitados {activeHabSort.field === 'knocks' && (activeHabSort.direction === 'desc' ? <ChevronDown size={12} /> : <ChevronUp size={12} />)}</div>
                                              </th>
+                                             {allSafeNames.map(safeName => (
+                                                 <th key={safeName} className="pb-3 text-xs font-bold text-gray-500 uppercase tracking-widest text-center cursor-pointer hover:text-white transition-colors" onClick={() => handleHabSort(`safe_${safeName}`)}>
+                                                     <div className="flex items-center justify-center gap-1">{safeName === 'OUT' ? 'OUT' : `S${safeName}`} {activeHabSort.field === `safe_${safeName}` && (activeHabSort.direction === 'desc' ? <ChevronDown size={12} /> : <ChevronUp size={12} />)}</div>
+                                                 </th>
+                                             ))}
                                          </tr>
                                      </thead>
                                      <tbody>
@@ -1750,6 +1794,9 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                                                  <td className="py-4 text-center">
                                                      <div className="text-white font-black text-xl">{stat.kills}</div>
                                                      <div className="text-[10px] text-gray-500 font-mono mt-1">Média: {(stat.kills / (stat.matches || 1)).toFixed(2)}</div>
+                                                     <div className="text-[9px] text-blue-400 font-black uppercase tracking-widest mt-0.5" title="Contribuição para os abates do time nestas quedas">
+                                                         {stat.teamTotalKills > 0 ? ((stat.kills / stat.teamTotalKills) * 100).toFixed(1) : '0.0'}% TIME
+                                                     </div>
                                                  </td>
                                                  <td className="py-4 text-center">
                                                      <div className="text-white font-black text-xl">{stat.dmg}</div>
@@ -1759,6 +1806,11 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                                                      <div className="text-white font-black text-xl">{stat.knocks}</div>
                                                      <div className="text-[10px] text-gray-500 font-mono mt-1">Média: {(stat.knocks / (stat.matches || 1)).toFixed(2)}</div>
                                                  </td>
+                                                 {allSafeNames.map(safeName => (
+                                                     <td key={safeName} className="py-4 text-center">
+                                                         <div className={`text-sm font-black ${stat.safeKills?.[safeName] ? 'text-yellow-500' : 'text-gray-700'}`}>{stat.safeKills?.[safeName] || '-'}</div>
+                                                     </td>
+                                                 ))}
                                              </tr>
                                          ))}
                                      </tbody>
