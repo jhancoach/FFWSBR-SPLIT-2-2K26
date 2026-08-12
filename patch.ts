@@ -1,79 +1,67 @@
 import fs from 'fs';
+let content = fs.readFileSync('pages/Players.tsx', 'utf-8');
 
-let content = fs.readFileSync('pages/Banners.tsx', 'utf-8');
-
-const newDataLogic = `  const bannerTeamPerfData = useMemo(() => {
-    if (!selectedTeam) return null;
+const newCode = `
+  const activeHabStats = useMemo(() => {
+    if (activeHabFilter === 'All') return [];
     
-    let totalPtsc = 0;
-    let totalAbts = 0;
-    let totalBooyahs = 0;
-    let matches = 0;
+    // Primeiro pegamos um Set de chaves "Player|Rd|Q" que usaram a habilidade
+    const habUsage = new Set<string>();
+    data.characters.forEach(c => {
+      if (normalize(c.Hab1) === normalize(activeHabFilter)) {
+        habUsage.add(\`\${normalize(c.Player)}|\${normalize(c.Rd)}|\${normalize(c.Q)}\`);
+      }
+    });
 
-    const mapStatsMap = new Map<string, { mapName: string, matches: number, ptsc: number, abts: number, booyahs: number }>();
+    const playerMap = new Map<string, {
+      name: string;
+      img: string;
+      team: string;
+      teamImg: string;
+      matches: number;
+      kills: number;
+      dmg: number;
+      knocks: number;
+      assists: number;
+    }>();
 
     data.details.forEach(d => {
-      if (d.TIME?.toLowerCase() !== selectedTeam.toLowerCase()) return;
-      if (selectedRd !== 'all' && d.RD?.toString() !== selectedRd) return;
+      const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => normalize(r) === normalize(d.RD));
+      const matchQ = filters.queda.length === 0 || filters.queda.some(q => normalize(q) === normalize(d.Q));
+      const matchMap = filters.map.length === 0 || filters.map.some(m => normalize(m) === normalize(d.Mapa));
+      const matchTeam = filters.team.length === 0 || filters.team.some(t => normalize(t) === normalize(d.TIME));
       
-      const ptsc = parseNumber(d.PTSC);
-      const abts = parseNumber(d.ABTS);
-      const booyahs = parseNumber(d.B);
+      if (!matchRD || !matchQ || !matchMap || !matchTeam) return;
 
-      totalPtsc += ptsc;
-      totalAbts += abts;
-      totalBooyahs += booyahs;
-      matches++;
-      
-      const mapName = d.MAPA || 'Desconhecido';
-      if (!mapStatsMap.has(mapName)) {
-        mapStatsMap.set(mapName, { mapName, matches: 0, ptsc: 0, abts: 0, booyahs: 0 });
+      const pName = d.JOGADOR;
+      const key = \`\${normalize(pName)}|\${normalize(d.RD)}|\${normalize(d.Q)}\`;
+      if (habUsage.has(key)) {
+        if (!playerMap.has(pName)) {
+           playerMap.set(pName, {
+             name: pName,
+             img: findPlayerImage(pName, data.teamsReference),
+             team: d.TIME,
+             teamImg: findTeamLogo(d.TIME, data.teamsReference),
+             matches: 0,
+             kills: 0,
+             dmg: 0,
+             knocks: 0,
+             assists: 0
+           });
+        }
+        const st = playerMap.get(pName)!;
+        st.matches += 1;
+        st.kills += parseNumber(d.ABTS);
+        st.dmg += parseNumber(d.DANO);
+        st.knocks += parseNumber(d.DEIT);
+        st.assists += parseNumber(d.ASST);
       }
-      
-      const mStat = mapStatsMap.get(mapName)!;
-      mStat.matches++;
-      mStat.ptsc += ptsc;
-      mStat.abts += abts;
-      mStat.booyahs += booyahs;
     });
 
-    const playerStats = new Map<string, { name: string, img: string, kills: number, dmg: number, hs: number, knocks: number, matches: number }>();
-    data.players.forEach(p => {
-      if (p.TIME?.toLowerCase() !== selectedTeam.toLowerCase()) return;
-      if (selectedRd !== 'all' && p.RD?.toString() !== selectedRd) return;
+    return Array.from(playerMap.values()).sort((a,b) => b.kills - a.kills || b.dmg - a.dmg);
+  }, [data.characters, data.details, activeHabFilter, filters, data.teamsReference]);
 
-      const pName = p.PLAYER;
-      if (!pName) return;
+`;
 
-      if (!playerStats.has(pName)) {
-        const playerRef = data.playersDimension.find(d => d.Name.toLowerCase().trim() === pName.toLowerCase().trim());
-        playerStats.set(pName, { name: pName, img: playerRef?.IMG || '', kills: 0, dmg: 0, hs: 0, knocks: 0, matches: 0 });
-      }
-
-      const stats = playerStats.get(pName)!;
-      stats.kills += parseNumber(p.Abates);
-      stats.dmg += parseNumber(p.Dano);
-      stats.hs += parseNumber(p.HS);
-      stats.knocks += parseNumber(p.Deitados);
-      stats.matches++;
-    });
-
-    const players = Array.from(playerStats.values()).sort((a, b) => b.kills - a.kills).map(p => ({
-      ...p,
-      avgKills: p.matches > 0 ? (p.kills / p.matches).toFixed(2) : '0.00',
-      avgDmg: p.matches > 0 ? (p.dmg / p.matches).toFixed(0) : '0',
-      avgHs: p.matches > 0 ? (p.hs / p.matches).toFixed(2) : '0.00',
-      avgKnocks: p.matches > 0 ? (p.knocks / p.matches).toFixed(2) : '0.00'
-    }));
-    
-    const maps = Array.from(mapStatsMap.values()).sort((a, b) => b.ptsc - a.ptsc);
-
-    const teamImg = findTeamLogo(selectedTeam, data.teamsReference);
-
-    return { teamName: selectedTeam, teamImg, ptsc: totalPtsc, abts: totalAbts, booyahs: totalBooyahs, matches, players, maps };
-  }, [data.details, data.players, data.teamsReference, data.playersDimension, selectedTeam, selectedRd]);`;
-
-content = content.replace(/const bannerTeamPerfData = useMemo\(\(\) => \{[\s\S]*?return \{ teamName.*?\}\;\n  \}, \[data\.details, data\.players, data\.teamsReference, data\.playersDimension, selectedTeam, selectedRd\]\);/, newDataLogic);
-
-fs.writeFileSync('pages/Banners.tsx', content);
-
+content = content.replace('  const charactersData = useMemo(() => {', newCode + '  const charactersData = useMemo(() => {');
+fs.writeFileSync('pages/Players.tsx', content);

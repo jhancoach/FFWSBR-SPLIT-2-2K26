@@ -33,6 +33,8 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
   const [rankingSort, setRankingSort] = useState<{ field: string, direction: 'asc' | 'desc' }>({ field: 'kills', direction: 'desc' });
   const [comparePlayers, setComparePlayers] = useState<{p1: string, p2: string}>({p1: '', p2: ''});
   const [activeHabFilter, setActiveHabFilter] = useState<string>('All');
+  const [activeHabSort, setActiveHabSort] = useState<{field: string, direction: 'asc'|'desc'}>({ field: 'kills', direction: 'desc' });
+
   const [showLegend, setShowLegend] = useState(false);
   
   const [filters, setFilters] = useState({
@@ -335,6 +337,14 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
     }));
   };
 
+  
+  const handleHabSort = (field: string) => {
+      setActiveHabSort(prev => ({
+          field,
+          direction: prev.field === field && prev.direction === 'desc' ? 'asc' : 'desc'
+      }));
+  };
+
   const handleRankingSort = (field: string) => {
     setRankingSort(prev => ({
       field,
@@ -457,6 +467,82 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
         };
     }).sort((a,b) => Math.abs(b.diff) - Math.abs(a.diff) || b.factKills - a.factKills);
   }, [rankingData, data.killFeed, filters, activeTab]);
+
+
+  const activeHabStats = useMemo(() => {
+    if (activeHabFilter === 'All') return [];
+    
+    const habUsage = new Set<string>();
+    data.characters.forEach(c => {
+      if (normalize(c.Hab1) === normalize(activeHabFilter)) {
+        habUsage.add(`${normalize(c.Player)}|${normalize(c.Rd)}|${normalize(c.Q)}`);
+      }
+    });
+
+    const playerMap = new Map<string, {
+      name: string;
+      img: string;
+      team: string;
+      teamImg: string;
+      matches: number;
+      kills: number;
+      dmg: number;
+      knocks: number;
+      assists: number;
+    }>();
+
+    data.players.forEach(p => {
+      const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => normalize(r) === normalize(p.RD));
+      const matchQ = filters.queda.length === 0 || filters.queda.some(q => normalize(q) === normalize(p.Q));
+      const matchMap = filters.map.length === 0 || filters.map.some(m => normalize(m) === normalize(p.MAPA));
+      const matchTeam = filters.team.length === 0 || filters.team.some(t => normalize(t) === normalize(p.TIME));
+      
+      if (!matchRD || !matchQ || !matchMap || !matchTeam) return;
+
+      const pName = p.PLAYER;
+      const key = `${normalize(pName)}|${normalize(p.RD)}|${normalize(p.Q)}`;
+      if (habUsage.has(key)) {
+        if (!playerMap.has(pName)) {
+           playerMap.set(pName, {
+             name: pName,
+             img: findDimImg(data.playersDimension, pName),
+             team: p.TIME,
+             teamImg: findTeamLogo(p.TIME, data.teamsReference),
+             matches: 0,
+             kills: 0,
+             dmg: 0,
+             knocks: 0,
+             assists: 0
+           });
+        }
+        const st = playerMap.get(pName)!;
+        st.matches += 1;
+        st.kills += parseNumber(p.Abates);
+        st.dmg += parseNumber(p.Dano);
+        st.knocks += parseNumber(p.Deitados);
+        st.assists += parseNumber(p.Assistencias);
+      }
+    });
+
+    
+    const arr = Array.from(playerMap.values());
+    arr.sort((a, b) => {
+        let valA = a[activeHabSort.field as keyof typeof a];
+        let valB = b[activeHabSort.field as keyof typeof b];
+        
+        // Handling edge cases where val is a string (like name or team)
+        if (typeof valA === 'string' && typeof valB === 'string') {
+             return activeHabSort.direction === 'desc' ? valB.localeCompare(valA) : valA.localeCompare(valB);
+        }
+        
+        // Number comparison
+        valA = Number(valA) || 0;
+        valB = Number(valB) || 0;
+        return activeHabSort.direction === 'desc' ? valB - valA : valA - valB;
+    });
+    return arr;
+
+  }, [data.characters, data.players, activeHabFilter, filters, data.teamsReference, activeHabSort]);
 
   const charactersData = useMemo(() => {
     return data.characters.filter(c => {
@@ -1518,6 +1604,70 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                             )}
                         </div>
                     </div>
+
+                    
+                    {activeHabFilter !== 'All' && activeHabStats.length > 0 && (
+                        <div className="bg-black/40 rounded-3xl p-6 border border-white/5 mb-8 overflow-hidden">
+                             <h3 className="text-white font-black text-xl uppercase tracking-widest italic mb-6 flex items-center gap-3">
+                                 <Activity size={24} className="text-yellow-500" />
+                                 Desempenho com {activeHabFilter}
+                             </h3>
+                             <div className="overflow-x-auto">
+                                 <table className="w-full text-left border-collapse min-w-[600px]">
+                                     <thead>
+                                         <tr className="border-b border-white/10">
+                                             <th className="pb-3 text-xs font-bold text-gray-500 uppercase tracking-widest pl-4 cursor-pointer hover:text-white transition-colors" onClick={() => handleHabSort('name')}>
+                                                 <div className="flex items-center gap-1">Jogador {activeHabSort.field === 'name' && (activeHabSort.direction === 'desc' ? <ChevronDown size={12} /> : <ChevronUp size={12} />)}</div>
+                                             </th>
+                                             <th className="pb-3 text-xs font-bold text-gray-500 uppercase tracking-widest text-center cursor-pointer hover:text-white transition-colors" onClick={() => handleHabSort('matches')}>
+                                                 <div className="flex items-center justify-center gap-1">Quedas {activeHabSort.field === 'matches' && (activeHabSort.direction === 'desc' ? <ChevronDown size={12} /> : <ChevronUp size={12} />)}</div>
+                                             </th>
+                                             <th className="pb-3 text-xs font-bold text-gray-500 uppercase tracking-widest text-center text-yellow-500 cursor-pointer hover:text-yellow-400 transition-colors" onClick={() => handleHabSort('kills')}>
+                                                 <div className="flex items-center justify-center gap-1">Abates {activeHabSort.field === 'kills' && (activeHabSort.direction === 'desc' ? <ChevronDown size={12} /> : <ChevronUp size={12} />)}</div>
+                                             </th>
+                                             <th className="pb-3 text-xs font-bold text-gray-500 uppercase tracking-widest text-center text-red-500 cursor-pointer hover:text-red-400 transition-colors" onClick={() => handleHabSort('dmg')}>
+                                                 <div className="flex items-center justify-center gap-1">Dano {activeHabSort.field === 'dmg' && (activeHabSort.direction === 'desc' ? <ChevronDown size={12} /> : <ChevronUp size={12} />)}</div>
+                                             </th>
+                                             <th className="pb-3 text-xs font-bold text-gray-500 uppercase tracking-widest text-center text-blue-500 cursor-pointer hover:text-blue-400 transition-colors" onClick={() => handleHabSort('knocks')}>
+                                                 <div className="flex items-center justify-center gap-1">Deitados {activeHabSort.field === 'knocks' && (activeHabSort.direction === 'desc' ? <ChevronDown size={12} /> : <ChevronUp size={12} />)}</div>
+                                             </th>
+                                         </tr>
+                                     </thead>
+                                     <tbody>
+                                         {activeHabStats.map((stat, idx) => (
+                                             <tr key={stat.name} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                                                 <td className="py-4 pl-4">
+                                                     <div className="flex items-center gap-3">
+                                                         <span className="text-gray-500 font-black text-sm w-6 text-right">#{idx+1}</span>
+                                                         <div className="w-10 h-10 rounded-full bg-gray-800 overflow-hidden flex items-center justify-center border border-yellow-500/30 shrink-0">
+                                                             {stat.img ? <img src={stat.img} className="w-full h-full object-cover"/> : <User size={20} className="text-gray-500"/>}
+                                                         </div>
+                                                         <div>
+                                                             <div className="text-white font-black text-sm uppercase">{stat.name}</div>
+                                                             <div className="text-gray-500 text-[10px] font-bold uppercase">{stat.team}</div>
+                                                         </div>
+                                                     </div>
+                                                 </td>
+                                                 <td className="py-4 text-center text-gray-400 font-bold">{stat.matches}</td>
+                                                 <td className="py-4 text-center">
+                                                     <div className="text-white font-black text-xl">{stat.kills}</div>
+                                                     <div className="text-[10px] text-gray-500 font-mono mt-1">Média: {(stat.kills / (stat.matches || 1)).toFixed(2)}</div>
+                                                 </td>
+                                                 <td className="py-4 text-center">
+                                                     <div className="text-white font-black text-xl">{stat.dmg}</div>
+                                                     <div className="text-[10px] text-gray-500 font-mono mt-1">Média: {(stat.dmg / (stat.matches || 1)).toFixed(0)}</div>
+                                                 </td>
+                                                 <td className="py-4 text-center">
+                                                     <div className="text-white font-black text-xl">{stat.knocks}</div>
+                                                     <div className="text-[10px] text-gray-500 font-mono mt-1">Média: {(stat.knocks / (stat.matches || 1)).toFixed(2)}</div>
+                                                 </td>
+                                             </tr>
+                                         ))}
+                                     </tbody>
+                                 </table>
+                             </div>
+                        </div>
+                    )}
 
                     <div className="space-y-4">
                         {charactersData.length > 0 ? charactersData.map((char, idx) => (
