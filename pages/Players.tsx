@@ -31,7 +31,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
   const [activeRole, setActiveRole] = useState<string>('');
   const [roleSort, setRoleSort] = useState<{ field: string, direction: 'asc' | 'desc' }>({ field: 'kills', direction: 'desc' });
   const [rankingSort, setRankingSort] = useState<{ field: string, direction: 'asc' | 'desc' }>({ field: 'kills', direction: 'desc' });
-  const [comparePlayers, setComparePlayers] = useState<{p1: string, p2: string}>({p1: '', p2: ''});
+  const [comparePlayers, setComparePlayers] = useState<{p1: string, p1Hab: string, p2: string, p2Hab: string}>({p1: '', p1Hab: 'All', p2: '', p2Hab: 'All'});
   const [activeHabFilter, setActiveHabFilter] = useState<string>('All');
   const [activeHabSort, setActiveHabSort] = useState<{field: string, direction: 'asc'|'desc'}>({ field: 'kills', direction: 'desc' });
 
@@ -589,10 +589,90 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
 
   const compareData = useMemo(() => {
     if (activeTab !== 'compare') return { p1: null, p2: null };
-    const p1 = rankingData.find(r => normalize(r.name) === normalize(comparePlayers.p1));
-    const p2 = rankingData.find(r => normalize(r.name) === normalize(comparePlayers.p2));
+    
+    const getStats = (pName: string, habFilter: string) => {
+        if (!pName) return null;
+        
+        let validMatchKeys = new Set<string>();
+        if (habFilter !== 'All') {
+            data.characters.forEach(c => {
+                if (normalize(c.Player) === normalize(pName) && normalize(c.Hab1) === normalize(habFilter)) {
+                    validMatchKeys.add(`${normalize(pName)}|${normalize(c.Rd)}|${normalize(c.Q)}`);
+                }
+            });
+        }
+        
+        const stats = {
+            name: pName,
+            team: '',
+            kills: 0,
+            damage: 0,
+            hs: 0,
+            knocks: 0,
+            assists: 0,
+            gelos: 0,
+            gelosDestruidos: 0,
+            reviveu: 0,
+            aliadosRevividos: 0,
+            mvp: 0,
+            matches: 0,
+            zeroKills: 0,
+            withKills: 0,
+        };
+        
+        const filtered = data.players.filter(p => {
+             if (normalize(p.PLAYER) !== normalize(pName)) return false;
+             if (habFilter !== 'All') {
+                 const key = `${normalize(pName)}|${normalize(p.RD)}|${normalize(p.Q)}`;
+                 if (!validMatchKeys.has(key)) return false;
+             }
+             if (filters.team.length > 0 && !filters.team.includes(p.TIME)) return false;
+             if (filters.map.length > 0 && !filters.map.some(m => normalize(m) === normalize(p.MAPA))) return false;
+             const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => normalize(r) === normalize(p.RD));
+             const matchQ = filters.queda.length === 0 || filters.queda.some(q => normalize(q) === normalize(p.Q));
+             return matchRD && matchQ;
+        });
+        
+        if (filtered.length === 0 && habFilter !== 'All') return null;
+        
+        filtered.forEach(p => {
+            stats.team = p.TIME;
+            stats.matches++;
+            stats.kills += parseNumber(p.Abates);
+            stats.damage += parseNumber(p.Dano);
+            stats.hs += parseNumber(p.HS);
+            stats.knocks += parseNumber(p.Deitados);
+            stats.assists += parseNumber(p.Assistencias);
+            stats.gelos += parseNumber(p.Gelos);
+            stats.gelosDestruidos += parseNumber(p.GelosDestruidos);
+            stats.reviveu += parseNumber(p.Reviveu);
+            stats.aliadosRevividos += parseNumber(p.AliadosRevividos);
+            stats.mvp += parseNumber(p.MVP);
+        });
+        
+        // Use rankingData fallback if habFilter is 'All' so we get exactly the same baseline as before for global
+        if (habFilter === 'All' && stats.matches === 0) {
+            const rankP = rankingData.find(r => normalize(r.name) === normalize(pName));
+            if (rankP) return rankP;
+        }
+        
+        const playerDim = data.playersDimension.find(d => normalize(d.Name) === normalize(pName));
+        const teamDim = data.teamsReference.find(t => normalize(t.TIME) === normalize(stats.team));
+
+        return {
+            ...stats,
+            avg: stats.matches > 0 ? (stats.kills / stats.matches).toFixed(2) : '0.00',
+            avgDmg: stats.matches > 0 ? (stats.damage / stats.matches).toFixed(0) : '0',
+            playerImg: playerDim?.IMG,
+            teamImg: teamDim?.IMG
+        };
+    };
+
+    const p1 = getStats(comparePlayers.p1, comparePlayers.p1Hab);
+    const p2 = getStats(comparePlayers.p2, comparePlayers.p2Hab);
+    
     return { p1, p2 };
-  }, [rankingData, comparePlayers, activeTab]);
+  }, [rankingData, data.players, data.characters, data.playersDimension, data.teamsReference, comparePlayers, activeTab, filters]);
 
   return (
     <div className="space-y-6">
@@ -897,12 +977,20 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                           <select 
                               value={comparePlayers.p1} 
                               onChange={(e) => setComparePlayers(prev => ({...prev, p1: e.target.value}))}
-                              className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-white font-bold focus:border-yellow-500 outline-none transition-all"
+                              className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-white font-bold focus:border-yellow-500 outline-none transition-all mb-4"
                           >
                               <option value="">Selecione um jogador...</option>
                               {allPlayersList.map(p => (
                                   <option key={p.name} value={p.name}>{p.name}</option>
                               ))}
+                          </select>
+                          <select 
+                              value={comparePlayers.p1Hab} 
+                              onChange={(e) => setComparePlayers(prev => ({...prev, p1Hab: e.target.value}))}
+                              className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-white font-bold focus:border-yellow-500 outline-none transition-all text-sm"
+                          >
+                              <option value="All">Com Qualquer Habilidade</option>
+                              {filterOptions.activeHabs.map(h => <option key={h} value={h}>Com {h}</option>)}
                           </select>
                           {compareData.p1 && (
                               <div className="mt-8 flex flex-col items-center">
@@ -916,7 +1004,8 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                                       )}
                                   </div>
                                   <h4 className="text-xl font-black text-white uppercase italic tracking-tighter">{compareData.p1.name}</h4>
-                                  <span className="text-xs font-black text-gray-500 uppercase tracking-widest">{compareData.p1.team}</span>
+                                  {comparePlayers.p1Hab !== 'All' && <span className="text-[10px] bg-yellow-500/20 text-yellow-500 px-3 py-1 rounded-full font-black uppercase tracking-widest mt-1 border border-yellow-500/30">Com {comparePlayers.p1Hab}</span>}
+                                  <span className="text-xs font-black text-gray-500 uppercase tracking-widest mt-2">{compareData.p1.team}</span>
                               </div>
                           )}
                       </div>
@@ -927,12 +1016,20 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                           <select 
                               value={comparePlayers.p2} 
                               onChange={(e) => setComparePlayers(prev => ({...prev, p2: e.target.value}))}
-                              className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-white font-bold focus:border-yellow-500 outline-none transition-all"
+                              className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-white font-bold focus:border-yellow-500 outline-none transition-all mb-4"
                           >
                               <option value="">Selecione um jogador...</option>
                               {allPlayersList.map(p => (
                                   <option key={p.name} value={p.name}>{p.name}</option>
                               ))}
+                          </select>
+                          <select 
+                              value={comparePlayers.p2Hab} 
+                              onChange={(e) => setComparePlayers(prev => ({...prev, p2Hab: e.target.value}))}
+                              className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-white font-bold focus:border-blue-500 outline-none transition-all text-sm"
+                          >
+                              <option value="All">Com Qualquer Habilidade</option>
+                              {filterOptions.activeHabs.map(h => <option key={h} value={h}>Com {h}</option>)}
                           </select>
                           {compareData.p2 && (
                               <div className="mt-8 flex flex-col items-center">
@@ -946,7 +1043,8 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                                       )}
                                   </div>
                                   <h4 className="text-xl font-black text-white uppercase italic tracking-tighter">{compareData.p2.name}</h4>
-                                  <span className="text-xs font-black text-gray-500 uppercase tracking-widest">{compareData.p2.team}</span>
+                                  {comparePlayers.p2Hab !== 'All' && <span className="text-[10px] bg-blue-500/20 text-blue-500 px-3 py-1 rounded-full font-black uppercase tracking-widest mt-1 border border-blue-500/30">Com {comparePlayers.p2Hab}</span>}
+                                  <span className="text-xs font-black text-gray-500 uppercase tracking-widest mt-2">{compareData.p2.team}</span>
                               </div>
                           )}
                       </div>
