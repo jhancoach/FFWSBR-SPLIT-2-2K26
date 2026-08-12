@@ -9,14 +9,4 @@ export const auth = getAuth(app);
 
 export const isFirebasePlaceholder = !firebaseConfig.projectId || firebaseConfig.projectId.includes('remixed');
 
-// Test Connection
-import { doc, getDoc } from 'firebase/firestore';
-async function testConnection() {
-  if (isFirebasePlaceholder) return;
-  try {
-    await getDoc(doc(db, 'test', 'connection'));
-  } catch (_error) {
-    // Gracefully ignore offline/unavailable connection warnings during initial load
-  }
-}
-testConnection();
+
