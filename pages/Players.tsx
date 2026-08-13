@@ -3,7 +3,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { DashboardData, PlayerData, CharacterData } from '../types';
 import { Trophy, Crown, User, Swords, Zap, BarChart2, Scale, Map as MapIcon, Skull, ChevronRight, ChevronDown, ChevronUp, Sparkles, X, Activity, Info, Crosshair, Shield, ArrowLeft, Disc, Flame, Target, AlertCircle, LayoutGrid, MapPin, Hash, Target as TargetIcon, CheckCircle2, AlertTriangle, Search, Star } from 'lucide-react';
-import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, LabelList, Cell, YAxis, CartesianGrid } from 'recharts';
+import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, LabelList, Cell, YAxis, CartesianGrid, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts';
 import FilterBar from '../components/FilterBar';
 import { findTeamLogo } from '../utils/teamUtils';
 import { findDimImg } from '../utils/skillImages';
@@ -235,8 +235,17 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
     });
 
     const teamKillsMap = new Map<string, number>();
+    const teamDamageMap = new Map<string, number>();
+    const teamHsMap = new Map<string, number>();
+    const teamKnocksMap = new Map<string, number>();
+    const teamAssistsMap = new Map<string, number>();
+
     statsMap.forEach(stat => {
         teamKillsMap.set(stat.team, (teamKillsMap.get(stat.team) || 0) + stat.kills);
+        teamDamageMap.set(stat.team, (teamDamageMap.get(stat.team) || 0) + stat.damage);
+        teamHsMap.set(stat.team, (teamHsMap.get(stat.team) || 0) + stat.hs);
+        teamKnocksMap.set(stat.team, (teamKnocksMap.get(stat.team) || 0) + stat.knocks);
+        teamAssistsMap.set(stat.team, (teamAssistsMap.get(stat.team) || 0) + stat.assists);
     });
 
     return Array.from(statsMap.entries()).map(([name, stat]) => {
@@ -257,6 +266,10 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
         });
 
         const teamTotalKills = teamKillsMap.get(stat.team) || 0;
+        const teamTotalDamage = teamDamageMap.get(stat.team) || 0;
+        const teamTotalHS = teamHsMap.get(stat.team) || 0;
+        const teamTotalKnocks = teamKnocksMap.get(stat.team) || 0;
+        const teamTotalAssists = teamAssistsMap.get(stat.team) || 0;
         const killContributionPct = teamTotalKills > 0 ? ((stat.kills / teamTotalKills) * 100).toFixed(1) : '0.0';
 
         return {
@@ -287,6 +300,14 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             avgKnocks: stat.matches > 0 ? (stat.knocks / stat.matches).toFixed(2) : '0.00',
             killContributionPct,
             teamTotalKills,
+            teamTotalDamage,
+            teamTotalHS,
+            teamTotalKnocks,
+            teamTotalAssists,
+            teamTotalDamage,
+            teamTotalHS,
+            teamTotalKnocks,
+            teamTotalAssists,
             safeKills,
             totalSafeKills,
             mapKills,
@@ -1107,6 +1128,13 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
 
                   {compareData.p1 && compareData.p2 && (
                       <div className="space-y-8">
+                          {/* Radar Competitivo Duelo */}
+                          <PlayerRadarComponent 
+                            p1Stats={compareData.p1} 
+                            p2Stats={compareData.p2} 
+                            p1Name={compareData.p1.name} 
+                            p2Name={compareData.p2.name} 
+                          />
                           {/* Estatísticas Gerais */}
                           <div className="bg-[#1a1a1a] rounded-3xl border border-gray-800 overflow-hidden shadow-2xl">
                               <div className="bg-black/40 px-8 py-6 border-b border-white/5 text-center">
@@ -1932,6 +1960,424 @@ const PremiumLoadoutCard = ({ title, name, img, highlight }: any) => {
   );
 };
 
+
+// Componente de Gráfico Radar de Atributos Competitivos (Hexágono X-Ray)
+const PlayerRadarComponent: React.FC<{
+  p1Stats: any;
+  p2Stats?: any;
+  p1Name: string;
+  p2Name?: string;
+  title?: string;
+}> = ({ p1Stats, p2Stats, p1Name, p2Name, title }) => {
+  const [showExplanation, setShowExplanation] = useState(false);
+
+  const calcScore = (stats: any) => {
+    if (!stats) return { scoreKills: 0, scoreDmg: 0, scoreHs: 0, scoreKnocks: 0, scoreAssists: 0, scoreKP: 0, raw: {} };
+
+    const matches = parseNumber(stats.matches) || 1;
+    const kills = parseNumber(stats.kills);
+    const damage = parseNumber(stats.damage);
+    const hs = parseNumber(stats.hs);
+    const knocks = parseNumber(stats.knocks);
+    const assists = parseNumber(stats.assists);
+    
+    // Totais acumulados da equipe (soma de todos os companheiros)
+    const teamTotalKills = (stats.teamTotalKills !== undefined && stats.teamTotalKills !== null && parseNumber(stats.teamTotalKills) > 0) 
+      ? parseNumber(stats.teamTotalKills) : (kills || 1);
+    const teamTotalDamage = (stats.teamTotalDamage !== undefined && stats.teamTotalDamage !== null && parseNumber(stats.teamTotalDamage) > 0) 
+      ? parseNumber(stats.teamTotalDamage) : (damage || 1);
+    const teamTotalHS = (stats.teamTotalHS !== undefined && stats.teamTotalHS !== null && parseNumber(stats.teamTotalHS) > 0) 
+      ? parseNumber(stats.teamTotalHS) : (hs || 1);
+    const teamTotalKnocks = (stats.teamTotalKnocks !== undefined && stats.teamTotalKnocks !== null && parseNumber(stats.teamTotalKnocks) > 0) 
+      ? parseNumber(stats.teamTotalKnocks) : (knocks || 1);
+    const teamTotalAssists = (stats.teamTotalAssists !== undefined && stats.teamTotalAssists !== null && parseNumber(stats.teamTotalAssists) > 0) 
+      ? parseNumber(stats.teamTotalAssists) : (assists || 1);
+
+    // Porcentagem de participação do jogador no total da equipe
+    const pctKills = teamTotalKills > 0 ? (kills / teamTotalKills) * 100 : 0;
+    const pctDmg = teamTotalDamage > 0 ? (damage / teamTotalDamage) * 100 : 0;
+    const pctHs = teamTotalHS > 0 ? (hs / teamTotalHS) * 100 : 0;
+    const pctKnocks = teamTotalKnocks > 0 ? (knocks / teamTotalKnocks) * 100 : 0;
+    const pctAssists = teamTotalAssists > 0 ? (assists / teamTotalAssists) * 100 : 0;
+    const kpPct = teamTotalKills > 0 ? ((kills + assists) / teamTotalKills) * 100 : 0;
+
+    // Escala de radar (0 a 100 pts):
+    // Em uma equipe de 4 jogadores, a participação média igualitária é 25%.
+    // 25% de participação no time = 50 pts no radar (linha média).
+    // 50% de participação no time = 100 pts no radar (carregador absoluto).
+    const scoreKills = Math.min(100, Math.max(5, Math.round(pctKills * 2)));
+    const scoreDmg = Math.min(100, Math.max(5, Math.round(pctDmg * 2)));
+    const scoreHs = Math.min(100, Math.max(5, Math.round(pctHs * 2)));
+    const scoreKnocks = Math.min(100, Math.max(5, Math.round(pctKnocks * 2)));
+    const scoreAssists = Math.min(100, Math.max(5, Math.round(pctAssists * 2)));
+    const scoreKP = Math.min(100, Math.max(5, Math.round(kpPct)));
+
+    const fmtNum = (num: number) => num >= 1000 ? `${(num / 1000).toFixed(1)}k` : `${num}`;
+
+    return {
+      scoreKills,
+      scoreDmg,
+      scoreHs,
+      scoreKnocks,
+      scoreAssists,
+      scoreKP,
+      raw: {
+        avgKills: `${pctKills.toFixed(1)}% do Time (${kills}/${teamTotalKills})`,
+        avgDmg: `${pctDmg.toFixed(1)}% do Time (${fmtNum(damage)}/${fmtNum(teamTotalDamage)})`,
+        hsPct: `${pctHs.toFixed(1)}% do Time (${hs}/${teamTotalHS})`,
+        avgKnocks: `${pctKnocks.toFixed(1)}% do Time (${knocks}/${teamTotalKnocks})`,
+        avgAssists: `${pctAssists.toFixed(1)}% do Time (${assists}/${teamTotalAssists})`,
+        kpPct: `${kpPct.toFixed(1)}% KP (${kills + assists}/${teamTotalKills})`,
+      }
+    };
+  };
+
+  const p1 = calcScore(p1Stats);
+  const p2 = p2Stats ? calcScore(p2Stats) : null;
+
+  const subjects = [
+    { key: 'scoreKills', rawKey: 'avgKills', label: 'Abates (% do Time)' },
+    { key: 'scoreDmg', rawKey: 'avgDmg', label: 'Poder de Fogo (% Dano)' },
+    { key: 'scoreHs', rawKey: 'hsPct', label: 'Precisão (% HS Time)' },
+    { key: 'scoreKnocks', rawKey: 'avgKnocks', label: 'Impacto (% Deitados)' },
+    { key: 'scoreAssists', rawKey: 'avgAssists', label: 'Suporte (% Assist.)' },
+    { key: 'scoreKP', rawKey: 'kpPct', label: 'Participação (% KP)' },
+  ];
+
+  const radarData = subjects.map(s => {
+    const item: any = {
+      subject: s.label,
+      p1Score: p1[s.key as keyof typeof p1],
+      p1Raw: (p1.raw as any)[s.rawKey],
+      fullMark: 100,
+    };
+    if (p2) {
+      item.p2Score = p2[s.key as keyof typeof p2];
+      item.p2Raw = (p2.raw as any)[s.rawKey];
+    } else {
+      item.score = p1[s.key as keyof typeof p1];
+      item.raw = (p1.raw as any)[s.rawKey];
+    }
+    return item;
+  });
+
+  return (
+    <div className="bg-[#1a1a1a] rounded-3xl border border-gray-800 overflow-hidden shadow-2xl p-6">
+      <div className="bg-black/40 -mx-6 -mt-6 px-8 py-5 border-b border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-yellow-500/10 rounded-xl border border-yellow-500/20 text-yellow-500">
+            <TargetIcon size={18} />
+          </div>
+          <div>
+            <h3 className="text-sm font-black text-white uppercase tracking-[0.2em] italic">
+              {title || (p2Name ? 'Duelo de Atributos Competitivos (Hexágono X-Ray)' : 'Hexágono de Atributos do Jogador')}
+            </h3>
+            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
+              Atributos baseados na porcentagem (%) de contribuição individual sobre o TOTAL DA EQUIPE
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {p2Name && (
+            <div className="flex items-center gap-3 text-xs font-black uppercase tracking-wider bg-black/60 px-3 py-1.5 rounded-xl border border-white/5">
+              <span className="flex items-center gap-1.5 text-yellow-500">
+                <span className="w-2.5 h-2.5 rounded-full bg-yellow-500 inline-block shadow-[0_0_8px_rgba(234,179,8,0.8)]"></span>
+                {p1Name}
+              </span>
+              <span className="text-gray-600 text-[10px]">VS</span>
+              <span className="flex items-center gap-1.5 text-blue-400">
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block shadow-[0_0_8px_rgba(59,130,246,0.8)]"></span>
+                {p2Name}
+              </span>
+            </div>
+          )}
+
+          <button 
+            onClick={() => setShowExplanation(!showExplanation)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+              showExplanation 
+                ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20' 
+                : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 border border-white/5'
+            }`}
+          >
+            <Info size={13} />
+            {showExplanation ? 'Ocultar Guia' : 'Entender o Radar'}
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+        {/* Radar Visual */}
+        <div className="lg:col-span-7 h-[340px] w-full flex items-center justify-center">
+          <ResponsiveContainer width="100%" height="100%">
+            <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarData}>
+              <PolarGrid stroke="#334155" strokeDasharray="3 3" />
+              <PolarAngleAxis 
+                dataKey="subject" 
+                tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 'bold' }} 
+              />
+              <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fill: '#475569', fontSize: 8 }} />
+              
+              <Radar
+                name={p1Name}
+                dataKey={p2 ? "p1Score" : "score"}
+                stroke="#eab308"
+                fill="#eab308"
+                fillOpacity={0.4}
+                strokeWidth={2}
+              />
+
+              {p2 && (
+                <Radar
+                  name={p2Name}
+                  dataKey="p2Score"
+                  stroke="#3b82f6"
+                  fill="#3b82f6"
+                  fillOpacity={0.35}
+                  strokeWidth={2}
+                />
+              )}
+
+              <Tooltip 
+                content={({ active, payload }) => {
+                  if (active && payload && payload.length) {
+                    const data = payload[0].payload;
+                    return (
+                      <div className="bg-[#0e0e11] border border-gray-700 p-3 rounded-xl shadow-2xl text-xs space-y-2 z-50">
+                        <p className="font-black text-yellow-500 uppercase tracking-wider border-b border-white/10 pb-1">{data.subject}</p>
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="font-bold text-yellow-500">{p1Name}:</span>
+                            <span className="font-mono font-black text-white">
+                              {data.p1Score || data.score}/100 <span className="text-gray-400 font-normal">({data.p1Raw || data.raw})</span>
+                            </span>
+                          </div>
+                          {p2Name && (
+                            <div className="flex items-center justify-between gap-4">
+                              <span className="font-bold text-blue-400">{p2Name}:</span>
+                              <span className="font-mono font-black text-white">
+                                {data.p2Score}/100 <span className="text-gray-400 font-normal">({data.p2Raw})</span>
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
+                  return null;
+                }}
+              />
+            </RadarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Breakdown de métricas no radar */}
+        <div className="lg:col-span-5 space-y-2.5 bg-black/40 p-4 rounded-2xl border border-white/5">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+              Métricas Detalhadas do Radar
+            </span>
+            <button 
+              onClick={() => setShowExplanation(!showExplanation)}
+              className="text-[9px] text-yellow-500 hover:underline font-bold uppercase tracking-wider"
+            >
+              {showExplanation ? 'Fechar Guia' : 'Como é calculado?'}
+            </button>
+          </div>
+
+          {radarData.map((item, idx) => {
+            const v1 = item.p1Score || item.score;
+            const v2 = item.p2Score;
+            const p1Wins = v2 !== undefined && v1 > v2;
+            const p2Wins = v2 !== undefined && v2 > v1;
+
+            return (
+              <div key={idx} className="bg-black/60 p-2.5 rounded-xl border border-white/5 flex flex-col gap-1">
+                <div className="flex justify-between items-center text-[10px]">
+                  <span className="font-black text-gray-300 uppercase italic">{item.subject}</span>
+                  <div className="flex items-center gap-2 font-mono font-bold">
+                    <span className={p1Wins ? 'text-yellow-400 font-black' : 'text-gray-300'}>
+                      {v1} <span className="text-[9px] text-gray-500">({item.p1Raw || item.raw})</span>
+                    </span>
+                    {v2 !== undefined && (
+                      <>
+                        <span className="text-gray-600">vs</span>
+                        <span className={p2Wins ? 'text-blue-400 font-black' : 'text-gray-300'}>
+                          {v2} <span className="text-[9px] text-gray-500">({item.p2Raw})</span>
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="w-full h-1.5 bg-gray-900 rounded-full overflow-hidden flex">
+                  {v2 === undefined ? (
+                    <div 
+                      className="h-full bg-gradient-to-r from-yellow-600 to-yellow-400 rounded-full transition-all duration-700" 
+                      style={{ width: `${v1}%` }}
+                    ></div>
+                  ) : (
+                    <>
+                      <div 
+                        className={`h-full transition-all duration-700 ${p1Wins ? 'bg-yellow-500' : 'bg-yellow-500/50'}`} 
+                        style={{ width: `${(v1 / (v1 + v2 || 1)) * 100}%` }}
+                      ></div>
+                      <div 
+                        className={`h-full transition-all duration-700 ${p2Wins ? 'bg-blue-500' : 'bg-blue-500/50'}`} 
+                        style={{ width: `${(v2 / (v1 + v2 || 1)) * 100}%` }}
+                      ></div>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Painel Explicativo / Guia do Gráfico Radar */}
+      {showExplanation && (
+        <div className="mt-6 pt-6 border-t border-white/10 animate-in fade-in slide-in-from-top-4 duration-300 space-y-6 bg-black/50 -mx-6 -mb-6 p-6">
+          <div className="flex justify-between items-start">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-yellow-500/10 rounded-xl border border-yellow-500/20 text-yellow-500">
+                <Sparkles size={18} />
+              </div>
+              <div>
+                <h4 className="text-xs font-black text-white uppercase tracking-widest italic">
+                  Como Funciona o Gráfico Radar de Atributos (Hexágono X-Ray)?
+                </h4>
+                <p className="text-[10px] text-gray-400 font-medium">
+                  Guia de interpretação das 6 dimensões baseadas na participação (%) do atleta sobre o total da sua equipe.
+                </p>
+              </div>
+            </div>
+            <button 
+              onClick={() => setShowExplanation(false)}
+              className="text-gray-500 hover:text-white transition-colors"
+            >
+              <X size={16} />
+            </button>
+          </div>
+
+          {/* Grid de explicação dos 6 eixos */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="bg-[#121215] p-3.5 rounded-2xl border border-white/5 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-black text-yellow-500 uppercase italic flex items-center gap-1.5">
+                  <Flame size={13} className="text-red-500" /> Abates (% do Time)
+                </span>
+                <span className="text-[9px] font-mono font-bold text-gray-500">Média Squad = 25%</span>
+              </div>
+              <p className="text-[10px] text-gray-400">
+                Porcentagem de abates do jogador em relação à soma total de eliminações de todos os companheiros do seu time. Valores acima de 30% indicam protagonismo em frags.
+              </p>
+            </div>
+
+            <div className="bg-[#121215] p-3.5 rounded-2xl border border-white/5 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-black text-yellow-500 uppercase italic flex items-center gap-1.5">
+                  <Zap size={13} className="text-yellow-400" /> Poder de Fogo (% Dano)
+                </span>
+                <span className="text-[9px] font-mono font-bold text-gray-500">Média Squad = 25%</span>
+              </div>
+              <p className="text-[10px] text-gray-400">
+                Fatia do dano total gerado pela equipe. Mede o quanto da pressão de tiro e desgaste do adversário partiu dos disparos deste jogador.
+              </p>
+            </div>
+
+            <div className="bg-[#121215] p-3.5 rounded-2xl border border-white/5 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-black text-yellow-500 uppercase italic flex items-center gap-1.5">
+                  <Target size={13} className="text-orange-400" /> Precisão (% HS Time)
+                </span>
+                <span className="text-[9px] font-mono font-bold text-gray-500">Média Squad = 25%</span>
+              </div>
+              <p className="text-[10px] text-gray-400">
+                Porcentagem de tiros na cabeça fatais do time que foram efetuados por este jogador. Indica o responsável pelos HSs decisivos do squad.
+              </p>
+            </div>
+
+            <div className="bg-[#121215] p-3.5 rounded-2xl border border-white/5 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-black text-yellow-500 uppercase italic flex items-center gap-1.5">
+                  <Crosshair size={13} className="text-red-400" /> Impacto (% Deitados)
+                </span>
+                <span className="text-[9px] font-mono font-bold text-gray-500">Média Squad = 25%</span>
+              </div>
+              <p className="text-[10px] text-gray-400">
+                Participação do atleta nos knockdowns (deitados) da equipe. Mede a capacidade de derrubar inimigos e criar aberturas de avanço para o time.
+              </p>
+            </div>
+
+            <div className="bg-[#121215] p-3.5 rounded-2xl border border-white/5 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-black text-yellow-500 uppercase italic flex items-center gap-1.5">
+                  <Shield size={13} className="text-blue-400" /> Suporte (% Assist.)
+                </span>
+                <span className="text-[9px] font-mono font-bold text-gray-500">Média Squad = 25%</span>
+              </div>
+              <p className="text-[10px] text-gray-400">
+                Proporção de assistências do time fornecidas pelo atleta. Indica a contribuição do jogador ao enfraquecer oponentes para finalização dos colegas.
+              </p>
+            </div>
+
+            <div className="bg-[#121215] p-3.5 rounded-2xl border border-white/5 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-black text-yellow-500 uppercase italic flex items-center gap-1.5">
+                  <Activity size={13} className="text-emerald-400" /> Participação (% KP)
+                </span>
+                <span className="text-[9px] font-mono font-bold text-gray-500">Meta KP &gt; 50%</span>
+              </div>
+              <p className="text-[10px] text-gray-400">
+                Kill Participation Rate = (Abates + Assistências) / Total de Abates da Equipe. Mede a presença do jogador nas eliminações coletivas.
+              </p>
+            </div>
+          </div>
+
+          {/* Dicas de Interpretação das Formas do Hexágono */}
+          <div className="bg-black/60 p-4 rounded-2xl border border-white/5 space-y-2">
+            <span className="text-[10px] font-black text-yellow-500 uppercase tracking-widest block">
+              💡 Como Interpretar as Formas Geométricas do Radar
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-[10px]">
+              <div className="flex flex-col gap-0.5">
+                <span className="font-bold text-white uppercase flex items-center gap-1">
+                  🗡️ Rusher / Entry
+                </span>
+                <span className="text-gray-400">Área estendida para Abates, Dano e Deitados. Perfil extremamente agressivo de entrada.</span>
+              </div>
+
+              <div className="flex flex-col gap-0.5">
+                <span className="font-bold text-white uppercase flex items-center gap-1">
+                  🎯 Sniper / Atirador
+                </span>
+                <span className="text-gray-400">Pico acentuado em Precisão (HS) e Dano. Especialista em combates de média a longa distância.</span>
+              </div>
+
+              <div className="flex flex-col gap-0.5">
+                <span className="font-bold text-white uppercase flex items-center gap-1">
+                  🛡️ Suporte / Tático
+                </span>
+                <span className="text-gray-400">Pico em Suporte (Assistências) e Consistência. Jogadores que garantem estabilidade ao time.</span>
+              </div>
+
+              <div className="flex flex-col gap-0.5">
+                <span className="font-bold text-white uppercase flex items-center gap-1">
+                  ⭐ Jogador Completo
+                </span>
+                <span className="text-gray-400">Hexágono uniforme e amplo cobrindo quase toda a área. Atleta de elite versátil em todas as funções.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+
 const PlayerProfile = ({ data, playerName, filters, characters }: any) => {
     const normalize = (val: string | undefined) => (val || '').trim().toUpperCase();
     const cleanKey = (s: string) => s.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "").trim();
@@ -2020,6 +2466,10 @@ const PlayerProfile = ({ data, playerName, filters, characters }: any) => {
             return true;
         });
         const teamTotalKills = teamRecords.reduce((acc: number, r: PlayerData) => acc + parseNumber(r.Abates), 0);
+        const teamTotalDamage = teamRecords.reduce((acc: number, r: PlayerData) => acc + parseNumber(r.Dano), 0);
+        const teamTotalHS = teamRecords.reduce((acc: number, r: PlayerData) => acc + parseNumber(r.HS), 0);
+        const teamTotalKnocks = teamRecords.reduce((acc: number, r: PlayerData) => acc + parseNumber(r.Deitados), 0);
+        const teamTotalAssists = teamRecords.reduce((acc: number, r: PlayerData) => acc + parseNumber(r.Assistencias), 0);
         const killContributionPct = teamTotalKills > 0 ? ((totalKills / teamTotalKills) * 100).toFixed(1) : '0.0';
 
         const rawLoadout = characters.find((l: any) => normalize(l.Player) === normalize(playerName));
@@ -2162,6 +2612,12 @@ const PlayerProfile = ({ data, playerName, filters, characters }: any) => {
                     </span>
                 </div>
             </div>
+
+            <PlayerRadarComponent 
+                p1Stats={stats} 
+                p1Name={playerName} 
+                title={`GRÁFICO RADAR DE DESEMPENHO: ${playerName}`} 
+            />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="bg-[#0e0e11] p-6 rounded-3xl border border-gray-800 shadow-xl flex flex-col">
