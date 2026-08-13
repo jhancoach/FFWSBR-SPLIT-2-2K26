@@ -240,12 +240,24 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
     const teamKnocksMap = new Map<string, number>();
     const teamAssistsMap = new Map<string, number>();
 
-    statsMap.forEach(stat => {
-        teamKillsMap.set(stat.team, (teamKillsMap.get(stat.team) || 0) + stat.kills);
-        teamDamageMap.set(stat.team, (teamDamageMap.get(stat.team) || 0) + stat.damage);
-        teamHsMap.set(stat.team, (teamHsMap.get(stat.team) || 0) + stat.hs);
-        teamKnocksMap.set(stat.team, (teamKnocksMap.get(stat.team) || 0) + stat.knocks);
-        teamAssistsMap.set(stat.team, (teamAssistsMap.get(stat.team) || 0) + stat.assists);
+    data.players.forEach(p => {
+        if (!p.TIME) return;
+        if (filters.team.length > 0 && !filters.team.includes(p.TIME)) return;
+        if (filters.map.length > 0 && !filters.map.some(m => normalize(m) === normalize(p.MAPA))) return;
+        if (filters.grupo.length > 0) {
+            const teamGroup = teamGroupMap.get(normalize(p.TIME));
+            if (!teamGroup || !filters.grupo.some(g => normalize(g) === teamGroup)) return;
+        }
+        const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => normalize(r) === normalize(p.RD));
+        const matchQ = filters.queda.length === 0 || filters.queda.some(q => normalize(q) === normalize(p.Q));
+        if (!matchRD || !matchQ) return;
+
+        const t = p.TIME;
+        teamKillsMap.set(t, (teamKillsMap.get(t) || 0) + parseNumber(p.Abates));
+        teamDamageMap.set(t, (teamDamageMap.get(t) || 0) + parseNumber(p.Dano));
+        teamHsMap.set(t, (teamHsMap.get(t) || 0) + parseNumber(p.HS));
+        teamKnocksMap.set(t, (teamKnocksMap.get(t) || 0) + parseNumber(p.Deitados));
+        teamAssistsMap.set(t, (teamAssistsMap.get(t) || 0) + parseNumber(p.Assistencias));
     });
 
     return Array.from(statsMap.entries()).map(([name, stat]) => {
@@ -300,10 +312,6 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             avgKnocks: stat.matches > 0 ? (stat.knocks / stat.matches).toFixed(2) : '0.00',
             killContributionPct,
             teamTotalKills,
-            teamTotalDamage,
-            teamTotalHS,
-            teamTotalKnocks,
-            teamTotalAssists,
             teamTotalDamage,
             teamTotalHS,
             teamTotalKnocks,
@@ -731,6 +739,35 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             const rankP = rankingData.find(r => normalize(r.name) === normalize(pName));
             if (rankP) return rankP;
         }
+
+        // Totais acumulados da equipe em todas as partidas do filtro
+        const teamName = stats.team || data.players.find(p => normalize(p.PLAYER) === normalize(pName))?.TIME || '';
+        let teamTotalKills = 0;
+        let teamTotalDamage = 0;
+        let teamTotalHS = 0;
+        let teamTotalKnocks = 0;
+        let teamTotalAssists = 0;
+
+        if (teamName) {
+            const teamMatches = data.players.filter(p => {
+                if (normalize(p.TIME) !== normalize(teamName)) return false;
+                if (filters.map.length > 0 && !filters.map.some(m => normalize(m) === normalize(p.MAPA))) return false;
+                const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => normalize(r) === normalize(p.RD));
+                const matchQ = filters.queda.length === 0 || filters.queda.some(q => normalize(q) === normalize(p.Q));
+                if (!matchRD || !matchQ) return false;
+                if (habFilter !== 'All') {
+                    const pKey = `${normalize(pName)}|${normalize(p.RD)}|${normalize(p.Q)}`;
+                    if (!validMatchKeys.has(pKey)) return false;
+                }
+                return true;
+            });
+
+            teamTotalKills = teamMatches.reduce((acc, r) => acc + parseNumber(r.Abates), 0);
+            teamTotalDamage = teamMatches.reduce((acc, r) => acc + parseNumber(r.Dano), 0);
+            teamTotalHS = teamMatches.reduce((acc, r) => acc + parseNumber(r.HS), 0);
+            teamTotalKnocks = teamMatches.reduce((acc, r) => acc + parseNumber(r.Deitados), 0);
+            teamTotalAssists = teamMatches.reduce((acc, r) => acc + parseNumber(r.Assistencias), 0);
+        }
         
         const playerDim = data.playersDimension.find(d => normalize(d.Name) === normalize(pName));
         const teamDim = data.teamsReference.find(t => normalize(t.TIME) === normalize(stats.team));
@@ -739,6 +776,12 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             ...stats,
             avg: stats.matches > 0 ? (stats.kills / stats.matches).toFixed(2) : '0.00',
             avgDmg: stats.matches > 0 ? (stats.damage / stats.matches).toFixed(0) : '0',
+            teamTotalKills,
+            teamTotalDamage,
+            teamTotalHS,
+            teamTotalKnocks,
+            teamTotalAssists,
+            killContributionPct: teamTotalKills > 0 ? ((stats.kills / teamTotalKills) * 100).toFixed(1) : '0.0',
             playerImg: playerDim?.IMG,
             teamImg: teamDim?.IMG
         };
@@ -2510,6 +2553,10 @@ const PlayerProfile = ({ data, playerName, filters, characters }: any) => {
             avgDmg: totalMatches > 0 ? (totalDamage / totalMatches).toFixed(0) : '0',
             killContributionPct,
             teamTotalKills,
+            teamTotalDamage,
+            teamTotalHS,
+            teamTotalKnocks,
+            teamTotalAssists,
             loadout: currentLoadout, 
             safeKills, 
             mapKills, 
