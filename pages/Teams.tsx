@@ -50,6 +50,8 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
   const [expandedDropKey, setExpandedDropKey] = useState<string | null>(null);
   const [teamRoundsMapFilter, setTeamRoundsMapFilter] = useState<string>('ALL');
   const [expandAllLineups, setExpandAllLineups] = useState<boolean>(false);
+  const [selectedSafeLocation, setSelectedSafeLocation] = useState<{ mapName: string, local: string } | null>(null);
+  const [safeSortConfig, setSafeSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'pts', direction: 'desc' });
 
   const normalize = (val: string | undefined) => (val || '').trim().toUpperCase();
 
@@ -205,6 +207,7 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
     setSelectedPosition(null);
     setTeamRoundsMapFilter('ALL');
     setExpandAllLineups(false);
+    setSelectedSafeLocation(null);
     if (filters.team.length === 1 && activeTab !== 'comparison') {
       setActiveTab('gallery');
     }
@@ -597,6 +600,49 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
 
     return { analysis, totalsPerDrop };
   }, [data.details]);
+
+  // Ranking de Times por Fechamento de Safe
+  const safeRankingStats = useMemo(() => {
+    if (!selectedSafeLocation) return [];
+    
+    // Filtrar partidas que fecharam nesse mapa e nesse local
+    const safeMatches = data.details.filter(d => 
+        normalize(d.MAPA) === normalize(selectedSafeLocation.mapName) && 
+        normalize(d.ONDE_FECHOU) === normalize(selectedSafeLocation.local)
+    );
+
+    // Calcular estatísticas apenas para essas partidas
+    const stats = calculateTeamStats({ ...data, details: safeMatches });
+    
+    return stats.sort((a, b) => {
+        let valA = 0;
+        let valB = 0;
+        
+        switch (safeSortConfig.key) {
+            case 'pts': valA = a.pts; valB = b.pts; break;
+            case 'b': valA = a.b; valB = b.b; break;
+            case 'abts': valA = a.abts; valB = b.abts; break;
+            case 'ptsc': valA = a.ptsc; valB = b.ptsc; break;
+            case 's': valA = a.s; valB = b.s; break;
+            case 'mediaPts': valA = a.s > 0 ? a.pts / a.s : 0; valB = b.s > 0 ? b.pts / b.s : 0; break;
+            case 'mediaAbts': valA = a.s > 0 ? a.abts / a.s : 0; valB = b.s > 0 ? b.abts / b.s : 0; break;
+            case 'mediaPtsc': valA = a.s > 0 ? a.ptsc / a.s : 0; valB = b.s > 0 ? b.ptsc / b.s : 0; break;
+            default: valA = a.pts; valB = b.pts; break;
+        }
+
+        if (valA === valB) {
+            // Desempate
+            if (safeSortConfig.key !== 'pts' && safeSortConfig.key !== 'b') {
+                return b.pts - a.pts; // Se iguais, desempatar por pontos decrescente
+            }
+            if (safeSortConfig.key === 'pts') {
+                return b.b - a.b; // Se pontos iguais, desempatar por booyahs
+            }
+        }
+
+        return safeSortConfig.direction === 'desc' ? valB - valA : valA - valB;
+    });
+  }, [data, selectedSafeLocation, safeSortConfig]);
 
   // Análise de Fechamento de Safe (Onde Fechou)
   const safeAnalysisData = useMemo(() => {
@@ -1463,64 +1509,211 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
             </div>
         ) : activeTab === 'safeAnalysis' ? (
             <div className="space-y-8 animate-in fade-in duration-500">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {Object.entries(safeAnalysisData).map(([mapName, entry]) => {
-                        const data = entry as { totals: number, locals: Record<string, number> };
-                        const sortedLocals = Object.entries(data.locals).sort((a, b) => (b[1] as number) - (a[1] as number));
-                        
-                        return (
-                            <div key={mapName} className="bg-[#1a1a1a] rounded-3xl border border-gray-800 overflow-hidden shadow-xl flex flex-col">
-                                <div className="bg-gradient-to-r from-red-500/10 to-transparent p-5 border-b border-gray-800 flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 bg-red-500 text-white rounded-lg flex items-center justify-center">
-                                            <Target size={18} />
-                                        </div>
-                                        <h3 className="text-sm font-black text-white uppercase tracking-widest">{mapName}</h3>
-                                    </div>
-                                    <span className="text-[10px] text-gray-500 font-bold uppercase">{data.totals} FECHAMENTOS</span>
-                                </div>
-                                <div className="p-6 space-y-4 flex-grow">
-                                    {sortedLocals.map(([local, count]) => {
-                                        const percentage = data.totals > 0 ? (((count as number) / data.totals) * 100).toFixed(1) : "0.0";
-                                        return (
-                                            <div key={local} className="space-y-2">
-                                                <div className="flex justify-between items-end">
-                                                    <span className="text-xs font-black text-white uppercase italic">{local}</span>
-                                                    <div className="text-right">
-                                                        <span className="text-[10px] text-red-500 font-black">{percentage}%</span>
-                                                        <span className="text-[9px] text-gray-500 font-bold ml-2 uppercase">({count}x)</span>
-                                                    </div>
-                                                </div>
-                                                <div className="h-1.5 bg-black rounded-full overflow-hidden border border-white/5">
-                                                    <div 
-                                                        className="h-full bg-gradient-to-r from-red-600 to-red-400 rounded-full" 
-                                                        style={{ width: `${percentage}%` }}
-                                                    />
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                                <div className="p-4 bg-black/40 border-t border-gray-800/50">
-                                    <div className="flex items-center gap-2 text-[9px] font-black text-gray-400 uppercase tracking-widest">
-                                        <MapPin size={12} className="text-red-500" />
-                                        Hot Zone: 
-                                        <span className="text-white ml-auto italic">
-                                            {sortedLocals[0][0]}
-                                        </span>
-                                    </div>
+                {selectedSafeLocation ? (
+                    <div className="space-y-6">
+                        <div className="flex items-center justify-between bg-black/40 p-4 rounded-2xl border border-white/5">
+                            <div className="flex items-center gap-3">
+                                <button 
+                                    onClick={() => setSelectedSafeLocation(null)}
+                                    className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-all"
+                                >
+                                    <ArrowLeft size={16} />
+                                </button>
+                                <div>
+                                    <h3 className="text-white font-black text-lg uppercase italic tracking-widest flex items-center gap-2">
+                                        <MapPin size={20} className="text-yellow-500" /> {selectedSafeLocation.local}
+                                    </h3>
+                                    <p className="text-[10px] text-gray-500 font-bold uppercase">Mapa: {selectedSafeLocation.mapName}</p>
                                 </div>
                             </div>
-                        );
-                    })}
-                    {Object.keys(safeAnalysisData).length === 0 && (
-                        <div className="col-span-full py-20 text-center">
-                            <p className="text-gray-500 font-black uppercase tracking-widest italic animate-pulse">
-                                Nenhum dado de fechamento de safe encontrado...
-                            </p>
+                            <div className="text-[10px] text-yellow-500 font-black uppercase tracking-widest px-3 py-1 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
+                                Classificação neste fechamento
+                            </div>
                         </div>
-                    )}
-                </div>
+
+                        {safeRankingStats.length > 0 && (
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                                {[
+                                    { title: 'Top Pontos', stat: [...safeRankingStats].sort((a,b)=>b.pts-a.pts).slice(0,3), key: 'pts' },
+                                    { title: 'Top Abates', stat: [...safeRankingStats].sort((a,b)=>b.abts-a.abts).slice(0,3), key: 'abts' },
+                                    { title: 'Top Booyahs', stat: [...safeRankingStats].sort((a,b)=>b.b-a.b).slice(0,3), key: 'b' },
+                                    { title: 'Top Pts Colocação', stat: [...safeRankingStats].sort((a,b)=>b.ptsc-a.ptsc).slice(0,3), key: 'ptsc' },
+                                    { title: 'Mais Partidas', stat: [...safeRankingStats].sort((a,b)=>b.s-a.s).slice(0,3), key: 's' }
+                                ].map(topList => (
+                                    <div key={topList.title} className="bg-[#1a1a1a] rounded-2xl p-4 border border-gray-800 shadow-xl space-y-3">
+                                        <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5 pb-2">{topList.title}</h4>
+                                        <div className="space-y-2">
+                                            {topList.stat.map((t, i) => {
+                                                let val = t[topList.key as keyof typeof t];
+                                                if (topList.key === 'b' && val === 0) return null;
+                                                return (
+                                                    <div key={t.name} className="flex justify-between items-center text-xs">
+                                                        <span className="text-gray-300 font-bold truncate max-w-[80px]">{i+1}. {t.name}</span>
+                                                        <span className="text-yellow-500 font-black">{val}</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        <div className="bg-[#1a1a1a] rounded-3xl overflow-hidden border border-gray-800 shadow-xl overflow-x-auto">
+                            <table className="w-full text-left min-w-[1000px]">
+                                <thead className="bg-black/60 text-[10px] text-gray-500 uppercase tracking-widest font-black italic select-none">
+                                    <tr>
+                                        <th className="p-4 w-16 text-center">Pos</th>
+                                        <th className="p-4">Equipe</th>
+                                        {[
+                                            { key: 'pts', label: 'PTS' },
+                                            { key: 'b', label: 'BOOYAH' },
+                                            { key: 'abts', label: 'ABTS' },
+                                            { key: 'ptsc', label: 'PTSC' },
+                                            { key: 's', label: 'Partidas' },
+                                            { key: 'mediaPts', label: 'Média PTS' },
+                                            { key: 'mediaAbts', label: 'Média ABTS' },
+                                            { key: 'mediaPtsc', label: 'Média PTSC' }
+                                        ].map(col => (
+                                            <th 
+                                                key={col.key}
+                                                className="p-4 text-center cursor-pointer hover:bg-white/5 transition-colors group"
+                                                onClick={() => setSafeSortConfig(prev => ({ 
+                                                    key: col.key, 
+                                                    direction: prev.key === col.key && prev.direction === 'desc' ? 'asc' : 'desc' 
+                                                }))}
+                                            >
+                                                <div className="flex items-center justify-center gap-1">
+                                                    <span className={safeSortConfig.key === col.key ? 'text-yellow-500' : ''}>{col.label}</span>
+                                                    <ArrowDown 
+                                                        size={12} 
+                                                        className={`transition-all ${safeSortConfig.key === col.key ? 'text-yellow-500 opacity-100' : 'opacity-0 group-hover:opacity-50'} ${safeSortConfig.key === col.key && safeSortConfig.direction === 'asc' ? 'rotate-180' : ''}`}
+                                                    />
+                                                </div>
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5">
+                                    {safeRankingStats.map((team, idx) => {
+                                        const mediaPts = team.s > 0 ? (team.pts / team.s).toFixed(1) : "0.0";
+                                        const mediaAbts = team.s > 0 ? (team.abts / team.s).toFixed(1) : "0.0";
+                                        const mediaPtsc = team.s > 0 ? (team.ptsc / team.s).toFixed(1) : "0.0";
+                                        
+                                        return (
+                                            <tr key={team.name} className="hover:bg-white/5 transition-colors group">
+                                                <td className="p-4 text-center">
+                                                    <div className={`w-6 h-6 mx-auto rounded flex items-center justify-center text-[10px] font-black italic ${
+                                                        idx === 0 && safeSortConfig.key === 'pts' ? 'bg-yellow-500 text-black' :
+                                                        idx === 1 && safeSortConfig.key === 'pts' ? 'bg-gray-300 text-black' :
+                                                        idx === 2 && safeSortConfig.key === 'pts' ? 'bg-amber-600 text-white' :
+                                                        'bg-black text-gray-500 border border-white/10'
+                                                    }`}>
+                                                        {idx + 1}
+                                                    </div>
+                                                </td>
+                                                <td className="p-4">
+                                                    <div className="flex items-center gap-3">
+                                                        {team.image ? (
+                                                            <img src={team.image} alt={team.name} className="w-8 h-8 rounded-lg object-contain bg-black border border-white/5" />
+                                                        ) : (
+                                                            <div className="w-8 h-8 rounded-lg bg-black border border-white/5 flex items-center justify-center">
+                                                                <Shield size={14} className="text-gray-700" />
+                                                            </div>
+                                                        )}
+                                                        <span className="text-white font-black italic uppercase tracking-wider text-sm group-hover:text-yellow-500 transition-colors">
+                                                            {team.name}
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td className="p-4 text-center">
+                                                    <span className="text-yellow-500 font-black italic text-lg">{team.pts}</span>
+                                                </td>
+                                                <td className="p-4 text-center text-orange-400 font-bold">{team.b}</td>
+                                                <td className="p-4 text-center text-red-400 font-bold">{team.abts}</td>
+                                                <td className="p-4 text-center text-blue-400 font-bold">{team.ptsc}</td>
+                                                <td className="p-4 text-center text-gray-400 font-bold">{team.s}</td>
+                                                <td className="p-4 text-center text-yellow-500/80 font-bold">{mediaPts}</td>
+                                                <td className="p-4 text-center text-red-400/80 font-bold">{mediaAbts}</td>
+                                                <td className="p-4 text-center text-blue-400/80 font-bold">{mediaPtsc}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                    {safeRankingStats.length === 0 && (
+                                        <tr>
+                                            <td colSpan={10} className="p-8 text-center text-gray-500 font-bold uppercase tracking-widest italic">
+                                                Nenhum time pontuou nesta safe.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {Object.entries(safeAnalysisData).map(([mapName, entry]) => {
+                            const data = entry as { totals: number, locals: Record<string, number> };
+                            const sortedLocals = Object.entries(data.locals).sort((a, b) => (b[1] as number) - (a[1] as number));
+                            
+                            return (
+                                <div key={mapName} className="bg-[#1a1a1a] rounded-3xl border border-gray-800 overflow-hidden shadow-xl flex flex-col">
+                                    <div className="bg-gradient-to-r from-red-500/10 to-transparent p-5 border-b border-gray-800 flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 bg-red-500 text-white rounded-lg flex items-center justify-center">
+                                                <Target size={18} />
+                                            </div>
+                                            <h3 className="text-sm font-black text-white uppercase tracking-widest">{mapName}</h3>
+                                        </div>
+                                        <span className="text-[10px] text-gray-500 font-bold uppercase">{data.totals} FECHAMENTOS</span>
+                                    </div>
+                                    <div className="p-6 space-y-4 flex-grow">
+                                        {sortedLocals.map(([local, count]) => {
+                                            const percentage = data.totals > 0 ? (((count as number) / data.totals) * 100).toFixed(1) : "0.0";
+                                            return (
+                                                <div 
+                                                    key={local} 
+                                                    onClick={() => setSelectedSafeLocation({ mapName, local })}
+                                                    className="space-y-2 cursor-pointer group p-2 -mx-2 rounded-xl hover:bg-white/5 transition-all"
+                                                >
+                                                    <div className="flex justify-between items-end">
+                                                        <span className="text-xs font-black text-white uppercase italic group-hover:text-yellow-500 transition-colors">{local}</span>
+                                                        <div className="text-right flex items-center gap-2">
+                                                            <span className="text-[10px] text-red-500 font-black">{percentage}%</span>
+                                                            <span className="text-[9px] text-gray-500 font-bold uppercase">({count}x)</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="h-1.5 bg-black rounded-full overflow-hidden border border-white/5">
+                                                        <div 
+                                                            className="h-full bg-gradient-to-r from-red-600 to-red-400 rounded-full group-hover:from-yellow-600 group-hover:to-yellow-400 transition-colors" 
+                                                            style={{ width: `${percentage}%` }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="p-4 bg-black/40 border-t border-gray-800/50">
+                                        <div className="flex items-center gap-2 text-[9px] font-black text-gray-400 uppercase tracking-widest">
+                                            <MapPin size={12} className="text-red-500" />
+                                            Hot Zone: 
+                                            <span className="text-white ml-auto italic">
+                                                {sortedLocals[0][0]}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        {Object.keys(safeAnalysisData).length === 0 && (
+                            <div className="col-span-full py-20 text-center">
+                                <p className="text-gray-500 font-black uppercase tracking-widest italic animate-pulse">
+                                    Nenhum dado de fechamento de safe encontrado...
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         ) : activeTab === 'comparison' ? (
             <div className="space-y-8 animate-in fade-in duration-500">
