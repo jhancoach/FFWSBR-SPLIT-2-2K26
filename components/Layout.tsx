@@ -53,20 +53,20 @@ const Layout: React.FC<LayoutProps> = ({ children, onRefresh, loading, lastUpdat
       </div>
 
       {/* Navbar Temática */}
-      <nav className="glass sticky top-0 z-50 no-print">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-20 items-center gap-3">
+      <nav className="glass sticky top-0 z-50 no-print border-b border-white/10 backdrop-blur-md bg-black/60">
+        <div className="max-w-[1800px] w-full mx-auto px-3 sm:px-6 lg:px-8">
+          <div className="flex justify-between h-20 items-center gap-2 sm:gap-4">
             
             {/* Logo Dinâmica Oficial */}
             <div className="flex items-center gap-3 group cursor-pointer shrink-0" onClick={() => window.location.hash = '/'}>
               <div className="relative shrink-0">
                  <div className="absolute inset-0 bg-[#f97316] rounded-xl blur opacity-20 group-hover:opacity-40 transition-opacity duration-500"></div>
-                 <div className="relative bg-gradient-to-br from-[#2d0a31] to-black p-0.5 rounded-xl border border-[#f97316]/30 overflow-hidden w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center shadow-[0_0_15px_rgba(249,115,22,0.2)]">
+                 <div className="relative bg-gradient-to-br from-[#2d0a31] to-black p-0.5 rounded-xl border border-[#f97316]/30 overflow-hidden w-11 h-11 sm:w-13 sm:h-13 flex items-center justify-center shadow-[0_0_15px_rgba(249,115,22,0.2)]">
                     <img src={LOGO_URL} alt="FFWSBR 2026 Logo" className="w-full h-full object-contain scale-110" />
                  </div>
               </div>
               <div className="flex flex-col justify-center min-w-0">
-                <h1 className="text-lg sm:text-xl md:text-2xl font-black italic tracking-wider font-display leading-tight text-white drop-shadow-md uppercase whitespace-nowrap">
+                <h1 className="text-base sm:text-lg lg:text-xl font-black italic tracking-wider font-display leading-tight text-white drop-shadow-md uppercase whitespace-nowrap">
                   {config.titlePart1} <span className="text-[#facc15]">{config.titlePart2}</span>
                 </h1>
                 <div className="flex items-center gap-1.5 mt-0.5 whitespace-nowrap">
@@ -77,52 +77,56 @@ const Layout: React.FC<LayoutProps> = ({ children, onRefresh, loading, lastUpdat
             </div>
 
             {/* Desktop Nav */}
-            <div className="hidden md:flex items-center space-x-2 bg-black/50 p-1.5 rounded-xl border border-white/5 backdrop-blur-sm">
+            <div className="hidden lg:flex items-center gap-1 xl:gap-2 bg-black/60 p-1.5 rounded-2xl border border-white/10 backdrop-blur-md shadow-inner overflow-x-auto custom-scrollbar max-w-full">
               {navItems.map((item) => (
                 <NavLink
                   key={item.path}
                   to={item.path}
                   className={({ isActive }) =>
-                    `flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all duration-300 font-display uppercase tracking-wide ${
+                    `flex items-center gap-2 px-3.5 xl:px-4 py-2 xl:py-2.5 rounded-xl text-xs xl:text-sm font-black transition-all duration-200 font-display uppercase tracking-wider whitespace-nowrap shrink-0 ${
                       isActive
-                        ? 'bg-gradient-to-r from-[#f97316] to-[#facc15] text-black shadow-[0_0_20px_rgba(249,115,22,0.4)] scale-105'
+                        ? 'bg-gradient-to-r from-[#f97316] to-[#facc15] text-black shadow-lg shadow-orange-500/25 scale-[1.02]'
                         : 'text-gray-400 hover:text-white hover:bg-white/5'
                     }`
                   }
                 >
-                  {item.icon}
-                  {item.name}
+                  {React.cloneElement(item.icon, { size: 16 })}
+                  <span>{item.name}</span>
                 </NavLink>
               ))}
             </div>
 
             {/* Actions */}
-            <div className="flex items-center gap-4">
-              <div className="hidden xl:flex flex-col items-end mr-2">
-                  <span className="text-[9px] text-gray-500 uppercase tracking-wider font-bold">Live Status</span>
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+              <div className="hidden 2xl:flex flex-col items-end mr-1">
+                  <span className="text-[9px] text-gray-500 uppercase tracking-wider font-black">Live Status</span>
                   <span className="text-xs text-[#facc15] font-mono font-bold">{lastUpdated ? lastUpdated.toLocaleTimeString() : '--:--:--'}</span>
               </div>
 
               <div className="flex items-center bg-black/60 rounded-xl border border-white/10 p-1">
-                  <button onClick={handlePrint} title="Imprimir" className="p-2.5 text-gray-400 hover:text-[#facc15] hover:bg-white/5 rounded-lg transition-colors"><Printer size={18} /></button>
-                  <div className="w-px h-4 bg-white/10 mx-1"></div>
-                  <button onClick={handleExportCSV} title="Exportar CSV" className="p-2.5 text-gray-400 hover:text-[#facc15] hover:bg-white/5 rounded-lg transition-colors"><Download size={18} /></button>
-                  <div className="w-px h-4 bg-white/10 mx-1"></div>
-                  <NavLink to="/admin" title="Configurações" className={({ isActive }) => `p-2.5 rounded-lg transition-colors ${isActive ? 'text-[#facc15] bg-white/5' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><Settings size={18} /></NavLink>
+                  <button onClick={handlePrint} title="Imprimir" className="p-2 text-gray-400 hover:text-[#facc15] hover:bg-white/5 rounded-lg transition-colors"><Printer size={16} /></button>
+                  <div className="w-px h-4 bg-white/10 mx-0.5"></div>
+                  <button onClick={handleExportCSV} title="Exportar CSV" className="p-2 text-gray-400 hover:text-[#facc15] hover:bg-white/5 rounded-lg transition-colors"><Download size={16} /></button>
+                  <div className="w-px h-4 bg-white/10 mx-0.5"></div>
+                  <NavLink to="/admin" title="Configurações" className={({ isActive }) => `p-2 rounded-lg transition-colors ${isActive ? 'text-[#facc15] bg-white/5' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><Settings size={16} /></NavLink>
               </div>
 
               <button
                 onClick={onRefresh}
                 disabled={loading}
-                className={`flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#701a75] to-[#4b164c] hover:from-[#4b164c] hover:to-[#701a75] text-white rounded-xl font-bold text-sm transition-all shadow-[0_0_20px_rgba(112,26,117,0.3)] border border-white/10 ${loading ? 'opacity-70 cursor-not-allowed' : 'hover:scale-105 active:scale-95'}`}
+                className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 sm:py-2.5 bg-gradient-to-r from-[#701a75] to-[#4b164c] hover:from-[#4b164c] hover:to-[#701a75] text-white rounded-xl font-black text-xs sm:text-sm transition-all shadow-[0_0_20px_rgba(112,26,117,0.3)] border border-white/10 ${loading ? 'opacity-70 cursor-not-allowed' : 'hover:scale-105 active:scale-95'}`}
               >
-                <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+                <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
                 <span className="hidden sm:inline font-display uppercase tracking-wide">{loading ? '...' : 'Live'}</span>
               </button>
 
-              <div className="md:hidden">
-                <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="text-gray-300 hover:text-white p-2">
-                  {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+              <div className="lg:hidden">
+                <button 
+                  onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
+                  className="text-gray-300 hover:text-white p-2 rounded-xl bg-black/60 border border-white/10"
+                  aria-label="Abrir Menu"
+                >
+                  {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
                 </button>
               </div>
             </div>
@@ -131,23 +135,23 @@ const Layout: React.FC<LayoutProps> = ({ children, onRefresh, loading, lastUpdat
 
         {/* Mobile Menu */}
         {isMobileMenuOpen && (
-          <div className="md:hidden bg-[#0a050a] border-b border-[#f97316]/20 animate-in slide-in-from-top-2">
-            <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
+          <div className="lg:hidden bg-[#0e0712] border-b border-[#f97316]/20 animate-in slide-in-from-top-2">
+            <div className="px-4 pt-3 pb-4 space-y-1.5 max-w-md mx-auto">
               {navItems.map((item) => (
                 <NavLink
                   key={item.path}
                   to={item.path}
                   onClick={() => setIsMobileMenuOpen(false)}
                   className={({ isActive }) =>
-                    `flex items-center gap-3 block px-4 py-3 rounded-lg text-base font-bold font-display uppercase ${
+                    `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-black font-display uppercase tracking-wider transition-all ${
                       isActive
-                        ? 'bg-[#f97316]/10 text-[#facc15] border border-[#f97316]/30'
+                        ? 'bg-gradient-to-r from-[#f97316] to-[#facc15] text-black shadow-md font-black'
                         : 'text-gray-400 hover:bg-white/5 hover:text-white'
                     }`
                   }
                 >
-                  {item.icon}
-                  {item.name}
+                  {React.cloneElement(item.icon, { size: 18 })}
+                  <span>{item.name}</span>
                 </NavLink>
               ))}
             </div>
