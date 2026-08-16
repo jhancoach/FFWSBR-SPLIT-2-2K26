@@ -804,70 +804,67 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
   if (data.loading) return <div className="text-center py-20 animate-pulse text-yellow-500 font-bold uppercase italic tracking-widest">Processando Equipes...</div>;
 
   return (
-    <div className="space-y-8">
-        <div className="flex flex-col md:flex-row gap-4 justify-between items-center no-print">
-            <FilterBar filters={filters} setFilters={setFilters} options={filterOptions} />
-            
-            <div className="flex items-center gap-4">
-                {(!selectedTeamName || activeTab === 'comparison' || activeTab === 'teamRounds' || activeTab === 'positions') && (
-                    <div className="flex bg-black/40 p-1 rounded-xl border border-white/5">
-                        <button 
-                            onClick={() => setActiveTab('gallery')}
-                            className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === 'gallery' ? 'bg-yellow-500 text-black' : 'text-gray-500 hover:text-white'}`}
-                        >
-                            <LayoutGrid size={14} /> Galeria
-                        </button>
-                        <button 
-                            onClick={() => setActiveTab('positions')}
-                            className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === 'positions' ? 'bg-yellow-500 text-black' : 'text-gray-500 hover:text-white'}`}
-                        >
-                            <Trophy size={14} /> Posições (1º-12º)
-                        </button>
-                        <button 
-                            onClick={() => setActiveTab('mapRanking')}
-                            className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === 'mapRanking' ? 'bg-yellow-500 text-black' : 'text-gray-500 hover:text-white'}`}
-                        >
-                            <MapIcon size={14} /> Por Mapa
-                        </button>
-                        <button 
-                            onClick={() => setActiveTab('bottomRanking')}
-                            className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === 'bottomRanking' ? 'bg-yellow-500 text-black' : 'text-gray-500 hover:text-white'}`}
-                        >
-                            <TrendingDown size={14} /> Piores
-                        </button>
-                        <button 
-                            onClick={() => setActiveTab('mapAnalysis')}
-                            className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === 'mapAnalysis' ? 'bg-yellow-500 text-black' : 'text-gray-500 hover:text-white'}`}
-                        >
-                            <BarChart3 size={14} /> Análise Mapas
-                        </button>
-                        <button 
-                            onClick={() => setActiveTab('safeAnalysis')}
-                            className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === 'safeAnalysis' ? 'bg-yellow-500 text-black' : 'text-gray-500 hover:text-white'}`}
-                        >
-                            <MapPin size={14} /> Onde Fechou
-                        </button>
-                        <button 
-                            onClick={() => setActiveTab('comparison')}
-                            className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === 'comparison' ? 'bg-yellow-500 text-black' : 'text-gray-500 hover:text-white'}`}
-                        >
-                            <Scale size={14} /> Comparar
-                        </button>
-                        <button 
-                            onClick={() => setActiveTab('pointsTable')}
-                            className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === 'pointsTable' ? 'bg-yellow-500 text-black' : 'text-gray-500 hover:text-white'}`}
-                        >
-                            <ListOrdered size={14} /> Tabela de Pontos
-                        </button>
-                        <button 
-                            onClick={() => setActiveTab('teamRounds')}
-                            className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === 'teamRounds' ? 'bg-yellow-500 text-black' : 'text-gray-500 hover:text-white'}`}
-                        >
-                            <Calendar size={14} /> Rodadas por Time
-                        </button>
-                    </div>
-                )}
-                
+    <div className="space-y-6">
+        {/* Navigation Tabs Bar & Back Action */}
+        <div className="flex flex-col gap-4 no-print">
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-black/40 p-2 rounded-2xl border border-white/5">
+                <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto custom-scrollbar">
+                    <button 
+                        onClick={() => setActiveTab('gallery')}
+                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'gallery' && !selectedTeamName ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                    >
+                        <LayoutGrid size={15} /> Galeria
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('positions')}
+                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'positions' ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                    >
+                        <Trophy size={15} /> Posições (1º-12º)
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('mapRanking')}
+                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'mapRanking' ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                    >
+                        <MapIcon size={15} /> Por Mapa
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('bottomRanking')}
+                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'bottomRanking' ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                    >
+                        <TrendingDown size={15} /> Piores
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('mapAnalysis')}
+                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'mapAnalysis' ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                    >
+                        <BarChart3 size={15} /> Análise Mapas
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('safeAnalysis')}
+                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'safeAnalysis' ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                    >
+                        <MapPin size={15} /> Onde Fechou
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('comparison')}
+                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'comparison' ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                    >
+                        <Scale size={15} /> Comparar
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('pointsTable')}
+                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'pointsTable' ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                    >
+                        <ListOrdered size={15} /> Tabela de Pontos
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('teamRounds')}
+                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'teamRounds' ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                    >
+                        <Calendar size={15} /> Rodadas por Time
+                    </button>
+                </div>
+
                 {selectedTeamName && activeTab !== 'comparison' && activeTab !== 'teamRounds' && (
                     <button 
                         onClick={() => {
@@ -876,11 +873,16 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                             else if (selectedPosition !== null) setSelectedPosition(null);
                             else setFilters(prev => ({...prev, team: []}));
                         }}
-                        className="flex items-center gap-2 px-6 py-3 bg-white/5 hover:bg-white/10 text-yellow-500 rounded-xl transition-all text-xs font-black uppercase tracking-widest border border-white/5"
+                        className="flex items-center gap-2 px-5 py-2.5 bg-yellow-500/10 hover:bg-yellow-500 text-yellow-500 hover:text-black rounded-xl transition-all text-xs font-black uppercase tracking-wider border border-yellow-500/30 shrink-0"
                     >
                         <ArrowLeft size={16} /> {(selectedMap || selectedDrop || selectedPosition !== null) ? `Voltar ao Perfil` : `Voltar à Galeria`}
                     </button>
                 )}
+            </div>
+
+            {/* Filter Bar 100% Width */}
+            <div className="w-full">
+                <FilterBar filters={filters} setFilters={setFilters} options={filterOptions} />
             </div>
         </div>
 
