@@ -18,15 +18,17 @@ export const findDimImg = (dims: any[] = [], name: string = ''): string | undefi
 
   // 1. Direct match in dimension table
   if (Array.isArray(dims) && dims.length > 0) {
-    const directMatch = dims.find(d => d && d.Name && cleanKey(d.Name) === target);
+    const getItemName = (d: any) => d?.Name || d?.Safe || d?.Arma || d?.Mapa || d?.MAPA || '';
+
+    const directMatch = dims.find(d => d && getItemName(d) && cleanKey(getItemName(d)) === target);
     if (directMatch?.IMG && typeof directMatch.IMG === 'string' && directMatch.IMG.trim() !== '') {
       return directMatch.IMG.trim();
     }
 
     // 2. Partial / substring match in dimension table
     const partialMatch = dims.find(d => {
-      if (!d || !d.Name) return false;
-      const ck = cleanKey(d.Name);
+      if (!d) return false;
+      const ck = cleanKey(getItemName(d));
       return ck && (ck.includes(target) || target.includes(ck));
     });
     if (partialMatch?.IMG && typeof partialMatch.IMG === 'string' && partialMatch.IMG.trim() !== '') {

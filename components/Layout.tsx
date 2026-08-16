@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, Shield, Skull, RefreshCw, Menu, X, Printer, Download, Settings, Map, Calendar, Image as ImageIcon } from 'lucide-react';
+import { LayoutDashboard, Users, Shield, Skull, RefreshCw, Menu, X, Printer, Download, Settings, Map as MapIcon, Calendar, Image as ImageIcon } from 'lucide-react';
 import { CSV_URLS, LOGO_URL } from '../constants';
 import { AppConfig } from '../types';
 
@@ -22,7 +22,7 @@ const Layout: React.FC<LayoutProps> = ({ children, onRefresh, loading, lastUpdat
     { name: 'Jogadores', path: '/players', icon: <Users size={20} /> },
     { name: 'Times', path: '/teams', icon: <Shield size={20} /> },
     { name: 'Killfeed', path: '/killfeed', icon: <Skull size={20} /> },
-    { name: 'Estudos', path: '/estudos', icon: <Map size={20} /> },
+    { name: 'Estudos', path: '/estudos', icon: <MapIcon size={20} /> },
     { name: 'Banners', path: '/banners', icon: <ImageIcon size={20} /> },
   ];
 

@@ -3,10 +3,10 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { DashboardData, TeamStats, PlayerData, KillFeed, MatchDetails } from '../types';
 import { calculateTeamStats } from '../services/dataService';
-import { Shield, TrendingUp, Users, ArrowLeft, Target, Award, Crosshair, Map as MapIcon, BarChart3, Star, Disc, Activity, Layers, Zap, ListOrdered, Trophy, ChevronDown, Medal, CheckCircle2, Flame, TrendingDown, LayoutGrid, MapPin, Scale, ArrowUp, ArrowDown, Calendar } from 'lucide-react';
+import { Shield, TrendingUp, Users, ArrowLeft, Target, Award, Crosshair, Map as MapIcon, BarChart3, Star, Disc, Activity, Layers, Zap, ListOrdered, Trophy, ChevronDown, Medal, CheckCircle2, Flame, TrendingDown, LayoutGrid, MapPin, Scale, ArrowUp, ArrowDown, Calendar, User, Search, ArrowUpDown, BarChart2, Swords, AlertTriangle, Crown, Eye, EyeOff, Info } from 'lucide-react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, LabelList, PieChart, Pie, Cell, Legend, CartesianGrid, YAxis } from 'recharts';
 import FilterBar from '../components/FilterBar';
-import { formatTeamName } from '../utils/teamUtils';
+import { formatTeamName, findTeamLogo } from '../utils/teamUtils';
 import { DropCompositionViewer } from '../components/DropComposition';
 import { getTeamDropComposition, getTeamCharacterSummary, getTeamCharacters, getTeamMapSummaryDetail } from '../utils/characterUtils';
 import { findDimImg } from '../utils/skillImages';
@@ -16,6 +16,14 @@ interface TeamsProps {
 }
 
 const COLORS = ['#EAB308', '#F97316', '#EF4444', '#3B82F6', '#A855F7', '#10B981', '#6366F1', '#EC4899'];
+
+const MAPS_CONFIG = [
+  { id: 'BER', name: 'Bermuda', url: 'https://i.ibb.co/q34yct8f/BERMUDA-MAPA.png' },
+  { id: 'PUR', name: 'Purgatório', url: 'https://i.ibb.co/G4sGkqk1/image.png' },
+  { id: 'KAL', name: 'Kalahari', url: 'https://i.ibb.co/7t4mHjWy/image.png' },
+  { id: 'NT', name: 'Nova Terra', url: 'https://i.ibb.co/vC4pT91L/image.png' },
+  { id: 'SOL', name: 'Solara', url: 'https://i.ibb.co/sdQ8hqbM/image.png' }
+];
 
 const getTeamCharacteristic = (percentAbts: number, percentPos: number) => {
   const diff = Math.abs(percentAbts - percentPos);
@@ -43,7 +51,7 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
   const [selectedMap, setSelectedMap] = useState<string | null>(null);
   const [selectedDrop, setSelectedDrop] = useState<string | null>(null);
   const [selectedPosition, setSelectedPosition] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'gallery' | 'positions' | 'mapRanking' | 'bottomRanking' | 'mapAnalysis' | 'safeAnalysis' | 'comparison' | 'pointsTable' | 'teamRounds'>('gallery');
+  const [activeTab, setActiveTab] = useState<'gallery' | 'positions' | 'mapRanking' | 'bottomRanking' | 'mapAnalysis' | 'safeAnalysis' | 'comparison' | 'pointsTable' | 'teamRounds' | 'mapStats'>('gallery');
   const [positionTabFilter, setPositionTabFilter] = useState<number | 'ALL'>('ALL');
   const [positionSortConfig, setPositionSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'pos1', direction: 'desc' });
   const [expandedPositionTeam, setExpandedPositionTeam] = useState<string | null>(null);
@@ -55,6 +63,15 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
   const [expandAllLineups, setExpandAllLineups] = useState<boolean>(false);
   const [selectedSafeLocation, setSelectedSafeLocation] = useState<{ mapName: string, local: string } | null>(null);
   const [safeSortConfig, setSafeSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'pts', direction: 'desc' });
+  const [mapStatsSearch, setMapStatsSearch] = useState<string>('');
+  const [selectedMapFilter, setSelectedMapFilter] = useState<string>('ALL');
+  const [showAllTeamsMap, setShowAllTeamsMap] = useState<boolean>(false);
+  const [mapStatsSort, setMapStatsSort] = useState<{ field: 'totalKills' | 'avgKillsPerMatch' | 'totalMatches' | 'mapName'; direction: 'asc' | 'desc' }>({ field: 'totalKills', direction: 'desc' });
+  const [mapRoundViewMode, setMapRoundViewMode] = useState<'matrix' | 'cards'>('matrix');
+  const [teamProfileSubTab, setTeamProfileSubTab] = useState<'all' | 'zeradas' | 'rounds' | 'mapKills' | 'safes'>('all');
+  const [showTeamDetails, setShowTeamDetails] = useState<boolean>(true);
+  const [matrixViewMode, setMatrixViewMode] = useState<'both' | 'points' | 'kills'>('both');
+  const [expandedMatrixCell, setExpandedMatrixCell] = useState<{ rd: string; q: string } | null>(null);
 
   const normalize = (val: string | undefined) => (val || '').trim().toUpperCase();
 
@@ -397,6 +414,409 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
     return Object.entries(safeCounts).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
   }, [filteredData.killFeed, filteredData.players, selectedTeamName]);
 
+  // Estatísticas de Quedas Zeradas do Time (0 pts ou 0 kills)
+  const zeroStatsTeam = useMemo(() => {
+    if (!selectedTeamName) return null;
+
+    const parseNumber = (v: string | number | undefined) => {
+      if (typeof v === 'number') return isNaN(v) ? 0 : v;
+      if (!v) return 0;
+      const p = parseFloat(String(v).replace(',', '.'));
+      return isNaN(p) ? 0 : p;
+    };
+
+    const teamMatches = filteredData.details.filter(d => normalize(d.TIME) === normalize(selectedTeamName));
+    const totalMatches = teamMatches.length;
+
+    const zeroPointsAndKillsMatches: MatchDetails[] = [];
+    const zeroKillsOnlyMatches: MatchDetails[] = [];
+    const zeroPointsOnlyMatches: MatchDetails[] = [];
+
+    teamMatches.forEach(m => {
+      const pts = parseNumber(m.PTS);
+      const abts = parseNumber(m.ABTS);
+
+      if (pts === 0 && abts === 0) {
+        zeroPointsAndKillsMatches.push(m);
+      } else if (abts === 0) {
+        zeroKillsOnlyMatches.push(m);
+      } else if (pts === 0) {
+        zeroPointsOnlyMatches.push(m);
+      }
+    });
+
+    const totalZeradasAbsoluta = zeroPointsAndKillsMatches.length;
+    const totalZeroKills = zeroPointsAndKillsMatches.length + zeroKillsOnlyMatches.length;
+    const totalZeroPts = zeroPointsAndKillsMatches.length + zeroPointsOnlyMatches.length;
+
+    const allZeradasList = [...zeroPointsAndKillsMatches, ...zeroKillsOnlyMatches, ...zeroPointsOnlyMatches].sort((a, b) => {
+      const rdA = parseInt(a.RD.replace(/\D/g, '')) || 0;
+      const rdB = parseInt(b.RD.replace(/\D/g, '')) || 0;
+      if (rdA !== rdB) return rdA - rdB;
+      return (parseInt(a.Q) || 0) - (parseInt(b.Q) || 0);
+    });
+
+    const zeroByMap: Record<string, number> = {};
+    allZeradasList.forEach(m => {
+      const map = m.MAPA || 'N/A';
+      zeroByMap[map] = (zeroByMap[map] || 0) + 1;
+    });
+
+    const zeroByQ: Record<string, number> = {};
+    allZeradasList.forEach(m => {
+      const q = m.Q ? `Q${m.Q}` : 'N/A';
+      zeroByQ[q] = (zeroByQ[q] || 0) + 1;
+    });
+
+    return {
+      totalMatches,
+      totalZeradasAbsoluta,
+      totalZeroKills,
+      totalZeroPts,
+      pctZeradas: totalMatches > 0 ? ((totalZeroPts / totalMatches) * 100).toFixed(1) : '0.0',
+      zeroPointsAndKillsMatches,
+      zeroKillsOnlyMatches,
+      zeroPointsOnlyMatches,
+      allZeradasList,
+      zeroByMap,
+      zeroByQ
+    };
+  }, [filteredData.details, selectedTeamName]);
+
+  // Matriz de Pontos e Abates por Rodada e por Queda do Time
+  const teamRoundsAndDropsMatrix = useMemo(() => {
+    if (!selectedTeamName) return { rounds: [], dropsList: [], summary: { totalPts: 0, totalKills: 0, totalMatches: 0, avgPtsPerMatch: '0.00', avgKillsPerMatch: '0.00' } };
+
+    const parseNumber = (v: string | number | undefined) => {
+      if (typeof v === 'number') return isNaN(v) ? 0 : v;
+      if (!v) return 0;
+      const p = parseFloat(String(v).replace(',', '.'));
+      return isNaN(p) ? 0 : p;
+    };
+
+    const teamMatches = filteredData.details.filter(d => normalize(d.TIME) === normalize(selectedTeamName));
+
+    const roundsSet = new Set<string>();
+    const dropsSet = new Set<string>();
+
+    teamMatches.forEach(m => {
+      if (m.RD) roundsSet.add(m.RD.trim());
+      if (m.Q) dropsSet.add(m.Q.trim());
+    });
+
+    const sortedRounds = Array.from(roundsSet).sort((a, b) => {
+      const numA = parseInt(a.replace(/\D/g, '')) || 0;
+      const numB = parseInt(b.replace(/\D/g, '')) || 0;
+      if (numA !== numB) return numA - numB;
+      return a.localeCompare(b);
+    });
+
+    const sortedDrops = Array.from(dropsSet).sort((a, b) => {
+      const numA = parseInt(a.replace(/\D/g, '')) || 0;
+      const numB = parseInt(b.replace(/\D/g, '')) || 0;
+      return numA - numB;
+    });
+
+    const matrix: Record<string, Record<string, MatchDetails>> = {};
+    const roundTotals: Record<string, { totalPts: number; totalKills: number; totalPtsc: number; matchesCount: number; booyahs: number }> = {};
+
+    sortedRounds.forEach(rd => {
+      matrix[rd] = {};
+      roundTotals[rd] = { totalPts: 0, totalKills: 0, totalPtsc: 0, matchesCount: 0, booyahs: 0 };
+    });
+
+    let grandTotalPts = 0;
+    let grandTotalKills = 0;
+    let grandTotalMatches = teamMatches.length;
+
+    teamMatches.forEach(m => {
+      const rd = m.RD ? m.RD.trim() : '';
+      const q = m.Q ? m.Q.trim() : '';
+      if (!rd || !q) return;
+
+      if (!matrix[rd]) matrix[rd] = {};
+      matrix[rd][q] = m;
+
+      const pts = parseNumber(m.PTS);
+      const abts = parseNumber(m.ABTS);
+      const ptsc = parseNumber(m.PTSC);
+      const pos = parseNumber(m.POS);
+      const isBooyah = pos === 1 || parseNumber(m.B) > 0;
+
+      grandTotalPts += pts;
+      grandTotalKills += abts;
+
+      if (roundTotals[rd]) {
+        roundTotals[rd].totalPts += pts;
+        roundTotals[rd].totalKills += abts;
+        roundTotals[rd].totalPtsc += ptsc;
+        roundTotals[rd].matchesCount += 1;
+        if (isBooyah) roundTotals[rd].booyahs += 1;
+      }
+    });
+
+    const roundsList = sortedRounds.map(rd => ({
+      rd,
+      drops: matrix[rd] || {},
+      totals: roundTotals[rd] || { totalPts: 0, totalKills: 0, totalPtsc: 0, matchesCount: 0, booyahs: 0 },
+      avgPts: (roundTotals[rd]?.matchesCount || 0) > 0 ? (roundTotals[rd].totalPts / roundTotals[rd].matchesCount).toFixed(2) : '0.00',
+      avgKills: (roundTotals[rd]?.matchesCount || 0) > 0 ? (roundTotals[rd].totalKills / roundTotals[rd].matchesCount).toFixed(2) : '0.00'
+    }));
+
+    return {
+      rounds: roundsList,
+      dropsList: sortedDrops,
+      summary: {
+        totalPts: grandTotalPts,
+        totalKills: grandTotalKills,
+        totalMatches: grandTotalMatches,
+        avgPtsPerMatch: grandTotalMatches > 0 ? (grandTotalPts / grandTotalMatches).toFixed(2) : '0.00',
+        avgKillsPerMatch: grandTotalMatches > 0 ? (grandTotalKills / grandTotalMatches).toFixed(2) : '0.00'
+      }
+    };
+  }, [filteredData.details, selectedTeamName]);
+
+  // Análise de Melhores e Piores Desempenhos por Onde a Safe Fechou por Mapa
+  const safePerformanceByMapTeam = useMemo(() => {
+    if (!selectedTeamName) return [];
+
+    const parseNumber = (v: string | number | undefined) => {
+      if (typeof v === 'number') return isNaN(v) ? 0 : v;
+      if (!v) return 0;
+      const p = parseFloat(String(v).replace(',', '.'));
+      return isNaN(p) ? 0 : p;
+    };
+
+    const teamMatches = filteredData.details.filter(d => normalize(d.TIME) === normalize(selectedTeamName) && d.MAPA && d.ONDE_FECHOU);
+
+    const mapsMap = new Map<string, Map<string, {
+      localName: string;
+      mapName: string;
+      matches: MatchDetails[];
+      matchesCount: number;
+      totalPts: number;
+      totalPtsc: number;
+      totalKills: number;
+      booyahs: number;
+      sumPos: number;
+    }>>();
+
+    teamMatches.forEach(m => {
+      const map = m.MAPA ? m.MAPA.trim() : 'N/A';
+      const local = m.ONDE_FECHOU ? m.ONDE_FECHOU.trim() : 'N/A';
+
+      if (!mapsMap.has(map)) {
+        mapsMap.set(map, new Map());
+      }
+      const mapLocals = mapsMap.get(map)!;
+
+      if (!mapLocals.has(local)) {
+        mapLocals.set(local, {
+          localName: local,
+          mapName: map,
+          matches: [],
+          matchesCount: 0,
+          totalPts: 0,
+          totalPtsc: 0,
+          totalKills: 0,
+          booyahs: 0,
+          sumPos: 0
+        });
+      }
+
+      const locObj = mapLocals.get(local)!;
+      const pts = parseNumber(m.PTS);
+      const abts = parseNumber(m.ABTS);
+      const ptsc = parseNumber(m.PTSC);
+      const pos = parseNumber(m.POS);
+      const isBooyah = pos === 1 || parseNumber(m.B) > 0;
+
+      locObj.matches.push(m);
+      locObj.matchesCount += 1;
+      locObj.totalPts += pts;
+      locObj.totalPtsc += ptsc;
+      locObj.totalKills += abts;
+      if (isBooyah) locObj.booyahs += 1;
+      if (pos > 0) locObj.sumPos += pos;
+    });
+
+    const result = Array.from(mapsMap.entries()).map(([mapName, localsMap]) => {
+      const localsList = Array.from(localsMap.values()).map(loc => {
+        const avgPts = loc.matchesCount > 0 ? loc.totalPts / loc.matchesCount : 0;
+        const avgKills = loc.matchesCount > 0 ? loc.totalKills / loc.matchesCount : 0;
+        const avgPos = loc.matchesCount > 0 ? loc.sumPos / loc.matchesCount : 12;
+
+        return {
+          ...loc,
+          avgPts: avgPts.toFixed(2),
+          avgPtsNum: avgPts,
+          avgKills: avgKills.toFixed(2),
+          avgKillsNum: avgKills,
+          avgPos: avgPos.toFixed(1),
+          avgPosNum: avgPos
+        };
+      });
+
+      const sortedByPerformance = [...localsList].sort((a, b) => {
+        if (b.avgPtsNum !== a.avgPtsNum) return b.avgPtsNum - a.avgPtsNum;
+        if (b.avgKillsNum !== a.avgKillsNum) return b.avgKillsNum - a.avgKillsNum;
+        return a.avgPosNum - b.avgPosNum;
+      });
+
+      const bestSafes = sortedByPerformance.slice(0, 3);
+      const sortedReverse = [...localsList].sort((a, b) => {
+        if (a.avgPtsNum !== b.avgPtsNum) return a.avgPtsNum - b.avgPtsNum;
+        if (a.avgKillsNum !== b.avgKillsNum) return a.avgKillsNum - b.avgKillsNum;
+        return b.avgPosNum - a.avgPosNum;
+      });
+      const worstSafes = sortedReverse.slice(0, 3);
+
+      return {
+        mapName,
+        allLocals: sortedByPerformance,
+        bestSafes,
+        worstSafes,
+        totalMatchesOnMap: localsList.reduce((acc, l) => acc + l.matchesCount, 0),
+        totalLocalsCount: localsList.length
+      };
+    }).sort((a, b) => a.mapName.localeCompare(b.mapName));
+
+    return result;
+  }, [filteredData.details, selectedTeamName]);
+
+  // Análise de Abates por Rodada de Cada Mapa e MVP da Equipe por Mapa
+  const teamMapKillsAndMvpData = useMemo(() => {
+    if (!selectedTeamName) return [];
+
+    const parseNumber = (v: string | number | undefined) => {
+      if (typeof v === 'number') return isNaN(v) ? 0 : v;
+      if (!v) return 0;
+      const p = parseFloat(String(v).replace(',', '.'));
+      return isNaN(p) ? 0 : p;
+    };
+
+    const normTeam = normalize(selectedTeamName);
+
+    // Partidas do time em fDetalhes
+    const teamMatches = filteredData.details.filter(d => normalize(d.TIME) === normTeam);
+
+    // Registros de jogadores do time em fJogadores
+    const teamPlayerRecords = filteredData.players.filter(p => normalize(p.TIME) === normTeam);
+
+    // Mapear mapas jogados pelo time
+    const mapsSet = new Set<string>();
+    teamMatches.forEach(m => { if (m.MAPA) mapsSet.add(m.MAPA.trim()); });
+    teamPlayerRecords.forEach(p => { if (p.MAPA) mapsSet.add(p.MAPA.trim()); });
+
+    const sortedMaps = Array.from(mapsSet).sort((a, b) => a.localeCompare(b));
+
+    return sortedMaps.map(mapName => {
+      const normMap = normalize(mapName);
+
+      // Partidas neste mapa
+      const matchesOnMap = teamMatches.filter(d => normalize(d.MAPA) === normMap);
+      const totalMatches = matchesOnMap.length;
+
+      // Abates totais da equipe neste mapa
+      const totalTeamKills = matchesOnMap.reduce((acc, m) => acc + parseNumber(m.ABTS), 0);
+      const avgKillsPerMatch = totalMatches > 0 ? (totalTeamKills / totalMatches).toFixed(2) : '0.00';
+
+      // Abates por Rodada de Cada Mapa
+      const roundKillsMap: Record<string, { totalKills: number; matchesCount: number }> = {};
+      matchesOnMap.forEach(m => {
+        const rd = m.RD ? m.RD.trim() : 'N/A';
+        if (!roundKillsMap[rd]) {
+          roundKillsMap[rd] = { totalKills: 0, matchesCount: 0 };
+        }
+        roundKillsMap[rd].totalKills += parseNumber(m.ABTS);
+        roundKillsMap[rd].matchesCount += 1;
+      });
+
+      const roundsList = Object.entries(roundKillsMap).map(([rd, rObj]) => {
+        const avgKills = rObj.matchesCount > 0 ? (rObj.totalKills / rObj.matchesCount).toFixed(2) : '0.00';
+        return {
+          rd,
+          totalKills: rObj.totalKills,
+          matchesCount: rObj.matchesCount,
+          avgKills,
+          avgKillsNum: parseFloat(avgKills)
+        };
+      }).sort((a, b) => {
+        const numA = parseInt(a.rd.replace(/\D/g, '')) || 0;
+        const numB = parseInt(b.rd.replace(/\D/g, '')) || 0;
+        if (numA !== numB) return numA - numB;
+        return a.rd.localeCompare(b.rd);
+      });
+
+      // Abates por Jogador da Equipe neste Mapa
+      const playerStatsMap = new Map<string, {
+        name: string;
+        kills: number;
+        dano: number;
+        hs: number;
+        matches: Set<string>;
+      }>();
+
+      const playerRecordsOnMap = teamPlayerRecords.filter(p => normalize(p.MAPA) === normMap);
+      playerRecordsOnMap.forEach(p => {
+        const pName = p.PLAYER ? p.PLAYER.trim() : '';
+        if (!pName) return;
+
+        if (!playerStatsMap.has(pName)) {
+          playerStatsMap.set(pName, {
+            name: pName,
+            kills: 0,
+            dano: 0,
+            hs: 0,
+            matches: new Set()
+          });
+        }
+
+        const pObj = playerStatsMap.get(pName)!;
+        pObj.kills += parseNumber(p.Abates);
+        pObj.dano += parseNumber(p.Dano);
+        pObj.hs += parseNumber(p.HS);
+        const matchKey = `${p.RD || ''}-${p.Q || ''}-${p.CONFRONTO || ''}`;
+        pObj.matches.add(matchKey);
+      });
+
+      const playerList = Array.from(playerStatsMap.values()).map(p => {
+        const matchesCount = p.matches.size || 1;
+        const avgKills = (p.kills / matchesCount).toFixed(2);
+        const avgDano = (p.dano / matchesCount).toFixed(0);
+        const playerImg = findDimImg(data.playersDimension, p.name);
+
+        return {
+          name: p.name,
+          kills: p.kills,
+          dano: p.dano,
+          hs: p.hs,
+          matchesCount,
+          avgKills,
+          avgKillsNum: parseFloat(avgKills),
+          avgDano,
+          playerImg
+        };
+      }).sort((a, b) => {
+        if (b.kills !== a.kills) return b.kills - a.kills;
+        if (b.dano !== a.dano) return b.dano - a.dano;
+        return a.name.localeCompare(b.name);
+      });
+
+      const mvpPlayer = playerList.length > 0 ? playerList[0] : null;
+
+      return {
+        mapName,
+        totalTeamKills,
+        totalMatches,
+        avgKillsPerMatch,
+        roundsList,
+        playerList,
+        mvpPlayer
+      };
+    }).sort((a, b) => a.mapName.localeCompare(b.mapName));
+  }, [filteredData.details, filteredData.players, selectedTeamName, data.playersDimension]);
+
   // Classificação por Mapa (Comparativo)
   const mapRankings = useMemo(() => {
     const maps = Array.from(new Set(filteredData.details.map(d => d.MAPA))).filter(Boolean) as string[];
@@ -412,7 +832,47 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
         return aValue < bValue ? 1 : -1;
       });
 
-      return { mapName, stats: sortedStats };
+      // Find top player MVP for this map
+      const mapKills = filteredData.killFeed.filter(k => normalize(k.MAPA) === normalize(mapName));
+      const playerKillsMap: Record<string, { kills: number, team?: string }> = {};
+      mapKills.forEach(k => {
+        if (k.PLAYER) {
+          if (!playerKillsMap[k.PLAYER]) playerKillsMap[k.PLAYER] = { kills: 0, team: k.TIME };
+          playerKillsMap[k.PLAYER].kills += 1;
+        }
+      });
+      let topPlayer = { name: '', kills: 0, team: '' };
+      Object.entries(playerKillsMap).forEach(([pName, pObj]) => {
+        if (pObj.kills > topPlayer.kills) {
+          topPlayer = { name: pName, kills: pObj.kills, team: pObj.team || '' };
+        }
+      });
+
+      const totalMatches = new Set(mapDetails.map(d => `${d.RD}_${d.Q}`)).size;
+      const totalKills = stats.reduce((acc, s) => acc + (s.abts || 0), 0);
+      const totalPoints = stats.reduce((acc, s) => acc + (s.pts || 0), 0);
+      const totalBooyahs = stats.reduce((acc, s) => acc + (s.b || 0), 0);
+
+      // Top team by points
+      const topTeamPts = [...stats].sort((a, b) => b.pts - a.pts)[0] || null;
+      // Top team by kills
+      const topTeamKills = [...stats].sort((a, b) => b.abts - a.abts)[0] || null;
+
+      const mapConfig = MAPS_CONFIG.find(m => normalize(m.name) === normalize(mapName));
+
+      return { 
+        mapName, 
+        mapImg: mapConfig?.url || null,
+        stats: sortedStats,
+        allStats: stats,
+        totalMatches,
+        totalKills,
+        totalPoints,
+        totalBooyahs,
+        topTeamPts,
+        topTeamKills,
+        topPlayer
+      };
     });
   }, [filteredData, sortConfig]);
 
@@ -422,6 +882,317 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
       direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc'
     }));
   };
+
+  // Map Stats Calculation Engine (Transferido de Estudos)
+  const mapStatsData = useMemo(() => {
+    if (!data) return { mapList: [], roundsList: [], kpis: { topMapKills: null, topMapAvg: null, topRoundMap: null, totalKillsAllMaps: 0 } };
+
+    const parseNumber = (val: string | number | undefined) => {
+      if (typeof val === 'number') return isNaN(val) ? 0 : val;
+      if (!val) return 0;
+      const parsed = parseFloat(String(val).replace(',', '.'));
+      return isNaN(parsed) ? 0 : parsed;
+    };
+
+    const mapsSet = new Set<string>();
+    const roundsSet = new Set<string>();
+
+    if (data.details) {
+      data.details.forEach(d => {
+        if (d.MAPA) mapsSet.add(d.MAPA.trim());
+        if (d.RD) roundsSet.add(d.RD.trim());
+      });
+    }
+
+    if (data.players) {
+      data.players.forEach(p => {
+        if (p.MAPA) mapsSet.add(p.MAPA.trim());
+        if (p.RD) roundsSet.add(p.RD.trim());
+      });
+    }
+
+    const sortedRounds = Array.from(roundsSet).sort((a, b) => {
+      const numA = parseInt(a.replace(/\D/g, '')) || 0;
+      const numB = parseInt(b.replace(/\D/g, '')) || 0;
+      if (numA !== numB) return numA - numB;
+      return a.localeCompare(b);
+    });
+
+    const sortedMaps = Array.from(mapsSet).sort((a, b) => a.localeCompare(b));
+
+    const mapStatsMap = new Map<string, {
+      mapName: string;
+      totalKills: number;
+      uniqueMatches: Set<string>;
+      roundData: Map<string, {
+        totalKills: number;
+        uniqueMatches: Set<string>;
+        teamKills: Map<string, number>;
+        playerKills: Map<string, number>;
+      }>;
+      teamKillsOverall: Map<string, number>;
+      playerKillsOverall: Map<string, number>;
+      matchKills: Map<string, number>;
+    }>();
+
+    sortedMaps.forEach(m => {
+      mapStatsMap.set(m, {
+        mapName: m,
+        totalKills: 0,
+        uniqueMatches: new Set(),
+        roundData: new Map(),
+        teamKillsOverall: new Map(),
+        playerKillsOverall: new Map(),
+        matchKills: new Map()
+      });
+    });
+
+    if (data.players && data.players.length > 0) {
+      data.players.forEach(p => {
+        const mName = p.MAPA ? p.MAPA.trim() : '';
+        if (!mName) return;
+
+        if (!mapStatsMap.has(mName)) {
+          mapStatsMap.set(mName, {
+            mapName: mName,
+            totalKills: 0,
+            uniqueMatches: new Set(),
+            roundData: new Map(),
+            teamKillsOverall: new Map(),
+            playerKillsOverall: new Map(),
+            matchKills: new Map()
+          });
+        }
+
+        const mObj = mapStatsMap.get(mName)!;
+        const kills = parseNumber(p.Abates);
+        const rd = p.RD ? p.RD.trim() : 'N/A';
+        const q = p.Q ? p.Q.trim() : 'Q1';
+        const matchKey = `${rd}_${q}`;
+        const player = p.PLAYER ? p.PLAYER.trim() : '';
+        const team = p.TIME ? p.TIME.trim() : '';
+
+        mObj.totalKills += kills;
+        mObj.uniqueMatches.add(matchKey);
+        mObj.matchKills.set(matchKey, (mObj.matchKills.get(matchKey) || 0) + kills);
+
+        if (team) {
+          mObj.teamKillsOverall.set(team, (mObj.teamKillsOverall.get(team) || 0) + kills);
+        }
+        if (player) {
+          mObj.playerKillsOverall.set(player, (mObj.playerKillsOverall.get(player) || 0) + kills);
+        }
+
+        if (!mObj.roundData.has(rd)) {
+          mObj.roundData.set(rd, {
+            totalKills: 0,
+            uniqueMatches: new Set(),
+            teamKills: new Map(),
+            playerKills: new Map()
+          });
+        }
+
+        const rObj = mObj.roundData.get(rd)!;
+        rObj.totalKills += kills;
+        rObj.uniqueMatches.add(matchKey);
+
+        if (team) {
+          rObj.teamKills.set(team, (rObj.teamKills.get(team) || 0) + kills);
+        }
+        if (player) {
+          rObj.playerKills.set(player, (rObj.playerKills.get(player) || 0) + kills);
+        }
+      });
+    } else if (data.details && data.details.length > 0) {
+      data.details.forEach(d => {
+        const mName = d.MAPA ? d.MAPA.trim() : '';
+        if (!mName) return;
+
+        if (!mapStatsMap.has(mName)) {
+          mapStatsMap.set(mName, {
+            mapName: mName,
+            totalKills: 0,
+            uniqueMatches: new Set(),
+            roundData: new Map(),
+            teamKillsOverall: new Map(),
+            playerKillsOverall: new Map(),
+            matchKills: new Map()
+          });
+        }
+
+        const mObj = mapStatsMap.get(mName)!;
+        const kills = parseNumber(d.ABTS);
+        const rd = d.RD ? d.RD.trim() : 'N/A';
+        const q = d.Q ? d.Q.trim() : 'Q1';
+        const matchKey = `${rd}_${q}`;
+        const team = d.TIME ? d.TIME.trim() : '';
+
+        mObj.totalKills += kills;
+        mObj.uniqueMatches.add(matchKey);
+        mObj.matchKills.set(matchKey, (mObj.matchKills.get(matchKey) || 0) + kills);
+
+        if (team) {
+          mObj.teamKillsOverall.set(team, (mObj.teamKillsOverall.get(team) || 0) + kills);
+        }
+
+        if (!mObj.roundData.has(rd)) {
+          mObj.roundData.set(rd, {
+            totalKills: 0,
+            uniqueMatches: new Set(),
+            teamKills: new Map(),
+            playerKills: new Map()
+          });
+        }
+
+        const rObj = mObj.roundData.get(rd)!;
+        rObj.totalKills += kills;
+        rObj.uniqueMatches.add(matchKey);
+
+        if (team) {
+          rObj.teamKills.set(team, (rObj.teamKills.get(team) || 0) + kills);
+        }
+      });
+    }
+
+    let totalKillsAllMaps = 0;
+
+    const mapList = Array.from(mapStatsMap.values()).map(mObj => {
+      totalKillsAllMaps += mObj.totalKills;
+      const totalMatchesCount = mObj.uniqueMatches.size;
+      const avgKillsPerMatch = totalMatchesCount > 0 ? mObj.totalKills / totalMatchesCount : 0;
+
+      let maxKillsInMatch = 0;
+      mObj.matchKills.forEach(val => {
+        if (val > maxKillsInMatch) maxKillsInMatch = val;
+      });
+
+      let topTeam: { name: string; kills: number } | null = null;
+      mObj.teamKillsOverall.forEach((kills, name) => {
+        if (!topTeam || kills > topTeam.kills) topTeam = { name, kills };
+      });
+
+      let topPlayer: { name: string; kills: number } | null = null;
+      mObj.playerKillsOverall.forEach((kills, name) => {
+        if (!topPlayer || kills > topPlayer.kills) topPlayer = { name, kills };
+      });
+
+      const rounds: Record<string, {
+        totalKills: number;
+        matchesCount: number;
+        avgKillsPerMatch: number;
+        falls: string[];
+        topTeam: { name: string; kills: number } | null;
+        topPlayer: { name: string; kills: number } | null;
+      }> = {};
+
+      mObj.roundData.forEach((rObj, rdName) => {
+        const matchesCount = rObj.uniqueMatches.size;
+        const avgKillsPerMatchRound = matchesCount > 0 ? rObj.totalKills / matchesCount : 0;
+
+        let topRoundTeam: { name: string; kills: number } | null = null;
+        rObj.teamKills.forEach((kills, name) => {
+          if (!topRoundTeam || kills > topRoundTeam.kills) topRoundTeam = { name, kills };
+        });
+
+        let topRoundPlayer: { name: string; kills: number } | null = null;
+        rObj.playerKills.forEach((kills, name) => {
+          if (!topRoundPlayer || kills > topRoundPlayer.kills) topRoundPlayer = { name, kills };
+        });
+
+        const falls = Array.from(rObj.uniqueMatches).map(k => k.split('_')[1] || k);
+
+        rounds[rdName] = {
+          totalKills: rObj.totalKills,
+          matchesCount,
+          avgKillsPerMatch: avgKillsPerMatchRound,
+          falls,
+          topTeam: topRoundTeam,
+          topPlayer: topRoundPlayer
+        };
+      });
+
+      return {
+        mapName: mObj.mapName,
+        totalKills: mObj.totalKills,
+        totalMatches: totalMatchesCount,
+        avgKillsPerMatch,
+        maxKillsInMatch,
+        rounds,
+        topTeam,
+        topPlayer
+      };
+    });
+
+    mapList.sort((a, b) => b.totalKills - a.totalKills);
+
+    let topMapKills = mapList.length > 0 ? mapList[0] : null;
+    let topMapAvg = mapList.length > 0 ? mapList[0] : null;
+    let topRoundMap: { mapName: string; roundName: string; totalKills: number; avgKills: number } | null = null;
+
+    mapList.forEach(m => {
+      if (!topMapKills || m.totalKills > topMapKills.totalKills) topMapKills = m;
+      if (!topMapAvg || m.avgKillsPerMatch > topMapAvg.avgKillsPerMatch) topMapAvg = m;
+
+      Object.entries(m.rounds).forEach(([rdName, rdInfo]) => {
+        if (!topRoundMap || rdInfo.totalKills > topRoundMap.totalKills) {
+          topRoundMap = {
+            mapName: m.mapName,
+            roundName: rdName,
+            totalKills: rdInfo.totalKills,
+            avgKills: rdInfo.avgKillsPerMatch
+          };
+        }
+      });
+    });
+
+    return {
+      mapList,
+      roundsList: sortedRounds,
+      kpis: {
+        topMapKills,
+        topMapAvg,
+        topRoundMap,
+        totalKillsAllMaps
+      }
+    };
+  }, [data]);
+
+  const filteredAndSortedMaps = useMemo(() => {
+    let result = mapStatsData.mapList;
+
+    if (mapStatsSearch.trim()) {
+      const q = mapStatsSearch.trim().toLowerCase();
+      result = result.filter(m => m.mapName.toLowerCase().includes(q));
+    }
+
+    if (selectedMapFilter !== 'all' && selectedMapFilter !== 'ALL') {
+      result = result.filter(m => m.mapName.toLowerCase() === selectedMapFilter.toLowerCase());
+    }
+
+    const { field, direction } = mapStatsSort;
+
+    return [...result].sort((a, b) => {
+      let valA: any = 0;
+      let valB: any = 0;
+
+      if (field === 'mapName') {
+        return direction === 'asc' ? a.mapName.localeCompare(b.mapName) : b.mapName.localeCompare(a.mapName);
+      } else if (field === 'totalKills') {
+        valA = a.totalKills;
+        valB = b.totalKills;
+      } else if (field === 'avgKillsPerMatch') {
+        valA = a.avgKillsPerMatch;
+        valB = b.avgKillsPerMatch;
+      } else if (field === 'totalMatches') {
+        valA = a.totalMatches;
+        valB = b.totalMatches;
+      }
+
+      if (valA < valB) return direction === 'asc' ? -1 : 1;
+      if (valA > valB) return direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [mapStatsData, mapStatsSearch, selectedMapFilter, mapStatsSort]);
 
   // Piores Times (Bottom Rankings)
   const bottomRankings = useMemo(() => {
@@ -828,6 +1599,12 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                         <MapIcon size={15} /> Por Mapa
                     </button>
                     <button 
+                        onClick={() => setActiveTab('mapStats')}
+                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'mapStats' ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                    >
+                        <BarChart2 size={15} /> Ranking de Mapas
+                    </button>
+                    <button 
                         onClick={() => setActiveTab('bottomRanking')}
                         className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'bottomRanking' ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
                     >
@@ -945,6 +1722,835 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                          </div>
                     </div>
                 </div>
+
+                {/* Sub-Navegação e Controles de Exibição do Perfil do Time */}
+                <div className="flex flex-wrap items-center justify-between gap-4 bg-[#121215] p-3 rounded-2xl border border-white/10 shadow-xl">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <button
+                            onClick={() => setTeamProfileSubTab('all')}
+                            className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                                teamProfileSubTab === 'all' 
+                                    ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black' 
+                                    : 'bg-black/40 text-gray-400 hover:text-white hover:bg-white/5 border border-white/5'
+                            }`}
+                        >
+                            <LayoutGrid size={15} /> Visão Geral Completa
+                        </button>
+
+                        <button
+                            onClick={() => setTeamProfileSubTab('zeradas')}
+                            className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                                teamProfileSubTab === 'zeradas' 
+                                    ? 'bg-red-500 text-white shadow-lg shadow-red-500/20 font-black' 
+                                    : 'bg-black/40 text-gray-400 hover:text-white hover:bg-white/5 border border-white/5'
+                            }`}
+                        >
+                            <AlertTriangle size={15} /> Quedas Zeradas ({zeroStatsTeam?.totalZeroPts || 0})
+                        </button>
+
+                        <button
+                            onClick={() => setTeamProfileSubTab('rounds')}
+                            className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                                teamProfileSubTab === 'rounds' 
+                                    ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/20 font-black' 
+                                    : 'bg-black/40 text-gray-400 hover:text-white hover:bg-white/5 border border-white/5'
+                            }`}
+                        >
+                            <Swords size={15} /> Pontos & Abates por Rodada / Queda
+                        </button>
+
+                        <button
+                            onClick={() => setTeamProfileSubTab('mapKills')}
+                            className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                                teamProfileSubTab === 'mapKills' 
+                                    ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/20 font-black' 
+                                    : 'bg-black/40 text-gray-400 hover:text-white hover:bg-white/5 border border-white/5'
+                            }`}
+                        >
+                            <Trophy size={15} /> Abates & MVP por Mapa
+                        </button>
+
+                        <button
+                            onClick={() => setTeamProfileSubTab('safes')}
+                            className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                                teamProfileSubTab === 'safes' 
+                                    ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20 font-black' 
+                                    : 'bg-black/40 text-gray-400 hover:text-white hover:bg-white/5 border border-white/5'
+                            }`}
+                        >
+                            <MapPin size={15} /> Melhores & Piores Safes por Mapa
+                        </button>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => setShowTeamDetails(!showTeamDetails)}
+                            className={`px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 border cursor-pointer shadow-md ${
+                                showTeamDetails 
+                                    ? 'bg-red-500/10 border-red-500/40 text-red-400 hover:bg-red-500/20' 
+                                    : 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/20'
+                            }`}
+                        >
+                            {showTeamDetails ? (
+                                <>
+                                    <EyeOff size={15} /> Ocultar Detalhamento
+                                </>
+                            ) : (
+                                <>
+                                    <Eye size={15} /> Exibir Detalhamento
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </div>
+
+                {/* 1. SEÇÃO: QUEDAS ZERADAS DO TIME */}
+                {showTeamDetails && (teamProfileSubTab === 'all' || teamProfileSubTab === 'zeradas') && zeroStatsTeam && (
+                    <div className="bg-[#1a1a1a] p-8 rounded-3xl border border-red-900/30 shadow-2xl space-y-6">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-4">
+                            <div>
+                                <div className="flex items-center gap-2.5">
+                                    <div className="p-2 bg-red-500/10 border border-red-500/30 rounded-xl text-red-500">
+                                        <AlertTriangle size={20} />
+                                    </div>
+                                    <h3 className="text-xl font-black text-white italic uppercase tracking-wider">
+                                        QUEDAS ZERADAS DA EQUIPE ({selectedTeamStats.name})
+                                    </h3>
+                                </div>
+                                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-1">
+                                    Detalhamento de partidas onde o time zerou (não conquistou pontos e/ou não realizou abates)
+                                </p>
+                            </div>
+
+                            <div className="flex flex-wrap gap-2">
+                                <span className="px-3 py-1.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 font-black text-xs uppercase">
+                                    {zeroStatsTeam.totalZeroPts} Quedas sem Pontos ({zeroStatsTeam.pctZeradas}%)
+                                </span>
+                                <span className="px-3 py-1.5 rounded-xl bg-orange-500/10 border border-orange-500/30 text-orange-400 font-black text-xs uppercase">
+                                    {zeroStatsTeam.totalZeroKills} Quedas sem Abates
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Cards Resumo KPIs */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div className="bg-black/60 p-4 rounded-2xl border border-white/5 space-y-1">
+                                <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block">ZERADA ABSOLUTA (0 PTS & 0 KILLS)</span>
+                                <span className="text-2xl font-black text-red-500 italic block">{zeroStatsTeam.totalZeradasAbsoluta} <small className="text-xs text-gray-400 font-normal">partidas</small></span>
+                                <span className="text-[9px] text-gray-400 font-medium block">Eliminado sem abates e sem pontos</span>
+                            </div>
+
+                            <div className="bg-black/60 p-4 rounded-2xl border border-white/5 space-y-1">
+                                <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block">ZERO ABATES (0 KILLS)</span>
+                                <span className="text-2xl font-black text-orange-400 italic block">{zeroStatsTeam.totalZeroKills} <small className="text-xs text-gray-400 font-normal">partidas</small></span>
+                                <span className="text-[9px] text-gray-400 font-medium block">Nenhuma eliminação conquistada</span>
+                            </div>
+
+                            <div className="bg-black/60 p-4 rounded-2xl border border-white/5 space-y-1">
+                                <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block">ZERO PONTOS (0 PTS)</span>
+                                <span className="text-2xl font-black text-yellow-500 italic block">{zeroStatsTeam.totalZeroPts} <small className="text-xs text-gray-400 font-normal">partidas</small></span>
+                                <span className="text-[9px] text-gray-400 font-medium block">Sem pontuação de posição</span>
+                            </div>
+
+                            <div className="bg-black/60 p-4 rounded-2xl border border-white/5 space-y-1">
+                                <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block">MAPA COM MAIS ZERADAS</span>
+                                {(() => {
+                                    const topMapEntry = Object.entries(zeroStatsTeam.zeroByMap).sort((a, b) => Number(b[1]) - Number(a[1]))[0];
+                                    return topMapEntry ? (
+                                        <span className="text-lg font-black text-white italic block uppercase truncate">{topMapEntry[0]} ({topMapEntry[1]}x)</span>
+                                    ) : (
+                                        <span className="text-sm font-bold text-gray-500 italic block">Nenhum</span>
+                                    );
+                                })()}
+                                <span className="text-[9px] text-gray-400 font-medium block">Mapa com maior número de quedas zeradas</span>
+                            </div>
+                        </div>
+
+                        {/* Lista de Quedas Zeradas */}
+                        {zeroStatsTeam.allZeradasList.length > 0 ? (
+                            <div className="space-y-3">
+                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block">
+                                    LISTA DE QUEDAS ONDE A EQUIPE ZEROU
+                                </span>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                                    {zeroStatsTeam.allZeradasList.map((m, idx) => {
+                                        const dKey = `zero-${m.RD}-${m.Q}`;
+                                        const isExp = expandedDropKey === dKey;
+                                        const pts = parseInt(m.PTS) || 0;
+                                        const abts = parseInt(m.ABTS) || 0;
+
+                                        return (
+                                            <div 
+                                                key={idx}
+                                                onClick={() => setExpandedDropKey(isExp ? null : dKey)}
+                                                className={`p-4 rounded-2xl border transition-all cursor-pointer space-y-2 ${
+                                                    pts === 0 && abts === 0 
+                                                        ? 'bg-red-950/20 border-red-500/30 hover:border-red-500/60' 
+                                                        : 'bg-black/60 border-white/10 hover:border-white/30'
+                                                }`}
+                                            >
+                                                <div className="flex justify-between items-center text-xs">
+                                                    <span className="font-black text-white uppercase italic">{m.CONFRONTO}</span>
+                                                    <span className="text-[10px] font-black text-red-400 bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20">
+                                                        RD {m.RD} • Q{m.Q}
+                                                    </span>
+                                                </div>
+
+                                                <div className="flex justify-between items-center text-xs pt-1">
+                                                    <span className="font-bold text-gray-300 uppercase text-[10px]">{m.MAPA}</span>
+                                                    <span className="text-[10px] font-black text-yellow-500 bg-black/40 px-2 py-0.5 rounded border border-white/5">
+                                                        {m.POS}º Lugar
+                                                    </span>
+                                                </div>
+
+                                                <div className="flex items-center justify-between text-[11px] pt-2 border-t border-white/5">
+                                                    <span className={`font-black italic ${pts === 0 ? 'text-red-400' : 'text-yellow-500'}`}>
+                                                        {pts} PTS
+                                                    </span>
+                                                    <span className={`font-black italic ${abts === 0 ? 'text-red-400' : 'text-orange-400'}`}>
+                                                        {abts} Kills
+                                                    </span>
+                                                    <ChevronDown size={14} className={`text-gray-500 transition-transform ${isExp ? 'rotate-180 text-yellow-500' : ''}`} />
+                                                </div>
+
+                                                {m.ONDE_FECHOU && (
+                                                    <div className="text-[9px] text-gray-400 font-bold bg-black/40 px-2 py-1 rounded truncate">
+                                                        📍 Safe: {m.ONDE_FECHOU}
+                                                    </div>
+                                                )}
+
+                                                {isExp && (
+                                                    <div className="pt-2 border-t border-white/10" onClick={(e) => e.stopPropagation()}>
+                                                        <DropCompositionViewer
+                                                            teamName={activeTeamName}
+                                                            round={m.RD}
+                                                            drop={m.Q}
+                                                            mapa={m.MAPA}
+                                                            playersLoadout={getTeamDropComposition(
+                                                                data,
+                                                                activeTeamName,
+                                                                m.RD,
+                                                                m.Q,
+                                                                m.CONFRONTO,
+                                                                m.MAPA
+                                                            )}
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-center py-8 text-emerald-400 font-black uppercase text-xs tracking-wider bg-emerald-500/5 rounded-2xl border border-emerald-500/20">
+                                🎉 A equipe não possui nenhuma queda zerada no filtro atual!
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* 2. SEÇÃO: MATRIZ DE PONTOS E ABATES POR RODADA E POR QUEDA (COM DETALHAMENTO) */}
+                {showTeamDetails && (teamProfileSubTab === 'all' || teamProfileSubTab === 'rounds') && (
+                    <div className="bg-[#1a1a1a] p-8 rounded-3xl border border-blue-900/30 shadow-2xl space-y-6">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-4">
+                            <div>
+                                <div className="flex items-center gap-2.5">
+                                    <div className="p-2 bg-blue-500/10 border border-blue-500/30 rounded-xl text-blue-400">
+                                        <Swords size={20} />
+                                    </div>
+                                    <h3 className="text-xl font-black text-white italic uppercase tracking-wider">
+                                        PONTOS E ABATES POR RODADA E POR QUEDA ({selectedTeamStats.name})
+                                    </h3>
+                                </div>
+                                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-1">
+                                    Matriz de abates e pontos conquistados em cada Rodada e Queda. Clique em qualquer célula para ver os detalhes completos da partida.
+                                </p>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <div className="bg-black p-1 rounded-xl border border-white/10 flex items-center gap-1">
+                                    <button
+                                        onClick={() => setMatrixViewMode('both')}
+                                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase cursor-pointer transition-all ${
+                                            matrixViewMode === 'both' ? 'bg-blue-500 text-white' : 'text-gray-400 hover:text-white'
+                                        }`}
+                                    >
+                                        Pts & Abates
+                                    </button>
+                                    <button
+                                        onClick={() => setMatrixViewMode('points')}
+                                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase cursor-pointer transition-all ${
+                                            matrixViewMode === 'points' ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'
+                                        }`}
+                                    >
+                                        Pontos
+                                    </button>
+                                    <button
+                                        onClick={() => setMatrixViewMode('kills')}
+                                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase cursor-pointer transition-all ${
+                                            matrixViewMode === 'kills' ? 'bg-red-500 text-white' : 'text-gray-400 hover:text-white'
+                                        }`}
+                                    >
+                                        Abates
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Cards Resumo */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                            <div className="bg-black/60 p-3.5 rounded-2xl border border-white/5 text-center">
+                                <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block">TOTAL PONTOS</span>
+                                <span className="text-2xl font-black text-yellow-500 italic block">{teamRoundsAndDropsMatrix.summary.totalPts}</span>
+                                <span className="text-[8px] text-gray-400 block font-mono">Média: {teamRoundsAndDropsMatrix.summary.avgPtsPerMatch}/Q</span>
+                            </div>
+                            <div className="bg-black/60 p-3.5 rounded-2xl border border-white/5 text-center">
+                                <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block">TOTAL ABATES</span>
+                                <span className="text-2xl font-black text-red-500 italic block">{teamRoundsAndDropsMatrix.summary.totalKills}</span>
+                                <span className="text-[8px] text-gray-400 block font-mono">Média: {teamRoundsAndDropsMatrix.summary.avgKillsPerMatch}/Q</span>
+                            </div>
+                            <div className="bg-black/60 p-3.5 rounded-2xl border border-white/5 text-center">
+                                <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block">RODADAS REGISTRADAS</span>
+                                <span className="text-2xl font-black text-white italic block">{teamRoundsAndDropsMatrix.rounds.length}</span>
+                                <span className="text-[8px] text-gray-400 block font-mono">{teamRoundsAndDropsMatrix.summary.totalMatches} quedas no total</span>
+                            </div>
+                            <div className="bg-black/60 p-3.5 rounded-2xl border border-white/5 text-center">
+                                <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block">BOOYAHS</span>
+                                <span className="text-2xl font-black text-emerald-400 italic block">
+                                    {teamRoundsAndDropsMatrix.rounds.reduce((acc, r) => acc + r.totals.booyahs, 0)}
+                                </span>
+                                <span className="text-[8px] text-emerald-500 font-bold block uppercase">Vitórias da Equipe</span>
+                            </div>
+                        </div>
+
+                        {/* Tabela de Matriz por Rodada x Queda */}
+                        <div className="overflow-x-auto rounded-2xl border border-white/10 bg-black/80">
+                            <table className="w-full text-left border-collapse whitespace-nowrap">
+                                <thead className="bg-black text-[10px] text-gray-400 uppercase font-black tracking-widest">
+                                    <tr>
+                                        <th className="p-4 border-b border-r border-white/10">Rodada (RD)</th>
+                                        {teamRoundsAndDropsMatrix.dropsList.map(q => (
+                                            <th key={q} className="p-4 border-b border-r border-white/10 text-center">
+                                                Queda {q}
+                                            </th>
+                                        ))}
+                                        <th className="p-4 border-b border-white/10 text-center text-yellow-500 bg-yellow-500/10">Total RD</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5 text-xs">
+                                    {teamRoundsAndDropsMatrix.rounds.map(rObj => (
+                                        <React.Fragment key={rObj.rd}>
+                                            <tr className="hover:bg-white/5 transition-colors">
+                                                <td className="p-4 font-black text-white border-r border-white/10 bg-black/40">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-sm italic">{rObj.rd}</span>
+                                                        {rObj.totals.booyahs > 0 && (
+                                                            <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 rounded text-[9px] font-black">
+                                                                {rObj.totals.booyahs} 🏆
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
+
+                                                {teamRoundsAndDropsMatrix.dropsList.map(q => {
+                                                    const match = rObj.drops[q];
+                                                    if (!match) {
+                                                        return (
+                                                            <td key={q} className="p-4 text-center border-r border-white/10 text-gray-700 italic">
+                                                                -
+                                                            </td>
+                                                        );
+                                                    }
+
+                                                    const pts = parseInt(match.PTS) || 0;
+                                                    const abts = parseInt(match.ABTS) || 0;
+                                                    const pos = parseInt(match.POS) || 0;
+                                                    const isBooyah = pos === 1 || parseInt(match.B) > 0;
+                                                    const isZero = pts === 0 && abts === 0;
+
+                                                    const isSelected = expandedMatrixCell?.rd === rObj.rd && expandedMatrixCell?.q === q;
+
+                                                    let bgStyle = 'bg-black/40 border-white/5 hover:border-yellow-500/40';
+                                                    if (isBooyah) bgStyle = 'bg-yellow-500/20 border-yellow-500/50 shadow-[0_0_10px_rgba(234,179,8,0.2)]';
+                                                    else if (isZero) bgStyle = 'bg-red-950/40 border-red-500/30';
+
+                                                    return (
+                                                        <td key={q} className="p-2 border-r border-white/10 text-center">
+                                                            <button
+                                                                onClick={() => setExpandedMatrixCell(isSelected ? null : { rd: rObj.rd, q })}
+                                                                className={`w-full p-2.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${bgStyle} ${
+                                                                    isSelected ? 'ring-2 ring-yellow-500 scale-105' : ''
+                                                                }`}
+                                                            >
+                                                                <div className="flex items-center gap-1.5">
+                                                                    {isBooyah && <Crown size={12} className="text-yellow-400 animate-bounce" />}
+                                                                    <span className="text-[10px] font-bold text-gray-400 uppercase">{match.MAPA}</span>
+                                                                    <span className="text-[9px] font-black text-gray-500">#{pos}</span>
+                                                                </div>
+
+                                                                <div className="flex items-center gap-2">
+                                                                    {(matrixViewMode === 'both' || matrixViewMode === 'points') && (
+                                                                        <span className={`font-black italic text-sm ${pts === 0 ? 'text-red-400' : 'text-yellow-500'}`}>
+                                                                            {pts} P
+                                                                        </span>
+                                                                    )}
+                                                                    {(matrixViewMode === 'both' || matrixViewMode === 'kills') && (
+                                                                        <span className={`font-black italic text-xs ${abts === 0 ? 'text-red-400' : 'text-red-500'}`}>
+                                                                            {abts} K
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </button>
+                                                        </td>
+                                                    );
+                                                })}
+
+                                                <td className="p-4 text-center font-black bg-yellow-500/10 text-yellow-500 italic">
+                                                    <div className="flex flex-col items-center">
+                                                        <span className="text-sm">{rObj.totals.totalPts} P</span>
+                                                        <span className="text-xs text-red-400">{rObj.totals.totalKills} K</span>
+                                                    </div>
+                                                </td>
+                                            </tr>
+
+                                            {/* Detalhamento Expandido da Partida ao Clicar na Célula */}
+                                            {teamRoundsAndDropsMatrix.dropsList.map(q => {
+                                                const isSelected = expandedMatrixCell?.rd === rObj.rd && expandedMatrixCell?.q === q;
+                                                const match = rObj.drops[q];
+                                                if (!isSelected || !match) return null;
+
+                                                return (
+                                                    <tr key={`exp-${rObj.rd}-${q}`} className="bg-black/95 border-y-2 border-yellow-500/40">
+                                                        <td colSpan={teamRoundsAndDropsMatrix.dropsList.length + 2} className="p-6">
+                                                            <div className="space-y-4">
+                                                                <div className="flex justify-between items-center border-b border-white/10 pb-3">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <span className="px-3 py-1 rounded-xl bg-yellow-500 text-black font-black text-xs uppercase">
+                                                                            RODADA {match.RD} • QUEDA {match.Q}
+                                                                        </span>
+                                                                        <span className="text-sm font-black text-white uppercase italic">MAPA: {match.MAPA}</span>
+                                                                        <span className="text-xs text-gray-400 font-bold">({match.CONFRONTO})</span>
+                                                                    </div>
+
+                                                                    <button
+                                                                        onClick={() => setExpandedMatrixCell(null)}
+                                                                        className="text-xs text-gray-400 hover:text-white font-bold uppercase border border-white/10 px-3 py-1 rounded-lg cursor-pointer"
+                                                                    >
+                                                                        Fechar Detalhes ✕
+                                                                    </button>
+                                                                </div>
+
+                                                                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                                                                    <div className="bg-black/60 p-3 rounded-xl border border-white/5 text-center">
+                                                                        <span className="text-[8px] text-gray-500 font-black uppercase block">POSIÇÃO</span>
+                                                                        <span className="text-lg font-black text-white italic">{match.POS}º Lugar</span>
+                                                                    </div>
+                                                                    <div className="bg-black/60 p-3 rounded-xl border border-white/5 text-center">
+                                                                        <span className="text-[8px] text-gray-500 font-black uppercase block">PONTOS COLOCAÇÃO</span>
+                                                                        <span className="text-lg font-black text-orange-400 italic">{match.PTSC} PTS</span>
+                                                                    </div>
+                                                                    <div className="bg-black/60 p-3 rounded-xl border border-white/5 text-center">
+                                                                        <span className="text-[8px] text-gray-500 font-black uppercase block">ABATES</span>
+                                                                        <span className="text-lg font-black text-red-500 italic">{match.ABTS} Kills</span>
+                                                                    </div>
+                                                                    <div className="bg-black/60 p-3 rounded-xl border border-white/5 text-center">
+                                                                        <span className="text-[8px] text-gray-500 font-black uppercase block">PONTOS TOTAIS</span>
+                                                                        <span className="text-lg font-black text-yellow-500 italic">{match.PTS} PTS</span>
+                                                                    </div>
+                                                                    <div className="bg-black/60 p-3 rounded-xl border border-white/5 text-center col-span-2 sm:col-span-1">
+                                                                        <span className="text-[8px] text-gray-500 font-black uppercase block">ONDE FECHOU</span>
+                                                                        <span className="text-xs font-black text-gray-300 italic truncate block">{match.ONDE_FECHOU || 'N/A'}</span>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Loadout / Personagens da Equipe nesta Queda */}
+                                                                <div className="pt-2">
+                                                                    <DropCompositionViewer
+                                                                        teamName={activeTeamName}
+                                                                        round={match.RD}
+                                                                        drop={match.Q}
+                                                                        mapa={match.MAPA}
+                                                                        playersLoadout={getTeamDropComposition(
+                                                                            data,
+                                                                            activeTeamName,
+                                                                            match.RD,
+                                                                            match.Q,
+                                                                            match.CONFRONTO,
+                                                                            match.MAPA
+                                                                        )}
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </React.Fragment>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                {/* 3. SEÇÃO: MELHORES E PIORES DESEMPENHO POR ONDE A SAFE FECHOU PARA CADA MAPA */}
+                {showTeamDetails && (teamProfileSubTab === 'all' || teamProfileSubTab === 'safes') && safePerformanceByMapTeam.length > 0 && (
+                    <div className="bg-[#1a1a1a] p-8 rounded-3xl border border-amber-900/30 shadow-2xl space-y-6">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-4">
+                            <div>
+                                <div className="flex items-center gap-2.5">
+                                    <div className="p-2 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-500">
+                                        <MapPin size={20} />
+                                    </div>
+                                    <h3 className="text-xl font-black text-white italic uppercase tracking-wider">
+                                        MELHORES E PIORES SAFES POR MAPA ({selectedTeamStats.name})
+                                    </h3>
+                                </div>
+                                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-1">
+                                    Mapeamento por local final de fechamento de safe (`ONDE_FECHOU`), listando os melhores e piores desempenhos da equipe em cada mapa.
+                                </p>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs font-black text-amber-400 bg-amber-500/10 px-3 py-1.5 rounded-xl border border-amber-500/20">
+                                    {safePerformanceByMapTeam.length} Mapas Mapeados
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Cards por Mapa */}
+                        <div className="space-y-6">
+                            {safePerformanceByMapTeam.map(mapGroup => {
+                                const mapImg = findDimImg(data?.safes, mapGroup.mapName);
+
+                                return (
+                                    <div key={mapGroup.mapName} className="bg-black/60 rounded-2xl border border-white/10 p-6 space-y-4 shadow-xl">
+                                        <div className="flex justify-between items-center border-b border-white/5 pb-3">
+                                            <div className="flex items-center gap-3">
+                                                {mapImg ? (
+                                                    <img src={mapImg} alt={mapGroup.mapName} className="w-12 h-12 object-cover rounded-xl border border-amber-500/30 bg-black" />
+                                                ) : (
+                                                    <div className="w-12 h-12 rounded-xl bg-black border border-amber-500/30 flex items-center justify-center text-amber-500">
+                                                        <MapIcon size={20} />
+                                                    </div>
+                                                )}
+                                                <div>
+                                                    <h4 className="text-xl font-black text-white italic uppercase tracking-tight flex items-center gap-2">
+                                                        MAPA: {mapGroup.mapName}
+                                                    </h4>
+                                                    <span className="text-[10px] text-gray-500 font-bold uppercase">
+                                                        {mapGroup.totalMatchesOnMap} quedas disputadas em {mapGroup.totalLocalsCount} safes diferentes
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {/* MELHORES SAFES */}
+                                            <div className="bg-gradient-to-b from-emerald-950/20 to-black p-5 rounded-2xl border border-emerald-500/30 space-y-3">
+                                                <div className="flex items-center gap-2 text-emerald-400 font-black text-xs uppercase tracking-wider border-b border-emerald-500/20 pb-2">
+                                                    <Crown size={16} /> 🟢 MELHORES SAFES (MAIOR APROVEITAMENTO)
+                                                </div>
+
+                                                <div className="space-y-2.5">
+                                                    {mapGroup.bestSafes.map((safe, idx) => (
+                                                        <div key={idx} className="bg-black/80 p-3.5 rounded-xl border border-emerald-500/20 flex items-center justify-between gap-3">
+                                                            <div className="min-w-0 flex-1">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="w-5 h-5 rounded bg-emerald-500 text-black font-black text-[10px] flex items-center justify-center shrink-0">
+                                                                        #{idx + 1}
+                                                                    </span>
+                                                                    <span className="text-xs font-black text-white uppercase truncate italic">{safe.localName}</span>
+                                                                </div>
+                                                                <div className="flex items-center gap-2 text-[9px] text-gray-400 mt-1.5">
+                                                                    <span>{safe.matchesCount} quedas</span>
+                                                                    <span>•</span>
+                                                                    <span>Pos Média #{safe.avgPos}</span>
+                                                                    {safe.booyahs > 0 && (
+                                                                        <span className="text-yellow-400 font-bold ml-1">({safe.booyahs} Booyahs)</span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="text-right shrink-0">
+                                                                <span className="text-sm font-black text-yellow-400 block leading-none">{safe.avgPts} <small className="text-[9px] text-gray-500">Pts/Q</small></span>
+                                                                <span className="text-xs font-black text-red-400 block mt-1">{safe.avgKills} <small className="text-[8px] text-gray-500">K/Q</small></span>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                    {mapGroup.bestSafes.length === 0 && (
+                                                        <span className="text-xs text-gray-500 italic block py-2">Sem dados de safes para este mapa.</span>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* PIORES SAFES */}
+                                            <div className="bg-gradient-to-b from-red-950/20 to-black p-5 rounded-2xl border border-red-500/30 space-y-3">
+                                                <div className="flex items-center gap-2 text-red-400 font-black text-xs uppercase tracking-wider border-b border-red-500/20 pb-2">
+                                                    <AlertTriangle size={16} /> 🔴 PIORES SAFES (MENOR APROVEITAMENTO)
+                                                </div>
+
+                                                <div className="space-y-2.5">
+                                                    {mapGroup.worstSafes.map((safe, idx) => (
+                                                        <div key={idx} className="bg-black/80 p-3.5 rounded-xl border border-red-500/20 flex items-center justify-between gap-3">
+                                                            <div className="min-w-0 flex-1">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="w-5 h-5 rounded bg-red-500/30 text-red-400 font-black text-[10px] flex items-center justify-center border border-red-500/40 shrink-0">
+                                                                        ⚠️
+                                                                    </span>
+                                                                    <span className="text-xs font-black text-white uppercase truncate italic">{safe.localName}</span>
+                                                                </div>
+                                                                <div className="flex items-center gap-2 text-[9px] text-gray-400 mt-1.5">
+                                                                    <span>{safe.matchesCount} quedas</span>
+                                                                    <span>•</span>
+                                                                    <span>Pos Média #{safe.avgPos}</span>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="text-right shrink-0">
+                                                                <span className="text-sm font-black text-red-400 block leading-none">{safe.avgPts} <small className="text-[9px] text-gray-500">Pts/Q</small></span>
+                                                                <span className="text-xs font-black text-gray-400 block mt-1">{safe.avgKills} <small className="text-[8px] text-gray-500">K/Q</small></span>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                    {mapGroup.worstSafes.length === 0 && (
+                                                        <span className="text-xs text-gray-500 italic block py-2">Sem dados de safes para este mapa.</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {/* 4. SEÇÃO: ABATES POR RODADA DE CADA MAPA E MVP DA EQUIPE POR MAPA */}
+                {showTeamDetails && (teamProfileSubTab === 'all' || teamProfileSubTab === 'mapKills') && teamMapKillsAndMvpData.length > 0 && (
+                    <div className="bg-[#1a1a1a] p-8 rounded-3xl border border-purple-900/30 shadow-2xl space-y-6">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-4">
+                            <div>
+                                <div className="flex items-center gap-2.5">
+                                    <div className="p-2 bg-purple-500/10 border border-purple-500/30 rounded-xl text-purple-400">
+                                        <Trophy size={20} />
+                                    </div>
+                                    <h3 className="text-xl font-black text-white italic uppercase tracking-wider">
+                                        ABATES POR RODADA E MVP DA EQUIPE POR MAPA ({selectedTeamStats.name})
+                                    </h3>
+                                </div>
+                                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-1">
+                                    Análise detalhada do volume de abates e médias por rodada em cada mapa, juntamente com a identificação do MVP e ranking de abates dos jogadores da equipe.
+                                </p>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs font-black text-purple-300 bg-purple-500/10 px-3 py-1.5 rounded-xl border border-purple-500/20">
+                                    {teamMapKillsAndMvpData.length} Mapas Analisados
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Cards por Mapa */}
+                        <div className="space-y-6">
+                            {teamMapKillsAndMvpData.map(mGroup => {
+                                const mapImg = findDimImg(data?.safes, mGroup.mapName);
+
+                                return (
+                                    <div key={mGroup.mapName} className="bg-black/60 rounded-2xl border border-white/10 p-6 space-y-5 shadow-xl">
+                                        {/* Cabecalho do Mapa */}
+                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-4">
+                                            <div className="flex items-center gap-3">
+                                                {mapImg ? (
+                                                    <img src={mapImg} alt={mGroup.mapName} className="w-12 h-12 object-cover rounded-xl border border-purple-500/30 bg-black" />
+                                                ) : (
+                                                    <div className="w-12 h-12 rounded-xl bg-black border border-purple-500/30 flex items-center justify-center text-purple-400">
+                                                        <MapIcon size={20} />
+                                                    </div>
+                                                )}
+                                                <div>
+                                                    <h4 className="text-xl font-black text-white italic uppercase tracking-tight flex items-center gap-2">
+                                                        MAPA: {mGroup.mapName}
+                                                    </h4>
+                                                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block mt-0.5">
+                                                        {mGroup.totalMatches} Quedas Disputadas neste mapa
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex flex-wrap items-center gap-3">
+                                                <div className="bg-purple-950/40 border border-purple-500/30 px-4 py-2 rounded-xl text-center">
+                                                    <span className="text-[9px] font-black text-purple-300 uppercase tracking-widest block">TOTAL ABATES</span>
+                                                    <span className="text-lg font-black text-white italic block leading-tight">{mGroup.totalTeamKills} Kills</span>
+                                                </div>
+                                                <div className="bg-purple-950/40 border border-purple-500/30 px-4 py-2 rounded-xl text-center">
+                                                    <span className="text-[9px] font-black text-purple-300 uppercase tracking-widest block">MÉDIA / QUEDA</span>
+                                                    <span className="text-lg font-black text-purple-400 italic block leading-tight">{mGroup.avgKillsPerMatch} K/Q</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Conteúdo em Duas Colunas: Abates por Rodada & MVP + Ranking de Jogadores */}
+                                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                                            
+                                            {/* Coluna 1: Abates por Rodada de Cada Mapa */}
+                                            <div className="lg:col-span-5 bg-black/80 rounded-2xl border border-white/5 p-5 space-y-4">
+                                                <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                                                    <span className="text-xs font-black text-white uppercase italic tracking-wider flex items-center gap-2">
+                                                        <Crosshair size={15} className="text-purple-400" /> Abates por Rodada
+                                                    </span>
+                                                    <span className="text-[10px] font-bold text-gray-400 uppercase">
+                                                        {mGroup.roundsList.length} Rodadas
+                                                    </span>
+                                                </div>
+
+                                                <div className="overflow-x-auto">
+                                                    <table className="w-full text-left border-collapse text-xs">
+                                                        <thead>
+                                                            <tr className="border-b border-white/10 text-[9px] text-gray-400 uppercase font-black tracking-wider bg-white/5">
+                                                                <th className="py-2.5 px-3">Rodada</th>
+                                                                <th className="py-2.5 px-3 text-center">Quedas</th>
+                                                                <th className="py-2.5 px-3 text-center">Total Abates</th>
+                                                                <th className="py-2.5 px-3 text-right">Média / Queda</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-white/5">
+                                                            {mGroup.roundsList.map(rItem => (
+                                                                <tr key={rItem.rd} className="hover:bg-white/5 transition-colors">
+                                                                    <td className="py-2.5 px-3 font-black text-white italic uppercase">{rItem.rd}</td>
+                                                                    <td className="py-2.5 px-3 text-center font-bold text-gray-300">{rItem.matchesCount}</td>
+                                                                    <td className="py-2.5 px-3 text-center font-black text-purple-400">{rItem.totalKills}</td>
+                                                                    <td className="py-2.5 px-3 text-right font-black text-yellow-400">{rItem.avgKills}</td>
+                                                                </tr>
+                                                            ))}
+                                                            {mGroup.roundsList.length === 0 && (
+                                                                <tr>
+                                                                    <td colSpan={4} className="text-center py-4 text-xs text-gray-500 italic">
+                                                                        Sem dados de rodadas para este mapa.
+                                                                    </td>
+                                                                </tr>
+                                                            )}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+
+                                            {/* Coluna 2: MVP da Equipe e Lista de Kills dos Jogadores no Mapa */}
+                                            <div className="lg:col-span-7 bg-black/80 rounded-2xl border border-white/5 p-5 space-y-4">
+                                                <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                                                    <span className="text-xs font-black text-white uppercase italic tracking-wider flex items-center gap-2">
+                                                        <Crown size={15} className="text-yellow-400" /> MVP & Ranking dos Jogadores
+                                                    </span>
+                                                    {mGroup.mvpPlayer && (
+                                                        <span className="text-[10px] font-black text-yellow-400 bg-yellow-500/10 border border-yellow-500/30 px-2.5 py-1 rounded-lg uppercase tracking-wider flex items-center gap-1">
+                                                            👑 MVP: {mGroup.mvpPlayer.name} ({mGroup.mvpPlayer.kills} Kills)
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                {/* Cartão de Destaque do MVP do Mapa */}
+                                                {mGroup.mvpPlayer && (
+                                                    <div className="bg-gradient-to-r from-yellow-950/40 via-purple-950/30 to-black p-4 rounded-xl border border-yellow-500/30 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg">
+                                                        <div className="flex items-center gap-3">
+                                                            {mGroup.mvpPlayer.playerImg ? (
+                                                                <img src={mGroup.mvpPlayer.playerImg} alt={mGroup.mvpPlayer.name} className="w-12 h-12 object-cover rounded-xl border-2 border-yellow-500/60 bg-black shrink-0" />
+                                                            ) : (
+                                                                <div className="w-12 h-12 rounded-xl bg-black border-2 border-yellow-500/60 flex items-center justify-center text-yellow-500 font-black shrink-0">
+                                                                    👑
+                                                                </div>
+                                                            )}
+                                                            <div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="px-2 py-0.5 rounded bg-yellow-500 text-black text-[9px] font-black uppercase tracking-wider">
+                                                                        MVP DO MAPA
+                                                                    </span>
+                                                                    <span className="text-xs font-bold text-gray-400">#{mGroup.mapName}</span>
+                                                                </div>
+                                                                <h5 className="text-lg font-black text-white uppercase italic tracking-wide mt-0.5">
+                                                                    {mGroup.mvpPlayer.name}
+                                                                </h5>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex items-center gap-4 text-center">
+                                                            <div>
+                                                                <span className="text-[9px] font-black text-gray-400 uppercase block">ABATES</span>
+                                                                <span className="text-xl font-black text-yellow-400 italic block">{mGroup.mvpPlayer.kills}</span>
+                                                            </div>
+                                                            <div className="w-px h-8 bg-white/10" />
+                                                            <div>
+                                                                <span className="text-[9px] font-black text-gray-400 uppercase block">MÉDIA/Q</span>
+                                                                <span className="text-base font-black text-white italic block">{mGroup.mvpPlayer.avgKills}</span>
+                                                            </div>
+                                                            <div className="w-px h-8 bg-white/10" />
+                                                            <div>
+                                                                <span className="text-[9px] font-black text-gray-400 uppercase block">DANO</span>
+                                                                <span className="text-base font-black text-purple-300 italic block">{mGroup.mvpPlayer.dano}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Tabela do Ranking de Kills dos Jogadores do Time no Mapa */}
+                                                <div className="overflow-x-auto">
+                                                    <table className="w-full text-left border-collapse text-xs">
+                                                        <thead>
+                                                            <tr className="border-b border-white/10 text-[9px] text-gray-400 uppercase font-black tracking-wider bg-white/5">
+                                                                <th className="py-2.5 px-3">#</th>
+                                                                <th className="py-2.5 px-3">Jogador</th>
+                                                                <th className="py-2.5 px-3 text-center">Quedas</th>
+                                                                <th className="py-2.5 px-3 text-center">Abates</th>
+                                                                <th className="py-2.5 px-3 text-center">Média/Q</th>
+                                                                <th className="py-2.5 px-3 text-right">Dano Total</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-white/5">
+                                                            {mGroup.playerList.map((player, idx) => (
+                                                                <tr key={player.name} className={`hover:bg-white/5 transition-colors ${idx === 0 ? 'bg-yellow-500/5' : ''}`}>
+                                                                    <td className="py-2.5 px-3 font-black text-gray-400">
+                                                                        {idx === 0 ? (
+                                                                            <span className="text-yellow-400 font-bold">👑 #1</span>
+                                                                        ) : (
+                                                                            `#${idx + 1}`
+                                                                        )}
+                                                                    </td>
+                                                                    <td className="py-2.5 px-3 font-black text-white italic uppercase flex items-center gap-2">
+                                                                        {player.playerImg ? (
+                                                                            <img src={player.playerImg} alt={player.name} className="w-6 h-6 object-cover rounded-md border border-white/10 bg-black shrink-0" />
+                                                                        ) : (
+                                                                            <div className="w-6 h-6 rounded-md bg-white/5 border border-white/10 flex items-center justify-center text-[10px] text-gray-400 shrink-0">
+                                                                                <User size={12} />
+                                                                            </div>
+                                                                        )}
+                                                                        <span>{player.name}</span>
+                                                                    </td>
+                                                                    <td className="py-2.5 px-3 text-center font-bold text-gray-300">{player.matchesCount}</td>
+                                                                    <td className="py-2.5 px-3 text-center font-black text-yellow-400">{player.kills}</td>
+                                                                    <td className="py-2.5 px-3 text-center font-bold text-purple-300">{player.avgKills}</td>
+                                                                    <td className="py-2.5 px-3 text-right font-mono text-gray-300">{player.dano}</td>
+                                                                </tr>
+                                                            ))}
+                                                            {mGroup.playerList.length === 0 && (
+                                                                <tr>
+                                                                    <td colSpan={6} className="text-center py-4 text-xs text-gray-500 italic">
+                                                                        Sem dados de jogadores para este mapa.
+                                                                    </td>
+                                                                </tr>
+                                                            )}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+
+                                            </div>
+
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
 
                 {/* Roster Performance Ordenada por Kills - GRID RESPONSIVO (SEM SCROLL) */}
                 <div className="bg-[#1a1a1a] p-8 rounded-3xl border border-gray-800 shadow-xl">
@@ -2155,79 +3761,867 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                     </div>
                 )}
             </div>
-        ) : activeTab === 'mapRanking' ? (
-            <div className="space-y-6 animate-in fade-in duration-500">
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                    {mapRankings.map((m, idx) => (
-                        <div key={idx} className="bg-[#1a1a1a] rounded-2xl border border-gray-800 overflow-hidden shadow-2xl flex flex-col">
-                            <div className="bg-gradient-to-r from-blue-900/20 to-black px-4 py-3 border-b border-gray-800 flex justify-between items-center">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-blue-600/20 rounded-xl text-blue-500">
-                                        <MapIcon size={16} />
-                                    </div>
-                                    <div>
-                                        <h3 className="text-lg font-black text-white italic uppercase tracking-tighter">{m.mapName}</h3>
-                                        <p className="text-[8px] text-gray-500 font-bold uppercase tracking-widest">Performance por Território</p>
-                                    </div>
-                                </div>
+        ) : activeTab === 'mapStats' ? (
+            <div className="space-y-8 animate-in fade-in duration-300">
+                {/* Header Banner */}
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gradient-to-r from-yellow-500/10 via-amber-500/5 to-transparent p-6 rounded-3xl border border-yellow-500/20 backdrop-blur-md">
+                    <div>
+                        <div className="flex items-center gap-3">
+                            <div className="p-3 bg-yellow-500/20 text-yellow-400 rounded-2xl border border-yellow-500/30 shadow-inner">
+                                <BarChart2 size={24} />
                             </div>
-                            <div className="w-full overflow-x-auto">
-                                <table className="w-full text-left border-collapse table-fixed min-w-[500px]">
-                                    <thead className="bg-black/40 text-[8px] text-gray-500 uppercase font-black tracking-widest">
-                                        <tr>
-                                            <th className="px-2 py-3 w-8 text-center">#</th>
-                                            <th className="px-2 py-3 w-32 cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort('name')}>
-                                                Equipe {sortConfig.key === 'name' && (sortConfig.direction === 'desc' ? '↓' : '↑')}
-                                            </th>
-                                            <th className="px-1 py-3 text-center cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort('s')}>
-                                                S {sortConfig.key === 's' && (sortConfig.direction === 'desc' ? '↓' : '↑')}
-                                            </th>
-                                            <th className="px-1 py-3 text-center cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort('pts')}>
-                                                PTS {sortConfig.key === 'pts' && (sortConfig.direction === 'desc' ? '↓' : '↑')}
-                                            </th>
-                                            <th className="px-1 py-3 text-center cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort('b')}>
-                                                B {sortConfig.key === 'b' && (sortConfig.direction === 'desc' ? '↓' : '↑')}
-                                            </th>
-                                            <th className="px-1 py-3 text-center cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort('abts')}>
-                                                K {sortConfig.key === 'abts' && (sortConfig.direction === 'desc' ? '↓' : '↑')}
-                                            </th>
-                                            <th className="px-1 py-3 text-center cursor-pointer hover:text-white transition-colors text-[7px]" onClick={() => toggleSort('avgPts')}>
-                                                AVG P {sortConfig.key === 'avgPts' && (sortConfig.direction === 'desc' ? '↓' : '↑')}
-                                            </th>
-                                            <th className="px-1 py-3 text-center cursor-pointer hover:text-white transition-colors text-[7px]" onClick={() => toggleSort('avgAbts')}>
-                                                AVG K {sortConfig.key === 'avgAbts' && (sortConfig.direction === 'desc' ? '↓' : '↑')}
-                                            </th>
-                                            <th className="px-1 py-3 text-center cursor-pointer hover:text-white transition-colors text-[7px]" onClick={() => toggleSort('avgPtsc')}>
-                                                AVG POS {sortConfig.key === 'avgPtsc' && (sortConfig.direction === 'desc' ? '↓' : '↑')}
-                                            </th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-800/30">
-                                        {m.stats.slice(0, 10).map((team, tIdx) => (
-                                            <tr key={tIdx} className="hover:bg-white/5 transition-colors cursor-pointer" onClick={() => setFilters(prev => ({...prev, team: [team.name]}))}>
-                                                <td className="px-2 py-2 text-center font-mono text-[9px] text-gray-600">{tIdx + 1}</td>
-                                                <td className="px-2 py-2">
-                                                    <div className="flex items-center gap-2 overflow-hidden">
-                                                        <div className="w-5 h-5 bg-black rounded border border-gray-800 p-0.5 flex-shrink-0">
-                                                            {team.image ? <img src={team.image} alt={team.name} className="w-full h-full object-contain" /> : <Shield size={10} className="text-gray-700" />}
-                                                        </div>
-                                                        <span className="text-[9px] font-black text-white uppercase italic truncate">{team.name}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-1 py-2 text-center font-black text-gray-500 italic text-[10px]">{team.s}</td>
-                                                <td className="px-1 py-2 text-center font-black text-yellow-500 italic text-[10px]">{team.pts}</td>
-                                                <td className="px-1 py-2 text-center font-black text-orange-500 italic text-[10px]">{team.b}</td>
-                                                <td className="px-1 py-2 text-center font-black text-red-500 italic text-[10px]">{team.abts}</td>
-                                                <td className="px-1 py-2 text-center font-black text-yellow-400/80 italic text-[9px]">{team.avgPts}</td>
-                                                <td className="px-1 py-2 text-center font-black text-red-400/80 italic text-[9px]">{team.avgAbts}</td>
-                                                <td className="px-1 py-2 text-center font-black text-blue-400/80 italic text-[9px]">{team.avgPtsc}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                            <div>
+                                <h1 className="text-2xl font-black uppercase italic tracking-widest text-white flex items-center gap-2">
+                                    Ranking & Análise de Mapas
+                                </h1>
+                                <p className="text-xs text-gray-400 font-medium tracking-wide mt-1">
+                                    Acompanhe o ranking de mapas por abates, média de abates por partida e o desempenho detalhado por rodada.
+                                </p>
                             </div>
                         </div>
-                    ))}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                        <div className="bg-black/60 border border-white/10 px-4 py-2.5 rounded-2xl flex items-center gap-3 shadow-lg">
+                            <Swords size={18} className="text-yellow-500" />
+                            <div>
+                                <div className="text-[10px] text-gray-400 uppercase font-black tracking-wider">Total Abates Registrados</div>
+                                <div className="text-base font-black text-white">{mapStatsData.kpis.totalKillsAllMaps.toLocaleString('pt-BR')} Kills</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Top KPI Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* KPI 1 */}
+                    <div className="bg-gradient-to-br from-gray-900/90 via-black to-gray-950 border border-white/10 hover:border-yellow-500/40 p-5 rounded-2xl shadow-xl transition-all">
+                        <div className="flex items-center justify-between mb-3">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Mapa Mais Letal</span>
+                            <div className="p-2 bg-yellow-500/10 text-yellow-400 rounded-xl border border-yellow-500/20">
+                                <Flame size={18} />
+                            </div>
+                        </div>
+                        <div className="text-xl font-black text-white uppercase italic tracking-wide">
+                            {mapStatsData.kpis.topMapKills?.mapName || 'N/A'}
+                        </div>
+                        <div className="mt-3 flex items-center justify-between text-xs">
+                            <span className="text-gray-400 font-bold">Total Kills:</span>
+                            <span className="font-black text-yellow-400">{mapStatsData.kpis.topMapKills?.totalKills.toLocaleString('pt-BR') || 0}</span>
+                        </div>
+                        <div className="mt-1 flex items-center justify-between text-xs">
+                            <span className="text-gray-400 font-bold">Média / Partida:</span>
+                            <span className="font-bold text-gray-200">{(mapStatsData.kpis.topMapKills?.avgKillsPerMatch || 0).toFixed(1)}</span>
+                        </div>
+                    </div>
+
+                    {/* KPI 2 */}
+                    <div className="bg-gradient-to-br from-gray-900/90 via-black to-gray-950 border border-white/10 hover:border-emerald-500/40 p-5 rounded-2xl shadow-xl transition-all">
+                        <div className="flex items-center justify-between mb-3">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Maior Média por Jogo</span>
+                            <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl border border-emerald-500/20">
+                                <TrendingUp size={18} />
+                            </div>
+                        </div>
+                        <div className="text-xl font-black text-white uppercase italic tracking-wide">
+                            {mapStatsData.kpis.topMapAvg?.mapName || 'N/A'}
+                        </div>
+                        <div className="mt-3 flex items-center justify-between text-xs">
+                            <span className="text-gray-400 font-bold">Média por Partida:</span>
+                            <span className="font-black text-emerald-400">{(mapStatsData.kpis.topMapAvg?.avgKillsPerMatch || 0).toFixed(1)} Kills</span>
+                        </div>
+                        <div className="mt-1 flex items-center justify-between text-xs">
+                            <span className="text-gray-400 font-bold">Partidas Disputadas:</span>
+                            <span className="font-bold text-gray-200">{mapStatsData.kpis.topMapAvg?.totalMatches || 0} PJ</span>
+                        </div>
+                    </div>
+
+                    {/* KPI 3 */}
+                    <div className="bg-gradient-to-br from-gray-900/90 via-black to-gray-950 border border-white/10 hover:border-red-500/40 p-5 rounded-2xl shadow-xl transition-all">
+                        <div className="flex items-center justify-between mb-3">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Recorde de Abates em Rodada</span>
+                            <div className="p-2 bg-red-500/10 text-red-400 rounded-xl border border-red-500/20">
+                                <Award size={18} />
+                            </div>
+                        </div>
+                        <div className="text-xl font-black text-white uppercase italic tracking-wide">
+                            {mapStatsData.kpis.topRoundMap ? `${mapStatsData.kpis.topRoundMap.mapName} (${mapStatsData.kpis.topRoundMap.roundName})` : 'N/A'}
+                        </div>
+                        <div className="mt-3 flex items-center justify-between text-xs">
+                            <span className="text-gray-400 font-bold">Kills na Rodada:</span>
+                            <span className="font-black text-red-400">{mapStatsData.kpis.topRoundMap?.totalKills || 0} Kills</span>
+                        </div>
+                        <div className="mt-1 flex items-center justify-between text-xs">
+                            <span className="text-gray-400 font-bold">Média/Partida RD:</span>
+                            <span className="font-bold text-gray-200">{(mapStatsData.kpis.topRoundMap?.avgKills || 0).toFixed(1)}</span>
+                        </div>
+                    </div>
+
+                    {/* KPI 4 */}
+                    <div className="bg-gradient-to-br from-gray-900/90 via-black to-gray-950 border border-white/10 hover:border-blue-500/40 p-5 rounded-2xl shadow-xl transition-all">
+                        <div className="flex items-center justify-between mb-3">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Total de Mapas Ativos</span>
+                            <div className="p-2 bg-blue-500/10 text-blue-400 rounded-xl border border-blue-500/20">
+                                <Layers size={18} />
+                            </div>
+                        </div>
+                        <div className="text-xl font-black text-white uppercase italic tracking-wide">
+                            {mapStatsData.mapList.length} Mapas
+                        </div>
+                        <div className="mt-3 flex items-center justify-between text-xs">
+                            <span className="text-gray-400 font-bold">Rodadas Analisadas:</span>
+                            <span className="font-black text-blue-400">{mapStatsData.roundsList.length} Rodadas</span>
+                        </div>
+                        <div className="mt-1 flex items-center justify-between text-xs">
+                            <span className="text-gray-400 font-bold">Média Geral p/ Mapa:</span>
+                            <span className="font-bold text-gray-200">
+                                {mapStatsData.mapList.length > 0 ? (mapStatsData.kpis.totalKillsAllMaps / mapStatsData.mapList.length).toFixed(0) : 0} Kills
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* SEÇÃO 1: RANKING GERAL DE MAPAS */}
+                <div className="bg-black/60 border border-white/10 rounded-3xl p-6 space-y-6 shadow-2xl backdrop-blur-xl">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-gray-800">
+                        <div>
+                            <h2 className="text-lg font-black uppercase italic tracking-wider text-white flex items-center gap-2">
+                                <Trophy size={18} className="text-yellow-500" />
+                                Ranking Geral de Mapas por Abates e Médias
+                            </h2>
+                            <p className="text-xs text-gray-400 font-medium">Classificação geral dos mapas com médias calculadas por partida disputada.</p>
+                        </div>
+
+                        {/* Search */}
+                        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                            <div className="relative flex-1 sm:w-56">
+                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                                <input
+                                    type="text"
+                                    placeholder="Buscar mapa..."
+                                    value={mapStatsSearch}
+                                    onChange={(e) => setMapStatsSearch(e.target.value)}
+                                    className="w-full bg-black/80 border border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs font-medium text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Ranking Table */}
+                    <div className="overflow-x-auto rounded-2xl border border-white/10 bg-black/40">
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="bg-white/5 border-b border-white/10 text-[10px] uppercase tracking-widest text-gray-400 font-black">
+                                    <th className="py-3.5 px-4 text-center w-12">#</th>
+                                    <th 
+                                        className="py-3.5 px-4 cursor-pointer hover:text-white transition-colors"
+                                        onClick={() => setMapStatsSort(prev => ({ field: 'mapName', direction: prev.field === 'mapName' && prev.direction === 'asc' ? 'desc' : 'asc' }))}
+                                    >
+                                        <div className="flex items-center gap-1.5">
+                                            Mapa
+                                            <ArrowUpDown size={12} className={mapStatsSort.field === 'mapName' ? 'text-yellow-500' : 'text-gray-600'} />
+                                        </div>
+                                    </th>
+                                    <th 
+                                        className="py-3.5 px-4 text-center cursor-pointer hover:text-white transition-colors"
+                                        onClick={() => setMapStatsSort(prev => ({ field: 'totalMatches', direction: prev.field === 'totalMatches' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
+                                    >
+                                        <div className="flex items-center justify-center gap-1.5">
+                                            Partidas (PJ)
+                                            <ArrowUpDown size={12} className={mapStatsSort.field === 'totalMatches' ? 'text-yellow-500' : 'text-gray-600'} />
+                                        </div>
+                                    </th>
+                                    <th 
+                                        className="py-3.5 px-4 text-center cursor-pointer hover:text-white transition-colors"
+                                        onClick={() => setMapStatsSort(prev => ({ field: 'totalKills', direction: prev.field === 'totalKills' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
+                                    >
+                                        <div className="flex items-center justify-center gap-1.5">
+                                            Total Kills
+                                            <ArrowUpDown size={12} className={mapStatsSort.field === 'totalKills' ? 'text-yellow-500' : 'text-gray-600'} />
+                                        </div>
+                                    </th>
+                                    <th 
+                                        className="py-3.5 px-4 text-center cursor-pointer hover:text-white transition-colors"
+                                        onClick={() => setMapStatsSort(prev => ({ field: 'avgKillsPerMatch', direction: prev.field === 'avgKillsPerMatch' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
+                                    >
+                                        <div className="flex items-center justify-center gap-1.5">
+                                            Média / Partida
+                                            <ArrowUpDown size={12} className={mapStatsSort.field === 'avgKillsPerMatch' ? 'text-yellow-500' : 'text-gray-600'} />
+                                        </div>
+                                    </th>
+                                    <th className="py-3.5 px-4 text-center">% do Total</th>
+                                    <th className="py-3.5 px-4 text-center">Recorde (1 Queda)</th>
+                                    <th className="py-3.5 px-4">Time MVP</th>
+                                    <th className="py-3.5 px-4">Jogador MVP</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-white/5 text-xs font-medium">
+                                {filteredAndSortedMaps.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={9} className="py-8 text-center text-gray-500 italic font-medium">
+                                            Nenhum dado de mapa encontrado para os filtros selecionados.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    filteredAndSortedMaps.map((m, idx) => {
+                                        const mapImg = MAPS_CONFIG.find(item => item.name.toLowerCase() === m.mapName.toLowerCase())?.url;
+                                        const percentOfTotal = mapStatsData.kpis.totalKillsAllMaps > 0 
+                                            ? ((m.totalKills / mapStatsData.kpis.totalKillsAllMaps) * 100).toFixed(1)
+                                            : '0.0';
+                                        const teamLogo = m.topTeam ? findTeamLogo(m.topTeam.name, data?.teamsReference) : null;
+
+                                        return (
+                                            <tr key={m.mapName} className="hover:bg-white/5 transition-colors">
+                                                <td className="py-3.5 px-4 text-center font-black text-gray-400">
+                                                    {idx === 0 ? (
+                                                        <span className="w-6 h-6 rounded-full bg-yellow-500 text-black font-black text-[10px] inline-flex items-center justify-center shadow-lg shadow-yellow-500/30">1</span>
+                                                    ) : idx === 1 ? (
+                                                        <span className="w-6 h-6 rounded-full bg-gray-300 text-black font-black text-[10px] inline-flex items-center justify-center">2</span>
+                                                    ) : idx === 2 ? (
+                                                        <span className="w-6 h-6 rounded-full bg-amber-700 text-white font-black text-[10px] inline-flex items-center justify-center">3</span>
+                                                    ) : (
+                                                        `#${idx + 1}`
+                                                    )}
+                                                </td>
+                                                <td className="py-3.5 px-4 font-black uppercase text-white tracking-wider">
+                                                    <div className="flex items-center gap-3">
+                                                        {mapImg ? (
+                                                            <img src={mapImg} alt={m.mapName} className="w-9 h-9 rounded-lg object-cover border border-white/10 shadow" />
+                                                        ) : (
+                                                            <div className="w-9 h-9 rounded-lg bg-gray-800 border border-white/10 flex items-center justify-center text-yellow-500 font-bold">
+                                                                <MapPin size={16} />
+                                                            </div>
+                                                        )}
+                                                        <div>
+                                                            <div className="text-white text-sm font-black italic">{m.mapName}</div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="py-3.5 px-4 text-center font-bold text-gray-300">{m.totalMatches} PJ</td>
+                                                <td className="py-3.5 px-4 text-center font-black text-yellow-400 text-sm">
+                                                    {m.totalKills.toLocaleString('pt-BR')} Kills
+                                                </td>
+                                                <td className="py-3.5 px-4 text-center">
+                                                    <span className="bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2.5 py-1 rounded-full text-xs font-black">
+                                                        {m.avgKillsPerMatch.toFixed(1)} / partida
+                                                    </span>
+                                                </td>
+                                                <td className="py-3.5 px-4 text-center">
+                                                    <div className="flex flex-col items-center gap-1">
+                                                        <span className="text-[11px] font-bold text-gray-300">{percentOfTotal}%</span>
+                                                        <div className="w-20 bg-gray-800 h-1.5 rounded-full overflow-hidden">
+                                                            <div className="bg-yellow-500 h-full rounded-full" style={{ width: `${Math.min(100, parseFloat(percentOfTotal))}%` }} />
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="py-3.5 px-4 text-center font-bold text-red-400">
+                                                    {m.maxKillsInMatch} Kills
+                                                </td>
+                                                <td className="py-3.5 px-4">
+                                                    {m.topTeam ? (
+                                                        <div className="flex items-center gap-2">
+                                                            {teamLogo ? (
+                                                                <img src={teamLogo} alt={m.topTeam.name} className="w-5 h-5 object-contain" />
+                                                            ) : (
+                                                                <Users size={14} className="text-gray-400" />
+                                                            )}
+                                                            <span className="font-bold text-gray-200 text-xs truncate max-w-[120px]">{m.topTeam.name}</span>
+                                                            <span className="text-[10px] text-yellow-500 font-black">({m.topTeam.kills})</span>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-gray-500 italic text-[10px]">-</span>
+                                                    )}
+                                                </td>
+                                                <td className="py-3.5 px-4">
+                                                    {m.topPlayer ? (
+                                                        <div className="flex items-center gap-2">
+                                                            <User size={14} className="text-yellow-400" />
+                                                            <span className="font-bold text-gray-200 text-xs truncate max-w-[120px]">{m.topPlayer.name}</span>
+                                                            <span className="text-[10px] text-yellow-500 font-black">({m.topPlayer.kills})</span>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-gray-500 italic text-[10px]">-</span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {/* SEÇÃO 2: ABATES POR RODADA DE CADA MAPA E MÉDIAS */}
+                <div className="bg-black/60 border border-white/10 rounded-3xl p-6 space-y-6 shadow-2xl backdrop-blur-xl">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-gray-800">
+                        <div>
+                            <h2 className="text-lg font-black uppercase italic tracking-wider text-white flex items-center gap-2">
+                                <Swords size={18} className="text-yellow-500" />
+                                Abates por Rodada de Cada Mapa e Médias
+                            </h2>
+                            <p className="text-xs text-gray-400 font-medium">Detalhamento por rodada do volume de abates e médias por partida em cada mapa.</p>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-3">
+                            {/* Map Filter Dropdown */}
+                            <select
+                                value={selectedMapFilter}
+                                onChange={(e) => setSelectedMapFilter(e.target.value)}
+                                className="bg-black/80 border border-white/10 text-white rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:border-yellow-500/50"
+                            >
+                                <option value="ALL">Todos os Mapas</option>
+                                {mapStatsData.mapList.map(m => (
+                                    <option key={m.mapName} value={m.mapName}>{m.mapName}</option>
+                                ))}
+                            </select>
+
+                            {/* View Mode Switcher */}
+                            <div className="flex bg-black/80 p-1 rounded-xl border border-white/10">
+                                <button
+                                    onClick={() => setMapRoundViewMode('matrix')}
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                        mapRoundViewMode === 'matrix' ? 'bg-yellow-500 text-black shadow' : 'text-gray-400 hover:text-white'
+                                    }`}
+                                >
+                                    <LayoutGrid size={14} /> Matriz (Tabela)
+                                </button>
+                                <button
+                                    onClick={() => setMapRoundViewMode('cards')}
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                        mapRoundViewMode === 'cards' ? 'bg-yellow-500 text-black shadow' : 'text-gray-400 hover:text-white'
+                                    }`}
+                                >
+                                    <ListOrdered size={14} /> Cards Detalhados
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* MATRIX VIEW */}
+                    {mapRoundViewMode === 'matrix' && (
+                        <div className="overflow-x-auto rounded-2xl border border-white/10 bg-black/40">
+                            <table className="w-full text-left border-collapse min-w-[700px]">
+                                <thead>
+                                    <tr className="bg-white/5 border-b border-white/10 text-[10px] uppercase tracking-widest text-gray-400 font-black">
+                                        <th className="py-3.5 px-4">Mapa</th>
+                                        {mapStatsData.roundsList.map(rd => (
+                                            <th key={rd} className="py-3.5 px-3 text-center min-w-[100px]">{rd}</th>
+                                        ))}
+                                        <th className="py-3.5 px-4 text-center bg-yellow-500/10 text-yellow-400">Total Kills</th>
+                                        <th className="py-3.5 px-4 text-center bg-yellow-500/10 text-yellow-400">Média / Partida</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5 text-xs font-medium">
+                                    {filteredAndSortedMaps.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={mapStatsData.roundsList.length + 3} className="py-8 text-center text-gray-500 italic">
+                                                Nenhum mapa disponível.
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        filteredAndSortedMaps.map(m => {
+                                            return (
+                                                <tr key={m.mapName} className="hover:bg-white/5 transition-colors">
+                                                    <td className="py-3.5 px-4 font-black uppercase text-white tracking-wider">
+                                                        {m.mapName}
+                                                    </td>
+
+                                                    {mapStatsData.roundsList.map(rd => {
+                                                        const rInfo = m.rounds[rd];
+                                                        if (!rInfo || rInfo.totalKills === 0) {
+                                                            return (
+                                                                <td key={rd} className="py-3.5 px-3 text-center text-gray-600 font-bold">
+                                                                    -
+                                                                </td>
+                                                            );
+                                                        }
+
+                                                        return (
+                                                            <td key={rd} className="py-3 px-2 text-center">
+                                                                <div className="flex flex-col items-center justify-center bg-white/5 border border-white/5 rounded-xl py-1.5 px-2">
+                                                                    <span className="font-black text-yellow-400 text-xs">{rInfo.totalKills} Kills</span>
+                                                                    <span className="text-[10px] text-gray-400 font-bold">
+                                                                        Média: {rInfo.avgKillsPerMatch.toFixed(1)}
+                                                                    </span>
+                                                                    <span className="text-[9px] text-gray-500">
+                                                                        ({rInfo.matchesCount} {rInfo.matchesCount === 1 ? 'jogo' : 'jogos'})
+                                                                    </span>
+                                                                </div>
+                                                            </td>
+                                                        );
+                                                    })}
+
+                                                    <td className="py-3.5 px-4 text-center font-black text-yellow-400 text-sm bg-yellow-500/5">
+                                                        {m.totalKills}
+                                                    </td>
+                                                    <td className="py-3.5 px-4 text-center font-black text-white text-xs bg-yellow-500/5">
+                                                        {m.avgKillsPerMatch.toFixed(1)}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+
+                    {/* CARDS VIEW */}
+                    {mapRoundViewMode === 'cards' && (
+                        <div className="space-y-8">
+                            {filteredAndSortedMaps.map(m => {
+                                const mapImg = MAPS_CONFIG.find(item => item.name.toLowerCase() === m.mapName.toLowerCase())?.url;
+
+                                return (
+                                    <div key={m.mapName} className="bg-black/40 border border-white/10 rounded-2xl p-5 space-y-4">
+                                        {/* Map Header */}
+                                        <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                                            <div className="flex items-center gap-3">
+                                                {mapImg ? (
+                                                    <img src={mapImg} alt={m.mapName} className="w-10 h-10 rounded-xl object-cover border border-white/10 shadow" />
+                                                ) : (
+                                                    <div className="w-10 h-10 rounded-xl bg-gray-800 border border-white/10 flex items-center justify-center text-yellow-500 font-bold">
+                                                        <MapPin size={18} />
+                                                    </div>
+                                                )}
+                                                <div>
+                                                    <h3 className="text-base font-black text-white uppercase italic tracking-wider">{m.mapName}</h3>
+                                                    <div className="text-xs text-gray-400 flex items-center gap-3 font-medium">
+                                                        <span>Total: <strong className="text-yellow-400">{m.totalKills} Kills</strong></span>
+                                                        <span>•</span>
+                                                        <span>Média: <strong className="text-white">{m.avgKillsPerMatch.toFixed(1)} / partida</strong></span>
+                                                        <span>•</span>
+                                                        <span>Partidas: <strong className="text-gray-300">{m.totalMatches} PJ</strong></span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Rounds Grid */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                            {mapStatsData.roundsList.map(rd => {
+                                                const rInfo = m.rounds[rd];
+
+                                                if (!rInfo) {
+                                                    return (
+                                                        <div key={rd} className="bg-white/5 border border-white/5 rounded-xl p-3 opacity-40">
+                                                            <div className="text-xs font-black text-gray-400 uppercase">{rd}</div>
+                                                            <div className="text-[11px] text-gray-500 italic mt-2">Sem partidas registradas neste mapa</div>
+                                                        </div>
+                                                    );
+                                                }
+
+                                                return (
+                                                    <div key={rd} className="bg-gradient-to-br from-gray-900/80 to-black border border-white/10 hover:border-yellow-500/30 rounded-xl p-4 space-y-3 transition-all">
+                                                        <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                                                            <span className="text-xs font-black text-yellow-400 uppercase tracking-wider">{rd}</span>
+                                                            <span className="text-[10px] font-bold text-gray-400 bg-white/5 px-2 py-0.5 rounded-full">
+                                                                {rInfo.matchesCount} {rInfo.matchesCount === 1 ? 'partida' : 'partidas'}
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="space-y-1.5">
+                                                            <div className="flex items-center justify-between text-xs">
+                                                                <span className="text-gray-400 font-medium">Total de Abates:</span>
+                                                                <span className="font-black text-yellow-400 text-sm">{rInfo.totalKills} Kills</span>
+                                                            </div>
+                                                            <div className="flex items-center justify-between text-xs">
+                                                                <span className="text-gray-400 font-medium">Média / Partida:</span>
+                                                                <span className="font-bold text-white">{rInfo.avgKillsPerMatch.toFixed(1)}</span>
+                                                            </div>
+                                                            {rInfo.falls && rInfo.falls.length > 0 && (
+                                                                <div className="flex items-center justify-between text-[10px] text-gray-500">
+                                                                    <span>Quedas:</span>
+                                                                    <span className="font-bold text-gray-300">{rInfo.falls.join(', ')}</span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Top Performers in this Round for this Map */}
+                                                        {(rInfo.topTeam || rInfo.topPlayer) && (
+                                                            <div className="pt-2 border-t border-white/10 space-y-1">
+                                                                {rInfo.topTeam && (
+                                                                    <div className="flex items-center justify-between text-[10px]">
+                                                                        <span className="text-gray-400 font-bold flex items-center gap-1">
+                                                                            <Users size={10} className="text-yellow-500" /> Time MVP:
+                                                                        </span>
+                                                                        <span className="font-bold text-gray-200 truncate max-w-[100px]">
+                                                                            {rInfo.topTeam.name} ({rInfo.topTeam.kills})
+                                                                        </span>
+                                                                    </div>
+                                                                )}
+                                                                {rInfo.topPlayer && (
+                                                                    <div className="flex items-center justify-between text-[10px]">
+                                                                        <span className="text-gray-400 font-bold flex items-center gap-1">
+                                                                            <User size={10} className="text-yellow-500" /> Player MVP:
+                                                                        </span>
+                                                                        <span className="font-bold text-gray-200 truncate max-w-[100px]">
+                                                                            {rInfo.topPlayer.name} ({rInfo.topPlayer.kills})
+                                                                        </span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            </div>
+        ) : activeTab === 'mapRanking' ? (
+            <div className="space-y-8 animate-in fade-in duration-500">
+                {/* Header Banner */}
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gradient-to-r from-blue-900/30 via-indigo-900/20 to-black p-6 rounded-3xl border border-blue-500/30 backdrop-blur-md shadow-2xl">
+                    <div>
+                        <div className="flex items-center gap-3">
+                            <div className="p-3 bg-blue-500/20 text-blue-400 rounded-2xl border border-blue-500/30 shadow-inner">
+                                <MapIcon size={26} />
+                            </div>
+                            <div>
+                                <h1 className="text-2xl font-black uppercase italic tracking-widest text-white flex items-center gap-2">
+                                    Estatísticas de Equipes por Mapa
+                                </h1>
+                                <p className="text-xs text-gray-400 font-medium tracking-wide mt-1">
+                                    Acompanhe o desempenho, pontuação, abates, médias por partida e eficiência de cada equipe em cada território do campeonato.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                        <div className="bg-black/60 border border-white/10 px-4 py-2.5 rounded-2xl flex items-center gap-3 shadow-lg">
+                            <Layers size={18} className="text-yellow-500" />
+                            <div>
+                                <div className="text-[10px] text-gray-400 uppercase font-black tracking-wider">Mapas Analisados</div>
+                                <div className="text-base font-black text-white">{mapRankings.length} Territórios</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Controls & Filters Bar */}
+                <div className="bg-black/60 border border-white/10 p-4 rounded-2xl flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 shadow-xl">
+                    {/* Map Filter Tabs */}
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0 custom-scrollbar">
+                        <button
+                            onClick={() => setSelectedMapFilter('ALL')}
+                            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 flex-shrink-0 ${
+                                selectedMapFilter === 'ALL'
+                                ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20'
+                                : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
+                            }`}
+                        >
+                            <Layers size={14} /> Todos os Mapas
+                        </button>
+                        {mapRankings.map(m => {
+                            const config = MAPS_CONFIG.find(mc => normalize(mc.name) === normalize(m.mapName));
+                            return (
+                                <button
+                                    key={m.mapName}
+                                    onClick={() => setSelectedMapFilter(m.mapName)}
+                                    className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 flex-shrink-0 ${
+                                        selectedMapFilter === m.mapName
+                                        ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20'
+                                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
+                                    }`}
+                                >
+                                    {config?.url && (
+                                        <img src={config.url} alt={m.mapName} className="w-4 h-4 rounded-full object-cover" />
+                                    )}
+                                    {m.mapName}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* Search & Actions */}
+                    <div className="flex flex-wrap items-center gap-3">
+                        <div className="relative flex-1 md:w-56">
+                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                            <input
+                                type="text"
+                                placeholder="Buscar equipe..."
+                                value={mapStatsSearch}
+                                onChange={(e) => setMapStatsSearch(e.target.value)}
+                                className="w-full bg-black/80 border border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs font-medium text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50"
+                            />
+                        </div>
+
+                        <button
+                            onClick={() => setShowAllTeamsMap(prev => !prev)}
+                            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border ${
+                                showAllTeamsMap
+                                ? 'bg-blue-600/20 text-blue-400 border-blue-500/40'
+                                : 'bg-white/5 text-gray-400 border-white/10 hover:text-white'
+                            }`}
+                        >
+                            <Users size={14} /> {showAllTeamsMap ? 'Mostrar Top 10' : 'Mostrar Todos os Times'}
+                        </button>
+                    </div>
+                </div>
+
+                {/* Map Grid / Display */}
+                <div className="space-y-8">
+                    {mapRankings
+                        .filter(m => selectedMapFilter === 'ALL' || normalize(m.mapName) === normalize(selectedMapFilter))
+                        .map((m) => {
+                            const config = MAPS_CONFIG.find(mc => normalize(mc.name) === normalize(m.mapName));
+                            const mapImg = config?.url || m.mapImg;
+
+                            // Filter teams by search input
+                            const filteredMapStats = m.stats.filter(s => 
+                                !mapStatsSearch || normalize(s.name).includes(normalize(mapStatsSearch))
+                            );
+
+                            const displayStats = showAllTeamsMap ? filteredMapStats : filteredMapStats.slice(0, 10);
+
+                            return (
+                                <div key={m.mapName} className="bg-[#1a1a1a] rounded-3xl border border-gray-800 overflow-hidden shadow-2xl space-y-2">
+                                    {/* Map Card Header */}
+                                    <div className="relative overflow-hidden bg-gradient-to-r from-blue-950/80 via-black to-gray-950 p-6 border-b border-gray-800 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+                                        {mapImg && (
+                                            <div 
+                                                className="absolute inset-0 opacity-10 bg-cover bg-center pointer-events-none"
+                                                style={{ backgroundImage: `url(${mapImg})` }}
+                                            />
+                                        )}
+
+                                        <div className="relative z-10 flex items-center gap-4">
+                                            {mapImg ? (
+                                                <img src={mapImg} alt={m.mapName} className="w-16 h-16 rounded-2xl object-cover border-2 border-yellow-500/40 shadow-xl" />
+                                            ) : (
+                                                <div className="w-16 h-16 rounded-2xl bg-blue-600/20 border-2 border-blue-500/30 flex items-center justify-center text-blue-400 shadow-xl">
+                                                    <MapIcon size={32} />
+                                                </div>
+                                            )}
+                                            <div>
+                                                <div className="flex items-center gap-3">
+                                                    <h2 className="text-2xl font-black text-white italic uppercase tracking-wider">{m.mapName}</h2>
+                                                    <span className="bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full">
+                                                        {m.totalMatches} Partidas
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-4 mt-2 text-xs font-bold text-gray-400">
+                                                    <span>Total Kills: <strong className="text-red-400">{m.totalKills.toLocaleString('pt-BR')}</strong></span>
+                                                    <span>•</span>
+                                                    <span>Total Pontos: <strong className="text-yellow-400">{m.totalPoints.toLocaleString('pt-BR')}</strong></span>
+                                                    <span>•</span>
+                                                    <span>Booyahs: <strong className="text-emerald-400">{m.totalBooyahs}</strong></span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Highlights for this Map */}
+                                        <div className="relative z-10 flex flex-wrap items-center gap-3">
+                                            {m.topTeamPts && (
+                                                <div className="bg-black/60 border border-yellow-500/30 p-3 rounded-2xl flex items-center gap-3 shadow-lg">
+                                                    <Trophy size={20} className="text-yellow-500" />
+                                                    <div>
+                                                        <span className="block text-[9px] text-gray-400 font-black uppercase tracking-wider">Líder do Mapa</span>
+                                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                                            {m.topTeamPts.image && (
+                                                                <img src={m.topTeamPts.image} alt={m.topTeamPts.name} className="w-4 h-4 object-contain" />
+                                                            )}
+                                                            <span className="text-xs font-black text-white truncate max-w-[100px]">{m.topTeamPts.name}</span>
+                                                            <span className="text-xs font-black text-yellow-400">({m.topTeamPts.pts} pts)</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {m.topPlayer && m.topPlayer.name && (
+                                                <div className="bg-black/60 border border-red-500/30 p-3 rounded-2xl flex items-center gap-3 shadow-lg">
+                                                    <Flame size={20} className="text-red-500" />
+                                                    <div>
+                                                        <span className="block text-[9px] text-gray-400 font-black uppercase tracking-wider">MVP do Mapa</span>
+                                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                                            <User size={14} className="text-red-400" />
+                                                            <span className="text-xs font-black text-white truncate max-w-[100px]">{m.topPlayer.name}</span>
+                                                            <span className="text-xs font-black text-red-400">({m.topPlayer.kills} K)</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Ranking Table */}
+                                    <div className="p-4 overflow-x-auto">
+                                        <table className="w-full text-left border-collapse min-w-[700px]">
+                                            <thead className="bg-black/40 text-[9px] text-gray-400 uppercase font-black tracking-widest border-b border-gray-800">
+                                                <tr>
+                                                    <th className="px-3 py-3 w-10 text-center">#</th>
+                                                    <th 
+                                                        className="px-4 py-3 cursor-pointer hover:text-white transition-colors"
+                                                        onClick={() => toggleSort('name')}
+                                                    >
+                                                        <div className="flex items-center gap-1.5">
+                                                            Equipe
+                                                            <ArrowUpDown size={12} className={sortConfig.key === 'name' ? 'text-yellow-500' : 'text-gray-600'} />
+                                                        </div>
+                                                    </th>
+                                                    <th 
+                                                        className="px-3 py-3 text-center cursor-pointer hover:text-white transition-colors"
+                                                        onClick={() => toggleSort('s')}
+                                                    >
+                                                        <div className="flex items-center justify-center gap-1">
+                                                            S
+                                                            <ArrowUpDown size={12} className={sortConfig.key === 's' ? 'text-yellow-500' : 'text-gray-600'} />
+                                                        </div>
+                                                    </th>
+                                                    <th 
+                                                        className="px-3 py-3 text-center cursor-pointer hover:text-white transition-colors"
+                                                        onClick={() => toggleSort('pts')}
+                                                    >
+                                                        <div className="flex items-center justify-center gap-1">
+                                                            PTS
+                                                            <ArrowUpDown size={12} className={sortConfig.key === 'pts' ? 'text-yellow-500' : 'text-gray-600'} />
+                                                        </div>
+                                                    </th>
+                                                    <th 
+                                                        className="px-3 py-3 text-center cursor-pointer hover:text-white transition-colors"
+                                                        onClick={() => toggleSort('b')}
+                                                    >
+                                                        <div className="flex items-center justify-center gap-1">
+                                                            B
+                                                            <ArrowUpDown size={12} className={sortConfig.key === 'b' ? 'text-yellow-500' : 'text-gray-600'} />
+                                                        </div>
+                                                    </th>
+                                                    <th 
+                                                        className="px-3 py-3 text-center cursor-pointer hover:text-white transition-colors"
+                                                        onClick={() => toggleSort('abts')}
+                                                    >
+                                                        <div className="flex items-center justify-center gap-1">
+                                                            Kills
+                                                            <ArrowUpDown size={12} className={sortConfig.key === 'abts' ? 'text-yellow-500' : 'text-gray-600'} />
+                                                        </div>
+                                                    </th>
+                                                    <th 
+                                                        className="px-3 py-3 text-center cursor-pointer hover:text-white transition-colors"
+                                                        onClick={() => toggleSort('avgPts')}
+                                                    >
+                                                        <div className="flex items-center justify-center gap-1">
+                                                            AVG PTS
+                                                            <ArrowUpDown size={12} className={sortConfig.key === 'avgPts' ? 'text-yellow-500' : 'text-gray-600'} />
+                                                        </div>
+                                                    </th>
+                                                    <th 
+                                                        className="px-3 py-3 text-center cursor-pointer hover:text-white transition-colors"
+                                                        onClick={() => toggleSort('avgAbts')}
+                                                    >
+                                                        <div className="flex items-center justify-center gap-1">
+                                                            AVG K
+                                                            <ArrowUpDown size={12} className={sortConfig.key === 'avgAbts' ? 'text-yellow-500' : 'text-gray-600'} />
+                                                        </div>
+                                                    </th>
+                                                    <th 
+                                                        className="px-3 py-3 text-center cursor-pointer hover:text-white transition-colors"
+                                                        onClick={() => toggleSort('avgPtsc')}
+                                                    >
+                                                        <div className="flex items-center justify-center gap-1">
+                                                            AVG POS
+                                                            <ArrowUpDown size={12} className={sortConfig.key === 'avgPtsc' ? 'text-yellow-500' : 'text-gray-600'} />
+                                                        </div>
+                                                    </th>
+                                                    <th className="px-3 py-3 text-center">
+                                                        % Booyah
+                                                    </th>
+                                                    <th className="px-3 py-3 text-center w-28">
+                                                        Ação
+                                                    </th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-800/40 text-xs font-medium">
+                                                {displayStats.length === 0 ? (
+                                                    <tr>
+                                                        <td colSpan={11} className="py-8 text-center text-gray-500 italic">
+                                                            Nenhuma equipe encontrada para os filtros aplicados.
+                                                        </td>
+                                                    </tr>
+                                                ) : (
+                                                    displayStats.map((team, tIdx) => {
+                                                        const booyahRate = team.s > 0 ? ((team.b / team.s) * 100).toFixed(1) : '0.0';
+
+                                                        return (
+                                                            <tr 
+                                                                key={tIdx} 
+                                                                className="hover:bg-white/5 transition-colors group"
+                                                            >
+                                                                <td className="px-3 py-3 text-center font-black">
+                                                                    {tIdx === 0 ? (
+                                                                        <span className="w-6 h-6 rounded-full bg-yellow-500 text-black font-black text-[10px] inline-flex items-center justify-center shadow-lg shadow-yellow-500/30">1</span>
+                                                                    ) : tIdx === 1 ? (
+                                                                        <span className="w-6 h-6 rounded-full bg-gray-300 text-black font-black text-[10px] inline-flex items-center justify-center">2</span>
+                                                                    ) : tIdx === 2 ? (
+                                                                        <span className="w-6 h-6 rounded-full bg-amber-700 text-white font-black text-[10px] inline-flex items-center justify-center">3</span>
+                                                                    ) : (
+                                                                        <span className="text-gray-500 font-mono text-xs">#{tIdx + 1}</span>
+                                                                    )}
+                                                                </td>
+                                                                <td className="px-4 py-3">
+                                                                    <div 
+                                                                        className="flex items-center gap-3 cursor-pointer"
+                                                                        onClick={() => setFilters(prev => ({...prev, team: [team.name]}))}
+                                                                    >
+                                                                        <div className="w-7 h-7 bg-black rounded-lg border border-gray-800 p-0.5 flex-shrink-0 flex items-center justify-center">
+                                                                            {team.image ? (
+                                                                                <img src={team.image} alt={team.name} className="w-full h-full object-contain" />
+                                                                            ) : (
+                                                                                <Shield size={14} className="text-gray-600" />
+                                                                            )}
+                                                                        </div>
+                                                                        <span className="font-black text-white uppercase italic text-xs tracking-wider group-hover:text-yellow-400 transition-colors">
+                                                                            {team.name}
+                                                                        </span>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-3 py-3 text-center font-bold text-gray-400">{team.s}</td>
+                                                                <td className="px-3 py-3 text-center font-black text-yellow-400 text-sm">{team.pts}</td>
+                                                                <td className="px-3 py-3 text-center font-bold text-orange-400">{team.b}</td>
+                                                                <td className="px-3 py-3 text-center font-black text-red-400">{team.abts}</td>
+                                                                <td className="px-3 py-3 text-center font-bold text-yellow-300">{team.avgPts}</td>
+                                                                <td className="px-3 py-3 text-center font-bold text-red-300">{team.avgAbts}</td>
+                                                                <td className="px-3 py-3 text-center font-bold text-blue-300">{team.avgPtsc}</td>
+                                                                <td className="px-3 py-3 text-center font-bold text-emerald-400">{booyahRate}%</td>
+                                                                <td className="px-3 py-3 text-center">
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setFilters(prev => ({...prev, team: [team.name]}));
+                                                                            setActiveTab('gallery');
+                                                                        }}
+                                                                        className="bg-white/5 hover:bg-yellow-500 hover:text-black text-gray-300 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all border border-white/10"
+                                                                    >
+                                                                        Ver Equipe
+                                                                    </button>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {/* Footer count toggle if > 10 */}
+                                    {filteredMapStats.length > 10 && !showAllTeamsMap && (
+                                        <div className="p-3 bg-black/40 border-t border-gray-800/50 text-center">
+                                            <button
+                                                onClick={() => setShowAllTeamsMap(true)}
+                                                className="text-xs font-black text-yellow-500 hover:text-yellow-400 uppercase tracking-wider flex items-center justify-center gap-1.5 mx-auto"
+                                            >
+                                                Ver mais {filteredMapStats.length - 10} equipes neste mapa ↓
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
                 </div>
             </div>
         ) : activeTab === 'mapAnalysis' ? (

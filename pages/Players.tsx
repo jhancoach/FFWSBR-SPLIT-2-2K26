@@ -2,7 +2,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { DashboardData, PlayerData, CharacterData } from '../types';
-import { Trophy, Crown, User, Swords, Zap, BarChart2, Scale, Map as MapIcon, Skull, ChevronRight, ChevronDown, ChevronUp, Sparkles, X, Activity, Info, Crosshair, Shield, ArrowLeft, Disc, Flame, Target, AlertCircle, LayoutGrid, MapPin, Hash, Target as TargetIcon, CheckCircle2, AlertTriangle, Search, Star } from 'lucide-react';
+import { Trophy, Crown, User, Swords, Zap, BarChart2, Scale, Map as MapIcon, Skull, ChevronRight, ChevronDown, ChevronUp, Sparkles, X, Activity, Info, Crosshair, Shield, ArrowLeft, Disc, Flame, Target, AlertCircle, LayoutGrid, MapPin, Hash, Target as TargetIcon, CheckCircle2, AlertTriangle, Search, Star, ListOrdered, Eye, EyeOff } from 'lucide-react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, LabelList, Cell, YAxis, CartesianGrid, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts';
 import FilterBar from '../components/FilterBar';
 import { findTeamLogo } from '../utils/teamUtils';
@@ -26,7 +26,7 @@ const parseNumber = (val: string | undefined | null): number => {
 
 const Players: React.FC<PlayersProps> = ({ data }) => {
   const location = useLocation();
-  const [activeTab, setActiveTab] = useState<'ranking' | 'chars' | 'report' | 'auditoria' | 'stats' | 'roles' | 'compare'>('ranking');
+  const [activeTab, setActiveTab] = useState<'ranking' | 'playerRounds' | 'playerDrops' | 'chars' | 'report' | 'auditoria' | 'stats' | 'roles' | 'compare'>('ranking');
   const [rankingSubTab, setRankingSubTab] = useState<'general' | 'maps' | 'safes'>('general');
   const [activeRole, setActiveRole] = useState<string>('');
   const [roleSort, setRoleSort] = useState<{ field: string, direction: 'asc' | 'desc' }>({ field: 'kills', direction: 'desc' });
@@ -34,6 +34,24 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
   const [comparePlayers, setComparePlayers] = useState<{p1: string, p1Hab: string, p2: string, p2Hab: string}>({p1: '', p1Hab: 'All', p2: '', p2Hab: 'All'});
   const [activeHabFilter, setActiveHabFilter] = useState<string>('All');
   const [activeHabSort, setActiveHabSort] = useState<{field: string, direction: 'asc'|'desc'}>({ field: 'kills', direction: 'desc' });
+
+  const [playerRoundsSearch, setPlayerRoundsSearch] = useState('');
+  const [playerRoundsSort, setPlayerRoundsSort] = useState<{ field: string; direction: 'asc' | 'desc' }>({ field: 'totalKills', direction: 'desc' });
+  const [selectedPlayerRoundDrop, setSelectedPlayerRoundDrop] = useState<{ player: string; playerImg?: string; teamImg?: string; team: string; round: string; kills: number; matches: number; drops: Record<string, { kills: number; map: string }> } | null>(null);
+
+  const [playerDropsSearch, setPlayerDropsSearch] = useState('');
+  const [playerDropsSort, setPlayerDropsSort] = useState<{ field: string; direction: 'asc' | 'desc' }>({ field: 'totalKills', direction: 'desc' });
+  const [selectedPlayerDropDetail, setSelectedPlayerDropDetail] = useState<{ 
+    player: string; 
+    playerImg?: string; 
+    teamImg?: string; 
+    team: string; 
+    drop: string; 
+    kills: number; 
+    matches: number; 
+    zeroCount: number;
+    rounds: Record<string, { kills: number; map: string }>; 
+  } | null>(null);
 
   const [showLegend, setShowLegend] = useState(false);
   
@@ -793,11 +811,387 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
     return { p1, p2 };
   }, [rankingData, data.players, data.characters, data.playersDimension, data.teamsReference, comparePlayers, activeTab, filters]);
 
+  const sortedRoundsList = useMemo(() => {
+    const rounds = new Set<string>();
+    data.players.forEach(p => {
+      if (p.RD) rounds.add(p.RD);
+    });
+    return Array.from(rounds).sort((a, b) => {
+      const numA = parseInt(a.replace(/\D/g, '')) || 0;
+      const numB = parseInt(b.replace(/\D/g, '')) || 0;
+      if (numA !== numB) return numA - numB;
+      return a.localeCompare(b);
+    });
+  }, [data.players]);
+
+  const playerRoundsData = useMemo(() => {
+    if (activeTab !== 'playerRounds') return [];
+
+    const teamGroupMap = new Map<string, string>();
+    data.teamsReference.forEach(t => {
+      if (t.TIME && t.GRUPO) teamGroupMap.set(normalize(t.TIME), normalize(t.GRUPO));
+    });
+
+    const playerMap = new Map<string, {
+      name: string;
+      team: string;
+      grupo?: string;
+      playerImg?: string;
+      teamImg?: string;
+      totalKills: number;
+      totalMatches: number;
+      roundKills: Record<string, number>;
+      roundMatches: Record<string, number>;
+      roundDrops: Record<string, Record<string, { kills: number; map: string }>>;
+    }>();
+
+    data.players.forEach(p => {
+      if (!p.PLAYER) return;
+      if (filters.team.length > 0 && !filters.team.includes(p.TIME)) return;
+      if (filters.players.length > 0 && !filters.players.some(fp => normalize(fp) === normalize(p.PLAYER))) return;
+      if (filters.map.length > 0 && !filters.map.some(m => normalize(m) === normalize(p.MAPA))) return;
+      if (filters.rodada.length > 0 && !filters.rodada.some(r => normalize(r) === normalize(p.RD))) return;
+      if (filters.queda.length > 0 && !filters.queda.some(q => normalize(q) === normalize(p.Q))) return;
+      
+      if (filters.grupo.length > 0) {
+        const teamGroup = teamGroupMap.get(normalize(p.TIME));
+        if (!teamGroup || !filters.grupo.some(g => normalize(g) === teamGroup)) return;
+      }
+
+      const pName = p.PLAYER;
+      const kills = parseNumber(p.Abates);
+      const round = p.RD || 'N/A';
+      const drop = p.Q || 'Q1';
+      const mapName = p.MAPA || '';
+
+      if (!playerMap.has(pName)) {
+        const teamDim = data.teamsReference.find(t => normalize(t.TIME) === normalize(p.TIME));
+        playerMap.set(pName, {
+          name: pName,
+          team: p.TIME,
+          grupo: teamDim?.GRUPO,
+          playerImg: findDimImg(data.playersDimension, pName),
+          teamImg: findTeamLogo(p.TIME, data.teamsReference),
+          totalKills: 0,
+          totalMatches: 0,
+          roundKills: {},
+          roundMatches: {},
+          roundDrops: {}
+        });
+      }
+
+      const st = playerMap.get(pName)!;
+      st.totalKills += kills;
+      st.totalMatches += 1;
+      st.roundKills[round] = (st.roundKills[round] || 0) + kills;
+      st.roundMatches[round] = (st.roundMatches[round] || 0) + 1;
+
+      if (!st.roundDrops[round]) st.roundDrops[round] = {};
+      st.roundDrops[round][drop] = { kills, map: mapName };
+    });
+
+    return Array.from(playerMap.values()).map(p => ({
+      ...p,
+      avgKills: p.totalMatches > 0 ? (p.totalKills / p.totalMatches).toFixed(2) : '0.00'
+    }));
+  }, [data.players, data.teamsReference, data.playersDimension, filters, activeTab]);
+
+  const filteredAndSortedPlayerRounds = useMemo(() => {
+    let result = playerRoundsData;
+
+    if (playerRoundsSearch.trim()) {
+      const q = playerRoundsSearch.trim().toLowerCase();
+      result = result.filter(p => 
+        p.name.toLowerCase().includes(q) || p.team.toLowerCase().includes(q)
+      );
+    }
+
+    const { field, direction } = playerRoundsSort;
+
+    return [...result].sort((a, b) => {
+      let valA: any = 0;
+      let valB: any = 0;
+
+      if (field === 'name') {
+        valA = a.name;
+        valB = b.name;
+        return direction === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      } else if (field === 'team') {
+        valA = a.team;
+        valB = b.team;
+        return direction === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      } else if (field === 'totalKills') {
+        valA = a.totalKills;
+        valB = b.totalKills;
+      } else if (field === 'totalMatches') {
+        valA = a.totalMatches;
+        valB = b.totalMatches;
+      } else if (field === 'avgKills') {
+        valA = parseFloat(a.avgKills);
+        valB = parseFloat(b.avgKills);
+      } else if (field.startsWith('rd_')) {
+        const roundName = field.replace('rd_', '');
+        valA = a.roundKills[roundName] || 0;
+        valB = b.roundKills[roundName] || 0;
+      }
+
+      if (direction === 'asc') return valA - valB;
+      return valB - valA;
+    });
+  }, [playerRoundsData, playerRoundsSearch, playerRoundsSort]);
+
+  const playerRoundsKPIs = useMemo(() => {
+    if (playerRoundsData.length === 0) return { topKiller: null, bestAvg: null, roundRecord: null, totalKills: 0 };
+
+    let totalKills = 0;
+    let topKiller = playerRoundsData[0];
+    let bestAvg = playerRoundsData[0];
+    let roundRecord = { player: '', round: '', kills: 0, team: '' };
+
+    playerRoundsData.forEach(p => {
+      totalKills += p.totalKills;
+      if (p.totalKills > (topKiller?.totalKills || 0)) topKiller = p;
+      if (parseFloat(p.avgKills) > parseFloat(bestAvg?.avgKills || '0')) bestAvg = p;
+
+      Object.entries(p.roundKills).forEach(([rd, kVal]) => {
+        const k = Number(kVal);
+        if (k > roundRecord.kills) {
+          roundRecord = { player: p.name, round: rd, kills: k, team: p.team };
+        }
+      });
+    });
+
+    return { topKiller, bestAvg, roundRecord, totalKills };
+  }, [playerRoundsData]);
+
+  const sortedDropsList = useMemo(() => {
+    const drops = new Set<string>();
+    data.players.forEach(p => {
+      if (p.Q) drops.add(p.Q);
+    });
+    return Array.from(drops).sort((a, b) => {
+      const numA = parseInt(a.replace(/\D/g, '')) || 0;
+      const numB = parseInt(b.replace(/\D/g, '')) || 0;
+      if (numA !== numB) return numA - numB;
+      return a.localeCompare(b);
+    });
+  }, [data.players]);
+
+  const playerDropsData = useMemo(() => {
+    if (activeTab !== 'playerDrops') return { 
+      playersList: [], 
+      dropStatsMap: new Map<string, { drop: string; totalKills: number; totalMatches: number; zeroKillsCount: number; maps: Set<string>; zeroPlayersMap: Map<string, number> }>(), 
+      kpis: { mostZeroDrop: null as any, topZeroPlayer: null as any, totalZeroMatches: 0, overallZeroRate: '0.0', mostLethalDrop: null as any } 
+    };
+
+    const teamGroupMap = new Map<string, string>();
+    data.teamsReference.forEach(t => {
+      if (t.TIME && t.GRUPO) teamGroupMap.set(normalize(t.TIME), normalize(t.GRUPO));
+    });
+
+    const playerMap = new Map<string, {
+      name: string;
+      team: string;
+      grupo?: string;
+      playerImg?: string;
+      teamImg?: string;
+      totalKills: number;
+      totalMatches: number;
+      zeroKillsMatches: number;
+      dropKills: Record<string, number>;
+      dropMatches: Record<string, number>;
+      dropZeroMatches: Record<string, number>;
+      dropRounds: Record<string, Record<string, { kills: number; map: string }>>;
+    }>();
+
+    const dropStats = new Map<string, {
+      drop: string;
+      totalKills: number;
+      totalMatches: number;
+      zeroKillsCount: number;
+      maps: Set<string>;
+      zeroPlayersMap: Map<string, number>;
+    }>();
+
+    data.players.forEach(p => {
+      if (!p.PLAYER) return;
+      if (filters.team.length > 0 && !filters.team.includes(p.TIME)) return;
+      if (filters.players.length > 0 && !filters.players.some(fp => normalize(fp) === normalize(p.PLAYER))) return;
+      if (filters.map.length > 0 && !filters.map.some(m => normalize(m) === normalize(p.MAPA))) return;
+      if (filters.rodada.length > 0 && !filters.rodada.some(r => normalize(r) === normalize(p.RD))) return;
+      if (filters.queda.length > 0 && !filters.queda.some(q => normalize(q) === normalize(p.Q))) return;
+      
+      if (filters.grupo.length > 0) {
+        const teamGroup = teamGroupMap.get(normalize(p.TIME));
+        if (!teamGroup || !filters.grupo.some(g => normalize(g) === teamGroup)) return;
+      }
+
+      const pName = p.PLAYER;
+      const kills = parseNumber(p.Abates);
+      const round = p.RD || 'N/A';
+      const drop = p.Q || 'Q1';
+      const mapName = p.MAPA || '';
+      const isZero = kills === 0;
+
+      if (!playerMap.has(pName)) {
+        const teamDim = data.teamsReference.find(t => normalize(t.TIME) === normalize(p.TIME));
+        playerMap.set(pName, {
+          name: pName,
+          team: p.TIME,
+          grupo: teamDim?.GRUPO,
+          playerImg: findDimImg(data.playersDimension, pName),
+          teamImg: findTeamLogo(p.TIME, data.teamsReference),
+          totalKills: 0,
+          totalMatches: 0,
+          zeroKillsMatches: 0,
+          dropKills: {},
+          dropMatches: {},
+          dropZeroMatches: {},
+          dropRounds: {}
+        });
+      }
+
+      const st = playerMap.get(pName)!;
+      st.totalKills += kills;
+      st.totalMatches += 1;
+      if (isZero) st.zeroKillsMatches += 1;
+
+      st.dropKills[drop] = (st.dropKills[drop] || 0) + kills;
+      st.dropMatches[drop] = (st.dropMatches[drop] || 0) + 1;
+      if (isZero) st.dropZeroMatches[drop] = (st.dropZeroMatches[drop] || 0) + 1;
+
+      if (!st.dropRounds[drop]) st.dropRounds[drop] = {};
+      st.dropRounds[drop][round] = { kills, map: mapName };
+
+      if (!dropStats.has(drop)) {
+        dropStats.set(drop, {
+          drop,
+          totalKills: 0,
+          totalMatches: 0,
+          zeroKillsCount: 0,
+          maps: new Set(),
+          zeroPlayersMap: new Map()
+        });
+      }
+
+      const ds = dropStats.get(drop)!;
+      ds.totalKills += kills;
+      ds.totalMatches += 1;
+      if (mapName) ds.maps.add(mapName);
+      if (isZero) {
+        ds.zeroKillsCount += 1;
+        ds.zeroPlayersMap.set(pName, (ds.zeroPlayersMap.get(pName) || 0) + 1);
+      }
+    });
+
+    const playersList = Array.from(playerMap.values()).map(p => ({
+      ...p,
+      avgKills: p.totalMatches > 0 ? (p.totalKills / p.totalMatches).toFixed(2) : '0.00',
+      zeroRate: p.totalMatches > 0 ? ((p.zeroKillsMatches / p.totalMatches) * 100).toFixed(1) : '0.0'
+    }));
+
+    let totalAllMatches = 0;
+    let totalZeroMatches = 0;
+    let mostZeroDrop: { drop: string; count: number; rate: string; mapList: string } | null = null;
+    let mostLethalDrop: { drop: string; avgKills: string; totalKills: number } | null = null;
+
+    dropStats.forEach((ds) => {
+      totalAllMatches += ds.totalMatches;
+      totalZeroMatches += ds.zeroKillsCount;
+
+      const rate = ds.totalMatches > 0 ? ((ds.zeroKillsCount / ds.totalMatches) * 100).toFixed(1) : '0.0';
+      const avgK = ds.totalMatches > 0 ? (ds.totalKills / ds.totalMatches).toFixed(2) : '0.00';
+      const mapList = Array.from(ds.maps).join(', ') || 'N/A';
+
+      if (!mostZeroDrop || ds.zeroKillsCount > mostZeroDrop.count) {
+        mostZeroDrop = { drop: ds.drop, count: ds.zeroKillsCount, rate, mapList };
+      }
+
+      if (!mostLethalDrop || parseFloat(avgK) > parseFloat(mostLethalDrop.avgKills)) {
+        mostLethalDrop = { drop: ds.drop, avgKills: avgK, totalKills: ds.totalKills };
+      }
+    });
+
+    let topZeroPlayer = playersList.length > 0 ? playersList[0] : null;
+    playersList.forEach(p => {
+      if (topZeroPlayer && p.zeroKillsMatches > topZeroPlayer.zeroKillsMatches) {
+        topZeroPlayer = p;
+      }
+    });
+
+    const overallZeroRate = totalAllMatches > 0 ? ((totalZeroMatches / totalAllMatches) * 100).toFixed(1) : '0.0';
+
+    return {
+      playersList,
+      dropStatsMap: dropStats,
+      kpis: {
+        mostZeroDrop,
+        topZeroPlayer,
+        totalZeroMatches,
+        overallZeroRate,
+        mostLethalDrop
+      }
+    };
+  }, [data.players, data.teamsReference, data.playersDimension, filters, activeTab]);
+
+  const filteredAndSortedPlayerDrops = useMemo(() => {
+    let result = playerDropsData.playersList;
+
+    if (playerDropsSearch.trim()) {
+      const q = playerDropsSearch.trim().toLowerCase();
+      result = result.filter(p => 
+        p.name.toLowerCase().includes(q) || p.team.toLowerCase().includes(q)
+      );
+    }
+
+    const { field, direction } = playerDropsSort;
+
+    return [...result].sort((a, b) => {
+      let valA: any = 0;
+      let valB: any = 0;
+
+      if (field === 'name') {
+        valA = a.name;
+        valB = b.name;
+        return direction === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      } else if (field === 'team') {
+        valA = a.team;
+        valB = b.team;
+        return direction === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      } else if (field === 'totalKills') {
+        valA = a.totalKills;
+        valB = b.totalKills;
+      } else if (field === 'totalMatches') {
+        valA = a.totalMatches;
+        valB = b.totalMatches;
+      } else if (field === 'avgKills') {
+        valA = parseFloat(a.avgKills);
+        valB = parseFloat(b.avgKills);
+      } else if (field === 'zeroKillsMatches') {
+        valA = a.zeroKillsMatches;
+        valB = b.zeroKillsMatches;
+      } else if (field.startsWith('drop_')) {
+        const dropName = field.replace('drop_', '');
+        valA = a.dropKills[dropName] || 0;
+        valB = b.dropKills[dropName] || 0;
+      } else if (field.startsWith('dropZero_')) {
+        const dropName = field.replace('dropZero_', '');
+        valA = a.dropZeroMatches[dropName] || 0;
+        valB = b.dropZeroMatches[dropName] || 0;
+      }
+
+      if (direction === 'asc') return valA - valB;
+      return valB - valA;
+    });
+  }, [playerDropsData.playersList, playerDropsSearch, playerDropsSort]);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap gap-2 border-b border-gray-700 pb-2 no-print">
         {[
             { id: 'ranking', label: 'Ranking Geral', icon: <Trophy size={18} /> },
+            { id: 'playerRounds', label: 'Kills por Rodada', icon: <ListOrdered size={18} /> },
+            { id: 'playerDrops', label: 'Kills por Queda', icon: <Target size={18} /> },
             { id: 'stats', label: 'Estatísticas', icon: <BarChart2 size={18} /> },
             { id: 'roles', label: 'Funções', icon: <LayoutGrid size={18} /> },
             { id: 'chars', label: 'Loadouts', icon: <User size={18} /> },
@@ -884,6 +1278,917 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
       )}
 
       <div className="min-h-[600px]">
+          {activeTab === 'playerRounds' && (
+            <div className="space-y-6 animate-in fade-in duration-500">
+              {/* Summary KPI Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-[#1a1a1a] rounded-2xl p-4 border border-gray-800 flex items-center gap-4 shadow-xl">
+                  <div className="p-3 bg-red-500/10 rounded-xl text-red-500 border border-red-500/20">
+                    <Trophy size={24} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block">LÍDER DE KILLS</span>
+                    <span className="text-base font-black italic uppercase text-white truncate block">{playerRoundsKPIs.topKiller?.name || '-'}</span>
+                    <span className="text-xs font-black text-red-500 italic">{playerRoundsKPIs.topKiller?.totalKills || 0} Kills Totais</span>
+                  </div>
+                </div>
+
+                <div className="bg-[#1a1a1a] rounded-2xl p-4 border border-gray-800 flex items-center gap-4 shadow-xl">
+                  <div className="p-3 bg-yellow-500/10 rounded-xl text-yellow-500 border border-yellow-500/20">
+                    <Zap size={24} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block">MAIOR MÉDIA</span>
+                    <span className="text-base font-black italic uppercase text-white truncate block">{playerRoundsKPIs.bestAvg?.name || '-'}</span>
+                    <span className="text-xs font-black text-yellow-500 italic">{playerRoundsKPIs.bestAvg?.avgKills || '0.00'} Kills/Queda</span>
+                  </div>
+                </div>
+
+                <div className="bg-[#1a1a1a] rounded-2xl p-4 border border-gray-800 flex items-center gap-4 shadow-xl">
+                  <div className="p-3 bg-amber-500/10 rounded-xl text-amber-500 border border-amber-500/20">
+                    <Flame size={24} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block">RECORDE EM 1 RODADA</span>
+                    <span className="text-base font-black italic uppercase text-white truncate block">{playerRoundsKPIs.roundRecord?.player || '-'}</span>
+                    <span className="text-xs font-black text-amber-500 italic">{playerRoundsKPIs.roundRecord?.kills || 0} Kills ({playerRoundsKPIs.roundRecord?.round || 'RD'})</span>
+                  </div>
+                </div>
+
+                <div className="bg-[#1a1a1a] rounded-2xl p-4 border border-gray-800 flex items-center gap-4 shadow-xl">
+                  <div className="p-3 bg-blue-500/10 rounded-xl text-blue-500 border border-blue-500/20">
+                    <TargetIcon size={24} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block">TOTAL DE KILLS</span>
+                    <span className="text-2xl font-black italic text-blue-400 leading-none">{playerRoundsKPIs.totalKills.toLocaleString()}</span>
+                    <span className="text-[9px] font-bold text-gray-500 block mt-0.5">{playerRoundsData.length} Jogadores Registrados</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Table Container */}
+              <div className="bg-[#1a1a1a] rounded-3xl border border-gray-800 overflow-hidden shadow-2xl space-y-4">
+                {/* Search and Header bar */}
+                <div className="p-6 bg-black/40 border-b border-white/5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div>
+                    <h3 className="text-base font-black text-white uppercase italic tracking-widest flex items-center gap-2">
+                      <ListOrdered size={20} className="text-yellow-500" />
+                      TABELA DE KILLS POR RODADA DOS JOGADORES
+                    </h3>
+                    <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mt-0.5">
+                      Abates obtidos por cada jogador em todas as rodadas do campeonato. Clique no nome para ver o perfil individual.
+                    </p>
+                  </div>
+
+                  <div className="relative w-full sm:w-72">
+                    <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                    <input 
+                      type="text"
+                      value={playerRoundsSearch}
+                      onChange={(e) => setPlayerRoundsSearch(e.target.value)}
+                      placeholder="Buscar jogador ou equipe..."
+                      className="w-full bg-black/60 border border-white/10 rounded-xl pl-10 pr-4 py-2 text-xs text-white placeholder-gray-500 font-bold outline-none focus:border-yellow-500 transition-colors"
+                    />
+                    {playerRoundsSearch && (
+                      <button 
+                        onClick={() => setPlayerRoundsSearch('')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Legenda de Desempenho (Kills vs Quedas/PJ) */}
+                <div className="px-6 py-3 bg-black/60 border-b border-white/5 flex flex-wrap items-center justify-between gap-3 text-xs">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest mr-1">Relação Kills vs Quedas (PJ):</span>
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 font-black text-[11px]">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                      <span>POSITIVO (Kills &gt; Quedas)</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-yellow-500/15 border border-yellow-500/30 text-yellow-400 font-black text-[11px]">
+                      <span className="w-2 h-2 rounded-full bg-yellow-400"></span>
+                      <span>NEUTRO / PAR (Kills = Quedas)</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-500/15 border border-red-500/30 text-red-400 font-black text-[11px]">
+                      <span className="w-2 h-2 rounded-full bg-red-400"></span>
+                      <span>NEGATIVO (Kills &lt; Quedas)</span>
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-gray-500 font-bold uppercase italic">
+                    *Passe o cursor sobre a célula para ver o saldo exato (+2, 0, -1)
+                  </span>
+                </div>
+
+                {/* Table */}
+                <div className="overflow-x-auto custom-scrollbar p-2">
+                  <table className="w-full text-left whitespace-nowrap border-collapse">
+                    <thead>
+                      <tr className="bg-black/60 text-gray-400 text-[10px] uppercase font-black tracking-widest border-b border-white/10">
+                        <th className="px-4 py-4 text-center w-12">#</th>
+                        <th 
+                          className="px-4 py-4 cursor-pointer hover:text-white transition-colors"
+                          onClick={() => setPlayerRoundsSort(prev => ({ field: 'name', direction: prev.field === 'name' && prev.direction === 'asc' ? 'desc' : 'asc' }))}
+                        >
+                          <div className="flex items-center gap-1">
+                            JOGADOR
+                            {playerRoundsSort.field === 'name' && (playerRoundsSort.direction === 'desc' ? <ChevronDown size={12} /> : <ChevronUp size={12} />)}
+                          </div>
+                        </th>
+                        <th 
+                          className="px-4 py-4 cursor-pointer hover:text-white transition-colors"
+                          onClick={() => setPlayerRoundsSort(prev => ({ field: 'team', direction: prev.field === 'team' && prev.direction === 'asc' ? 'desc' : 'asc' }))}
+                        >
+                          <div className="flex items-center gap-1">
+                            EQUIPE
+                            {playerRoundsSort.field === 'team' && (playerRoundsSort.direction === 'desc' ? <ChevronDown size={12} /> : <ChevronUp size={12} />)}
+                          </div>
+                        </th>
+                        <th 
+                          className="px-4 py-4 text-center bg-red-950/20 text-red-500 cursor-pointer hover:text-red-400 transition-colors"
+                          onClick={() => setPlayerRoundsSort(prev => ({ field: 'totalKills', direction: prev.field === 'totalKills' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
+                        >
+                          <div className="flex items-center justify-center gap-1 font-black">
+                            KILLS
+                            {playerRoundsSort.field === 'totalKills' && (playerRoundsSort.direction === 'desc' ? <ChevronDown size={12} /> : <ChevronUp size={12} />)}
+                          </div>
+                        </th>
+                        <th 
+                          className="px-4 py-4 text-center text-gray-300 cursor-pointer hover:text-white transition-colors"
+                          onClick={() => setPlayerRoundsSort(prev => ({ field: 'totalMatches', direction: prev.field === 'totalMatches' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
+                        >
+                          <div className="flex items-center justify-center gap-1">
+                            PJ
+                            {playerRoundsSort.field === 'totalMatches' && (playerRoundsSort.direction === 'desc' ? <ChevronDown size={12} /> : <ChevronUp size={12} />)}
+                          </div>
+                        </th>
+                        <th 
+                          className="px-4 py-4 text-center text-yellow-500 cursor-pointer hover:text-yellow-400 transition-colors"
+                          onClick={() => setPlayerRoundsSort(prev => ({ field: 'avgKills', direction: prev.field === 'avgKills' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
+                        >
+                          <div className="flex items-center justify-center gap-1">
+                            MÉDIA
+                            {playerRoundsSort.field === 'avgKills' && (playerRoundsSort.direction === 'desc' ? <ChevronDown size={12} /> : <ChevronUp size={12} />)}
+                          </div>
+                        </th>
+
+                        {/* Dynamic Round Columns */}
+                        {sortedRoundsList.map(rd => {
+                          const isSortedRD = playerRoundsSort.field === `rd_${rd}`;
+                          return (
+                            <th 
+                              key={rd}
+                              className={`px-4 py-4 text-center cursor-pointer min-w-[75px] hover:text-white transition-colors ${isSortedRD ? 'text-yellow-500 bg-white/[0.03]' : 'text-gray-300'}`}
+                              onClick={() => setPlayerRoundsSort(prev => ({ field: `rd_${rd}`, direction: prev.field === `rd_${rd}` && prev.direction === 'desc' ? 'asc' : 'desc' }))}
+                            >
+                              <div className="flex items-center justify-center gap-0.5">
+                                {rd}
+                                {isSortedRD && (playerRoundsSort.direction === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)}
+                              </div>
+                            </th>
+                          );
+                        })}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-800/40">
+                      {filteredAndSortedPlayerRounds.length === 0 ? (
+                        <tr>
+                          <td colSpan={6 + sortedRoundsList.length} className="py-12 text-center text-gray-500 font-bold text-sm">
+                            Nenhum jogador encontrado para os filtros selecionados.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredAndSortedPlayerRounds.map((p, index) => {
+                          const rank = index + 1;
+                          let rankBadge = "w-6 h-6 rounded flex items-center justify-center font-black text-xs ";
+                          if (rank === 1) rankBadge += "bg-yellow-500 text-black shadow-[0_0_10px_rgba(234,179,8,0.5)]";
+                          else if (rank === 2) rankBadge += "bg-gray-300 text-black";
+                          else if (rank === 3) rankBadge += "bg-amber-600 text-white";
+                          else if (rank <= 12) rankBadge += "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
+                          else rankBadge += "bg-black/60 text-gray-500 border border-white/5";
+
+                          return (
+                            <tr key={p.name} className="hover:bg-white/[0.03] transition-colors group">
+                              <td className="px-4 py-3 text-center">
+                                <div className="flex justify-center items-center">
+                                  <span className={rankBadge}>{rank}</span>
+                                </div>
+                              </td>
+
+                              {/* Player Info */}
+                              <td className="px-4 py-3">
+                                <div 
+                                  onClick={() => { setFilters(prev => ({ ...prev, players: [p.name] })); setActiveTab('report'); }}
+                                  className="flex items-center gap-3 cursor-pointer group/p"
+                                >
+                                  <div className="w-8 h-8 rounded-full bg-black border border-white/10 overflow-hidden flex-shrink-0 relative">
+                                    {p.playerImg ? (
+                                      <img src={p.playerImg} alt={p.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                    ) : (
+                                      <div className="w-full h-full flex items-center justify-center text-gray-600"><User size={14} /></div>
+                                    )}
+                                  </div>
+                                  <span className="text-xs font-black uppercase italic tracking-tight text-white group-hover/p:text-yellow-500 transition-colors">
+                                    {p.name}
+                                  </span>
+                                </div>
+                              </td>
+
+                              {/* Team Info */}
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-6 h-6 rounded bg-black border border-gray-800 p-0.5 flex-shrink-0 flex items-center justify-center">
+                                    {p.teamImg ? (
+                                      <img src={p.teamImg} alt={p.team} className="w-full h-full object-contain" />
+                                    ) : (
+                                      <Shield size={12} className="text-gray-700" />
+                                    )}
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="text-xs font-bold text-gray-300 uppercase truncate max-w-[120px]">{p.team}</span>
+                                    {p.grupo && <span className="text-[8px] font-black text-gray-500 uppercase">{p.grupo}</span>}
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* Total Kills */}
+                              <td className="px-4 py-3 text-center bg-red-950/10 border-x border-red-900/10">
+                                <span className="text-sm font-black italic text-red-500">{p.totalKills}</span>
+                              </td>
+
+                              {/* Total Matches */}
+                              <td className="px-4 py-3 text-center font-bold text-xs text-gray-400">
+                                {p.totalMatches}
+                              </td>
+
+                              {/* Avg Kills */}
+                              <td className="px-4 py-3 text-center font-black text-xs text-yellow-500 italic bg-yellow-500/5">
+                                {p.avgKills}
+                              </td>
+
+                              {/* Round Cells */}
+                              {sortedRoundsList.map(rd => {
+                                const kills = p.roundKills[rd];
+                                const matches = p.roundMatches[rd] || 0;
+                                const isExistent = kills !== undefined && matches > 0;
+                                const hasDrops = p.roundDrops[rd] && Object.keys(p.roundDrops[rd]).length > 0;
+
+                                if (!isExistent) {
+                                  return (
+                                    <td key={rd} className="px-3 py-3 text-center text-xs font-mono">
+                                      <span className="text-gray-700 font-bold">-</span>
+                                    </td>
+                                  );
+                                }
+
+                                const diff = kills - matches;
+                                const isPositive = kills > matches;
+                                const isNeutral = kills === matches;
+
+                                const tooltipText = `${kills} ${kills === 1 ? 'kill' : 'kills'} em ${matches} ${matches === 1 ? 'queda' : 'quedas'} (${isPositive ? `Positivo +${diff}` : isNeutral ? 'Neutro / Par (0)' : `Negativo ${diff}`})`;
+
+                                return (
+                                  <td 
+                                    key={rd} 
+                                    className="px-3 py-3 text-center text-xs font-mono"
+                                    onClick={() => {
+                                      if (hasDrops) {
+                                        setSelectedPlayerRoundDrop({
+                                          player: p.name,
+                                          playerImg: p.playerImg,
+                                          teamImg: p.teamImg,
+                                          team: p.team,
+                                          round: rd,
+                                          kills: kills || 0,
+                                          matches,
+                                          drops: p.roundDrops[rd]
+                                        });
+                                      }
+                                    }}
+                                  >
+                                    {isPositive ? (
+                                      <span 
+                                        className="inline-flex items-center justify-center gap-1 min-w-[36px] px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 font-black text-xs hover:scale-110 cursor-pointer transition-all shadow-[0_0_8px_rgba(16,185,129,0.2)]"
+                                        title={tooltipText}
+                                      >
+                                        {kills >= matches * 2 && <Flame size={10} className="text-emerald-400 animate-pulse" />}
+                                        {kills}
+                                      </span>
+                                    ) : isNeutral ? (
+                                      <span 
+                                        className="inline-flex items-center justify-center min-w-[36px] px-2 py-0.5 rounded-md bg-yellow-500/15 border border-yellow-500/40 text-yellow-400 font-black text-xs hover:scale-110 cursor-pointer transition-all"
+                                        title={tooltipText}
+                                      >
+                                        {kills}
+                                      </span>
+                                    ) : (
+                                      <span 
+                                        className={`inline-flex items-center justify-center min-w-[36px] px-2 py-0.5 rounded-md ${kills === 0 ? 'bg-red-950/60 border border-red-800/50 text-red-500 font-black' : 'bg-red-500/15 border border-red-500/30 text-red-400 font-bold'} text-xs hover:scale-110 cursor-pointer transition-all`}
+                                        title={tooltipText}
+                                      >
+                                        {kills}
+                                      </span>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Drop Breakdown Modal for Selected Player Round */}
+              {selectedPlayerRoundDrop && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+                  <div className="bg-[#1a1a1a] border border-gray-800 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
+                    <div className="flex justify-between items-center pb-4 border-b border-white/10">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-black border border-yellow-500/30 overflow-hidden flex-shrink-0">
+                          {selectedPlayerRoundDrop.playerImg ? (
+                            <img src={selectedPlayerRoundDrop.playerImg} alt={selectedPlayerRoundDrop.player} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-gray-600"><User size={18} /></div>
+                          )}
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-black text-white uppercase italic">{selectedPlayerRoundDrop.player}</h4>
+                          <div className="flex items-center gap-2 text-[10px] text-gray-400 font-bold uppercase">
+                            <span>{selectedPlayerRoundDrop.team}</span>
+                            <span>•</span>
+                            <span className="text-yellow-500">{selectedPlayerRoundDrop.round}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <button 
+                        onClick={() => setSelectedPlayerRoundDrop(null)}
+                        className="p-2 text-gray-400 hover:text-white bg-white/5 rounded-xl border border-white/5"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+
+                    {/* Summary Info */}
+                    {(() => {
+                      const k = selectedPlayerRoundDrop.kills;
+                      const m = selectedPlayerRoundDrop.matches;
+                      const diff = k - m;
+                      const isPos = k > m;
+                      const isNeu = k === m;
+
+                      return (
+                        <div className="flex items-center justify-between bg-black/40 p-3.5 rounded-2xl border border-white/5">
+                          <div>
+                            <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider block">Resumo na {selectedPlayerRoundDrop.round}</span>
+                            <span className="text-xs font-bold text-gray-300">{m} {m === 1 ? 'Queda jogada' : 'Quedas jogadas'}</span>
+                          </div>
+                          <div className="text-right flex flex-col items-end gap-1">
+                            <span className="text-base font-black text-white italic leading-none">{k} {k === 1 ? 'Kill' : 'Kills'}</span>
+                            {isPos ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-[10px] font-black uppercase">
+                                <Flame size={10} /> POSITIVO (+{diff})
+                              </span>
+                            ) : isNeu ? (
+                              <span className="inline-block px-2 py-0.5 rounded bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 text-[10px] font-black uppercase">
+                                NEUTRO / PAR (0)
+                              </span>
+                            ) : (
+                              <span className="inline-block px-2 py-0.5 rounded bg-red-500/20 border border-red-500/40 text-red-400 text-[10px] font-black uppercase">
+                                NEGATIVO ({diff})
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Detalhamento por Queda:</span>
+                      <div className="grid grid-cols-2 gap-2">
+                        {Object.entries(selectedPlayerRoundDrop.drops).sort((a,b) => a[0].localeCompare(b[0])).map(([drop, dInfoVal]) => {
+                          const dInfo = dInfoVal as { kills: number; map: string };
+                          return (
+                            <div key={drop} className="bg-black/60 p-3 rounded-xl border border-white/5 flex flex-col justify-between">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-black text-yellow-500 uppercase">{drop}</span>
+                                <span className="text-[9px] font-bold text-gray-400 uppercase truncate max-w-[80px]">{dInfo.map}</span>
+                              </div>
+                              <span className="text-sm font-black text-white italic mt-1">{dInfo.kills} {dInfo.kills === 1 ? 'Kill' : 'Kills'}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <button 
+                      onClick={() => {
+                        setFilters(prev => ({ ...prev, players: [selectedPlayerRoundDrop.player] }));
+                        setActiveTab('report');
+                        setSelectedPlayerRoundDrop(null);
+                      }}
+                      className="w-full py-3 bg-yellow-500 hover:bg-yellow-400 text-black rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-yellow-500/20"
+                    >
+                      Ver Perfil Completo do Jogador
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'playerDrops' && (
+            <div className="space-y-6 animate-in fade-in duration-500">
+              {/* Summary KPI Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-[#1a1a1a] rounded-2xl p-4 border border-gray-800 flex items-center gap-4 shadow-xl">
+                  <div className="p-3 bg-red-500/10 rounded-xl text-red-500 border border-red-500/20">
+                    <AlertTriangle size={24} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block">QUEDA C/ MAIS ZERADAS</span>
+                    <span className="text-base font-black italic uppercase text-white truncate block">
+                      {playerDropsData.kpis.mostZeroDrop ? `QUEDA ${playerDropsData.kpis.mostZeroDrop.drop}` : '-'}
+                    </span>
+                    <span className="text-xs font-black text-red-400 italic block">
+                      {playerDropsData.kpis.mostZeroDrop ? `${playerDropsData.kpis.mostZeroDrop.count} partidas zeradas (${playerDropsData.kpis.mostZeroDrop.rate}%)` : '0 zeradas'}
+                    </span>
+                    <span className="text-[9px] text-gray-500 font-bold truncate block">
+                      {playerDropsData.kpis.mostZeroDrop?.mapList ? `Mapas: ${playerDropsData.kpis.mostZeroDrop.mapList}` : ''}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-[#1a1a1a] rounded-2xl p-4 border border-gray-800 flex items-center gap-4 shadow-xl">
+                  <div className="p-3 bg-yellow-500/10 rounded-xl text-yellow-500 border border-yellow-500/20">
+                    <Skull size={24} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block">JOGADOR MAIS ZERADO</span>
+                    <span className="text-base font-black italic uppercase text-white truncate block">
+                      {playerDropsData.kpis.topZeroPlayer?.name || '-'}
+                    </span>
+                    <span className="text-xs font-black text-yellow-500 italic block">
+                      {playerDropsData.kpis.topZeroPlayer ? `${playerDropsData.kpis.topZeroPlayer.zeroKillsMatches} de ${playerDropsData.kpis.topZeroPlayer.totalMatches} quedas (${playerDropsData.kpis.topZeroPlayer.zeroRate}%)` : '0 zeradas'}
+                    </span>
+                    <span className="text-[9px] text-gray-500 font-bold truncate block">
+                      {playerDropsData.kpis.topZeroPlayer?.team ? `Equipe: ${playerDropsData.kpis.topZeroPlayer.team}` : ''}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-[#1a1a1a] rounded-2xl p-4 border border-gray-800 flex items-center gap-4 shadow-xl">
+                  <div className="p-3 bg-orange-500/10 rounded-xl text-orange-500 border border-orange-500/20">
+                    <Target size={24} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block">TOTAL DE QUEDAS ZERADAS</span>
+                    <span className="text-base font-black italic uppercase text-white truncate block">
+                      {playerDropsData.kpis.totalZeroMatches} Partidas
+                    </span>
+                    <span className="text-xs font-black text-orange-400 italic block">
+                      {playerDropsData.kpis.overallZeroRate}% do total de partidas
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-[#1a1a1a] rounded-2xl p-4 border border-gray-800 flex items-center gap-4 shadow-xl">
+                  <div className="p-3 bg-emerald-500/10 rounded-xl text-emerald-500 border border-emerald-500/20">
+                    <Flame size={24} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block">QUEDA MAIS LETAL</span>
+                    <span className="text-base font-black italic uppercase text-white truncate block">
+                      {playerDropsData.kpis.mostLethalDrop ? `QUEDA ${playerDropsData.kpis.mostLethalDrop.drop}` : '-'}
+                    </span>
+                    <span className="text-xs font-black text-emerald-400 italic block">
+                      {playerDropsData.kpis.mostLethalDrop ? `${playerDropsData.kpis.mostLethalDrop.avgKills} Kills / Jogador` : '0 Kills'}
+                    </span>
+                    <span className="text-[9px] text-gray-500 font-bold truncate block">
+                      {playerDropsData.kpis.mostLethalDrop ? `Total de ${playerDropsData.kpis.mostLethalDrop.totalKills} abates` : ''}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Análise de Quedas Zeradas por Posição/Sala */}
+              <div className="bg-[#1a1a1a] border border-gray-800 rounded-3xl p-6 shadow-2xl space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-white/5">
+                  <div className="flex items-center gap-2">
+                    <Skull className="text-red-500" size={18} />
+                    <h3 className="text-sm font-black text-white uppercase tracking-widest">Análise de Quedas Zeradas por Posição na Sala (Q1 - Q6)</h3>
+                  </div>
+                  <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
+                    Identifique onde os jogadores mais sofrem para abater adversários
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                  {sortedDropsList.map(dropName => {
+                    const ds = playerDropsData.dropStatsMap.get(dropName);
+                    if (!ds) return null;
+
+                    const zeroRateNum = ds.totalMatches > 0 ? (ds.zeroKillsCount / ds.totalMatches) * 100 : 0;
+                    const mapNames = Array.from(ds.maps).join('/') || 'Vários';
+                    const avgK = ds.totalMatches > 0 ? (ds.totalKills / ds.totalMatches).toFixed(2) : '0.00';
+
+                    // Top zero players in this drop
+                    const topZeroForThisDrop = Array.from(ds.zeroPlayersMap.entries())
+                      .sort((a, b) => b[1] - a[1])
+                      .slice(0, 3);
+
+                    return (
+                      <div key={dropName} className="bg-black/50 border border-white/5 hover:border-red-500/30 rounded-2xl p-3 flex flex-col justify-between gap-3 transition-all">
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-black text-yellow-500 uppercase">{dropName}</span>
+                            <span className="text-[9px] font-bold text-gray-400 bg-white/5 px-2 py-0.5 rounded uppercase truncate max-w-[70px]">{mapNames}</span>
+                          </div>
+                          
+                          <div className="pt-2">
+                            <span className="text-[10px] font-black text-gray-400 uppercase block">Quedas Zeradas:</span>
+                            <div className="flex items-baseline gap-1.5">
+                              <span className="text-base font-black text-red-400 italic">{ds.zeroKillsCount}</span>
+                              <span className="text-[10px] font-bold text-gray-500">({zeroRateNum.toFixed(1)}%)</span>
+                            </div>
+                          </div>
+
+                          {/* Zero Rate Bar */}
+                          <div className="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
+                            <div 
+                              className="bg-gradient-to-r from-red-600 to-red-400 h-full rounded-full"
+                              style={{ width: `${Math.min(100, zeroRateNum)}%` }}
+                            />
+                          </div>
+
+                          <div className="flex justify-between items-center text-[9px] text-gray-500 pt-1 font-bold">
+                            <span>Média: <strong className="text-gray-300">{avgK}</strong></span>
+                            <span>Total: <strong className="text-white">{ds.totalKills} k</strong></span>
+                          </div>
+                        </div>
+
+                        {/* Top Zero Players list for this drop */}
+                        {topZeroForThisDrop.length > 0 && (
+                          <div className="pt-2 border-t border-white/5 space-y-1">
+                            <span className="text-[8px] font-black text-gray-500 uppercase tracking-wider block">Mais Zerados em {dropName}:</span>
+                            <div className="space-y-1">
+                              {topZeroForThisDrop.map(([pName, zCount]) => {
+                                return (
+                                  <div key={pName} className="flex items-center justify-between text-[9px]">
+                                    <span className="text-gray-300 font-bold truncate max-w-[80px]">{pName}</span>
+                                    <span className="text-red-400 font-black">{zCount}x zero</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Main Matrix Table: Kills & Quedas Zeradas por Jogador */}
+              <div className="bg-[#1a1a1a] border border-gray-800 rounded-3xl overflow-hidden shadow-2xl">
+                {/* Search & Header bar */}
+                <div className="p-6 border-b border-gray-800 flex flex-col md:flex-row items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-base font-black text-white uppercase tracking-wider flex items-center gap-2">
+                      <Target size={18} className="text-yellow-500" />
+                      Matriz de Kills e Quedas Zeradas por Jogador
+                    </h3>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Acompanhe os abates acumulados e a frequência de jogos zerados em cada queda (Q1 a Q6)
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-3 w-full md:w-auto">
+                    <div className="relative w-full md:w-64">
+                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                      <input 
+                        type="text"
+                        placeholder="Buscar jogador ou equipe..."
+                        value={playerDropsSearch}
+                        onChange={(e) => setPlayerDropsSearch(e.target.value)}
+                        className="w-full pl-9 pr-4 py-2 bg-black/40 border border-white/10 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sub-bar showing legend */}
+                <div className="px-6 py-3 bg-black/60 border-b border-white/5 flex flex-wrap items-center justify-between gap-3 text-xs">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest mr-1">Legenda da Célula de Queda:</span>
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 font-black text-[11px]">
+                      <span>5 Kills (0 Zero)</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-yellow-500/15 border border-yellow-500/30 text-yellow-400 font-black text-[11px]">
+                      <span>2 Kills (1 Zero)</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-950/80 border border-red-800/60 text-red-400 font-black text-[11px]">
+                      <Skull size={10} />
+                      <span>100% Zerada (0 Kills)</span>
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-gray-500 font-bold uppercase italic">
+                    *Clique em qualquer célula para ver o histórico do jogador naquela queda
+                  </span>
+                </div>
+
+                {/* Table */}
+                <div className="overflow-x-auto custom-scrollbar p-2">
+                  <table className="w-full text-left whitespace-nowrap border-collapse">
+                    <thead>
+                      <tr className="border-b border-white/5 text-[10px] font-black uppercase text-gray-400 tracking-wider">
+                        <th className="px-3 py-3 text-center">#</th>
+                        <th 
+                          className="px-3 py-3 cursor-pointer hover:text-white transition-colors"
+                          onClick={() => setPlayerDropsSort(prev => ({ field: 'name', direction: prev.field === 'name' && prev.direction === 'asc' ? 'desc' : 'asc' }))}
+                        >
+                          Jogador {playerDropsSort.field === 'name' && (playerDropsSort.direction === 'asc' ? '↑' : '↓')}
+                        </th>
+                        <th 
+                          className="px-3 py-3 cursor-pointer hover:text-white transition-colors"
+                          onClick={() => setPlayerDropsSort(prev => ({ field: 'team', direction: prev.field === 'team' && prev.direction === 'asc' ? 'desc' : 'asc' }))}
+                        >
+                          Equipe {playerDropsSort.field === 'team' && (playerDropsSort.direction === 'asc' ? '↑' : '↓')}
+                        </th>
+                        <th 
+                          className="px-3 py-3 text-center cursor-pointer hover:text-white transition-colors text-yellow-500"
+                          onClick={() => setPlayerDropsSort(prev => ({ field: 'totalKills', direction: prev.field === 'totalKills' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
+                        >
+                          Kills {playerDropsSort.field === 'totalKills' && (playerDropsSort.direction === 'desc' ? '↓' : '↑')}
+                        </th>
+                        <th 
+                          className="px-3 py-3 text-center cursor-pointer hover:text-white transition-colors"
+                          onClick={() => setPlayerDropsSort(prev => ({ field: 'totalMatches', direction: prev.field === 'totalMatches' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
+                        >
+                          PJ {playerDropsSort.field === 'totalMatches' && (playerDropsSort.direction === 'desc' ? '↓' : '↑')}
+                        </th>
+                        <th 
+                          className="px-3 py-3 text-center cursor-pointer hover:text-white transition-colors"
+                          onClick={() => setPlayerDropsSort(prev => ({ field: 'avgKills', direction: prev.field === 'avgKills' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
+                        >
+                          Média {playerDropsSort.field === 'avgKills' && (playerDropsSort.direction === 'desc' ? '↓' : '↑')}
+                        </th>
+                        <th 
+                          className="px-3 py-3 text-center cursor-pointer hover:text-white transition-colors text-red-400"
+                          onClick={() => setPlayerDropsSort(prev => ({ field: 'zeroKillsMatches', direction: prev.field === 'zeroKillsMatches' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
+                          title="Quantidade e % de partidas que o jogador concluiu com 0 Kills"
+                        >
+                          Q. Zero {playerDropsSort.field === 'zeroKillsMatches' && (playerDropsSort.direction === 'desc' ? '↓' : '↑')}
+                        </th>
+
+                        {/* Drop Columns */}
+                        {sortedDropsList.map(dropName => (
+                          <th 
+                            key={dropName} 
+                            className="px-3 py-3 text-center cursor-pointer hover:text-yellow-400 transition-colors bg-white/[0.02] border-l border-white/5"
+                            onClick={() => setPlayerDropsSort(prev => ({ 
+                              field: `drop_${dropName}`, 
+                              direction: prev.field === `drop_${dropName}` && prev.direction === 'desc' ? 'asc' : 'desc' 
+                            }))}
+                            title={`Clique para ordenar por kills na ${dropName}`}
+                          >
+                            <div className="flex flex-col items-center">
+                              <span className="text-yellow-500 font-black">{dropName}</span>
+                              <span className="text-[8px] text-gray-500 font-normal lowercase">kills</span>
+                            </div>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5 text-xs">
+                      {filteredAndSortedPlayerDrops.map((p, idx) => {
+                        return (
+                          <tr key={p.name} className="hover:bg-white/[0.03] transition-colors">
+                            <td className="px-3 py-3 text-center font-mono font-bold text-gray-500">{idx + 1}</td>
+                            
+                            {/* Player */}
+                            <td className="px-3 py-3">
+                              <button 
+                                onClick={() => {
+                                  setFilters(prev => ({ ...prev, players: [p.name] }));
+                                  setActiveTab('report');
+                                }}
+                                className="flex items-center gap-2.5 text-left group"
+                              >
+                                <div className="w-8 h-8 rounded-full bg-black/60 border border-white/10 overflow-hidden flex-shrink-0 group-hover:border-yellow-500 transition-colors">
+                                  {p.playerImg ? (
+                                    <img src={p.playerImg} alt={p.name} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-gray-600"><User size={14} /></div>
+                                  )}
+                                </div>
+                                <span className="font-black text-white group-hover:text-yellow-500 transition-colors italic uppercase">{p.name}</span>
+                              </button>
+                            </td>
+
+                            {/* Team */}
+                            <td className="px-3 py-3">
+                              <div className="flex items-center gap-2">
+                                <div className="w-5 h-5 rounded overflow-hidden bg-black/40 flex-shrink-0">
+                                  {p.teamImg && <img src={p.teamImg} alt={p.team} className="w-full h-full object-contain" />}
+                                </div>
+                                <span className="text-gray-400 font-bold text-[11px] truncate max-w-[100px]">{p.team}</span>
+                              </div>
+                            </td>
+
+                            {/* Total Kills */}
+                            <td className="px-3 py-3 text-center font-black text-yellow-500 text-sm italic">{p.totalKills}</td>
+
+                            {/* Matches (PJ) */}
+                            <td className="px-3 py-3 text-center font-mono font-bold text-gray-300">{p.totalMatches}</td>
+
+                            {/* Avg Kills */}
+                            <td className="px-3 py-3 text-center font-mono font-bold text-gray-400">{p.avgKills}</td>
+
+                            {/* Zero Matches & % */}
+                            <td className="px-3 py-3 text-center">
+                              {p.zeroKillsMatches > 0 ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-500/15 border border-red-500/30 text-red-400 font-black text-xs">
+                                  {p.zeroKillsMatches} <span className="text-[9px] text-red-400/70 font-normal">({p.zeroRate}%)</span>
+                                </span>
+                              ) : (
+                                <span className="text-gray-600 font-bold">-</span>
+                              )}
+                            </td>
+
+                            {/* Drop Cells */}
+                            {sortedDropsList.map(dropName => {
+                              const kills = p.dropKills[dropName] || 0;
+                              const matches = p.dropMatches[dropName] || 0;
+                              const zeros = p.dropZeroMatches[dropName] || 0;
+                              const isExistent = matches > 0;
+
+                              if (!isExistent) {
+                                return (
+                                  <td key={dropName} className="px-3 py-3 text-center text-xs font-mono border-l border-white/5">
+                                    <span className="text-gray-700 font-bold">-</span>
+                                  </td>
+                                );
+                              }
+
+                              const isAllZero = zeros === matches && kills === 0;
+                              const hasSomeZero = zeros > 0;
+
+                              const tooltipText = `${p.name} na ${dropName}: ${kills} kills em ${matches} jogos (${zeros} jogos com 0 kills)`;
+
+                              return (
+                                <td 
+                                  key={dropName}
+                                  className="px-3 py-3 text-center text-xs font-mono border-l border-white/5"
+                                  onClick={() => {
+                                    setSelectedPlayerDropDetail({
+                                      player: p.name,
+                                      playerImg: p.playerImg,
+                                      teamImg: p.teamImg,
+                                      team: p.team,
+                                      drop: dropName,
+                                      kills,
+                                      matches,
+                                      zeroCount: zeros,
+                                      rounds: p.dropRounds[dropName] || {}
+                                    });
+                                  }}
+                                >
+                                  {isAllZero ? (
+                                    <span 
+                                      className="inline-flex items-center justify-center gap-1 min-w-[40px] px-2 py-0.5 rounded-md bg-red-950/80 border border-red-800/60 text-red-400 font-black text-xs hover:scale-110 cursor-pointer transition-all"
+                                      title={tooltipText}
+                                    >
+                                      <Skull size={10} /> 0
+                                    </span>
+                                  ) : hasSomeZero ? (
+                                    <span 
+                                      className="inline-flex items-center justify-center gap-1 min-w-[40px] px-2 py-0.5 rounded-md bg-yellow-500/15 border border-yellow-500/40 text-yellow-400 font-black text-xs hover:scale-110 cursor-pointer transition-all"
+                                      title={tooltipText}
+                                    >
+                                      {kills} <span className="text-[9px] text-red-400 font-bold">({zeros}z)</span>
+                                    </span>
+                                  ) : (
+                                    <span 
+                                      className="inline-flex items-center justify-center min-w-[40px] px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 font-black text-xs hover:scale-110 cursor-pointer transition-all shadow-[0_0_8px_rgba(16,185,129,0.15)]"
+                                      title={tooltipText}
+                                    >
+                                      {kills}
+                                    </span>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Modal de Detalhamento da Queda */}
+              {selectedPlayerDropDetail && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+                  <div className="bg-[#1a1a1a] border border-gray-800 rounded-3xl max-w-md w-full p-6 space-y-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+                    <div className="flex items-center justify-between pb-4 border-b border-white/5">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-black/60 border border-white/10 overflow-hidden flex-shrink-0">
+                          {selectedPlayerDropDetail.playerImg ? (
+                            <img src={selectedPlayerDropDetail.playerImg} alt={selectedPlayerDropDetail.player} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-gray-600"><User size={18} /></div>
+                          )}
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-black text-white uppercase italic">{selectedPlayerDropDetail.player}</h4>
+                          <div className="flex items-center gap-2 text-[10px] text-gray-400 font-bold uppercase">
+                            <span>{selectedPlayerDropDetail.team}</span>
+                            <span>•</span>
+                            <span className="text-yellow-500">{selectedPlayerDropDetail.drop}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <button 
+                        onClick={() => setSelectedPlayerDropDetail(null)}
+                        className="p-2 text-gray-400 hover:text-white bg-white/5 rounded-xl border border-white/5"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+
+                    {/* Summary Info */}
+                    <div className="bg-black/40 p-4 rounded-2xl border border-white/5 space-y-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-gray-400 font-bold uppercase">Total de Abates na {selectedPlayerDropDetail.drop}:</span>
+                        <span className="text-base font-black text-yellow-500 italic">{selectedPlayerDropDetail.kills} Kills</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-gray-400 font-bold uppercase">Partidas Disputadas na {selectedPlayerDropDetail.drop}:</span>
+                        <span className="text-white font-mono font-bold">{selectedPlayerDropDetail.matches} Jogos</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-gray-400 font-bold uppercase">Jogos Zerados na {selectedPlayerDropDetail.drop}:</span>
+                        <span className={selectedPlayerDropDetail.zeroCount > 0 ? 'text-red-400 font-black' : 'text-emerald-400 font-black'}>
+                          {selectedPlayerDropDetail.zeroCount} {selectedPlayerDropDetail.zeroCount === 1 ? 'partida' : 'partidas'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Round-by-round list for this drop */}
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Detalhamento por Rodada na {selectedPlayerDropDetail.drop}:</span>
+                      <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto custom-scrollbar pr-1">
+                        {Object.entries(selectedPlayerDropDetail.rounds).sort((a,b) => a[0].localeCompare(b[0])).map(([round, rInfoVal]) => {
+                          const rInfo = rInfoVal as { kills: number; map: string };
+                          const isZero = rInfo.kills === 0;
+
+                          return (
+                            <div key={round} className="bg-black/60 p-3 rounded-xl border border-white/5 flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-black text-yellow-500 uppercase">{round}</span>
+                                <span className="text-[9px] font-bold text-gray-400 uppercase bg-white/5 px-2 py-0.5 rounded">{rInfo.map}</span>
+                              </div>
+                              
+                              <div className="flex items-center gap-2">
+                                <span className={`text-sm font-black italic ${isZero ? 'text-red-400' : 'text-emerald-400'}`}>
+                                  {rInfo.kills} {rInfo.kills === 1 ? 'Kill' : 'Kills'}
+                                </span>
+                                {isZero ? (
+                                  <span className="px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 text-[8px] font-black uppercase">ZEROU</span>
+                                ) : (
+                                  <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-[8px] font-black uppercase">OK</span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <button 
+                      onClick={() => {
+                        setFilters(prev => ({ ...prev, players: [selectedPlayerDropDetail.player] }));
+                        setActiveTab('report');
+                        setSelectedPlayerDropDetail(null);
+                      }}
+                      className="w-full py-3 bg-yellow-500 hover:bg-yellow-400 text-black rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-yellow-500/20"
+                    >
+                      Ver Perfil Completo do Jogador
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {activeTab === 'roles' && (
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-6">
                   {/* Seleção de Função */}
@@ -2422,6 +3727,8 @@ const PlayerRadarComponent: React.FC<{
 
 
 const PlayerProfile = ({ data, playerName, filters, characters }: any) => {
+    const [profileSubTab, setProfileSubTab] = useState<'all' | 'zeradas' | 'rounds' | 'history'>('all');
+    const [showDetails, setShowDetails] = useState<boolean>(true);
     const normalize = (val: string | undefined) => (val || '').trim().toUpperCase();
     const cleanKey = (s: string) => s.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "").trim();
 
@@ -2532,6 +3839,197 @@ const PlayerProfile = ({ data, playerName, filters, characters }: any) => {
 
         const diff = totalKills - totalMatches;
 
+        // Extração de partidas zeradas e detalhes por rodada
+        const zeroKillsRecords = records.filter((r: PlayerData) => parseNumber(r.Abates) === 0).map((r: PlayerData) => {
+            const rd = r.RD || 'N/A';
+            const q = r.Q || 'N/A';
+            const mapa = r.MAPA || 'N/A';
+            const dano = parseNumber(r.Dano);
+            const deitados = parseNumber(r.Deitados);
+            const assistencias = parseNumber(r.Assistencias);
+            const hs = parseNumber(r.HS);
+            
+            const teamDetail = data.details?.find((d: any) => 
+                normalize(d.TIME) === normalize(team) && 
+                normalize(d.RD) === normalize(rd) && 
+                normalize(d.Q) === normalize(q)
+            );
+            const pos = teamDetail?.POS || 'N/A';
+            const isBooyah = teamDetail?.POS === '1' || teamDetail?.B === '1';
+
+            return {
+                rd,
+                q,
+                mapa,
+                dano,
+                deitados,
+                assistencias,
+                hs,
+                pos,
+                isBooyah,
+                confronto: r.CONFRONTO || ''
+            };
+        }).sort((a: any, b: any) => {
+            const numRdA = parseInt(a.rd.replace(/\D/g, '')) || 0;
+            const numRdB = parseInt(b.rd.replace(/\D/g, '')) || 0;
+            if (numRdA !== numRdB) return numRdA - numRdB;
+            const numQA = parseInt(a.q.replace(/\D/g, '')) || 0;
+            const numQB = parseInt(b.q.replace(/\D/g, '')) || 0;
+            return numQA - numQB;
+        });
+
+        const totalZeroDano = zeroKillsRecords.reduce((acc: number, z: any) => acc + z.dano, 0);
+        const avgDamageInZeroKills = zeroKillsMatches > 0 ? (totalZeroDano / zeroKillsMatches).toFixed(0) : '0';
+
+        // Distribuição de zeradas por Q1-Q6
+        const zeroKillsByQ: Record<string, { total: number; zero: number; rate: string }> = {};
+        ['Q1','Q2','Q3','Q4','Q5','Q6'].forEach(qKey => {
+            zeroKillsByQ[qKey] = { total: 0, zero: 0, rate: '0.0' };
+        });
+
+        records.forEach((r: PlayerData) => {
+            const qNum = r.Q ? r.Q.replace(/\D/g, '') : '';
+            const qKey = qNum ? `Q${qNum}` : 'N/A';
+            if (zeroKillsByQ[qKey]) {
+                zeroKillsByQ[qKey].total += 1;
+                if (parseNumber(r.Abates) === 0) zeroKillsByQ[qKey].zero += 1;
+            }
+        });
+
+        Object.keys(zeroKillsByQ).forEach(qKey => {
+            const item = zeroKillsByQ[qKey];
+            if (item.total > 0) {
+                item.rate = ((item.zero / item.total) * 100).toFixed(1);
+            }
+        });
+
+        let topZeroDrop: { q: string; zero: number; total: number; rate: string } | null = null;
+        Object.entries(zeroKillsByQ).forEach(([qName, val]) => {
+            if (val.zero > 0) {
+                if (!topZeroDrop || val.zero > topZeroDrop.zero || (val.zero === topZeroDrop.zero && parseFloat(val.rate) > parseFloat(topZeroDrop.rate))) {
+                    topZeroDrop = { q: qName.replace('Q',''), zero: val.zero, total: val.total, rate: val.rate };
+                }
+            }
+        });
+
+        // Matriz de Rodadas x Quedas para o jogador
+        const roundMatrixMap = new Map<string, {
+            rd: string;
+            totalKills: number;
+            totalMatches: number;
+            totalZero: number;
+            totalDamage: number;
+            dropsMap: Map<string, {
+                q: string;
+                kills: number;
+                dano: number;
+                mapa: string;
+                deitados: number;
+                assistencias: number;
+                pos: string;
+                isBooyah: boolean;
+                isZero: boolean;
+            }>;
+        }>();
+
+        records.forEach((r: PlayerData) => {
+            const rd = r.RD || 'N/A';
+            const q = r.Q ? r.Q.replace(/\D/g, '') : 'N/A';
+            const kills = parseNumber(r.Abates);
+            const dano = parseNumber(r.Dano);
+            const deitados = parseNumber(r.Deitados);
+            const assistencias = parseNumber(r.Assistencias);
+            const mapa = r.MAPA || 'N/A';
+            const isZero = kills === 0;
+
+            const teamDetail = data.details?.find((d: any) => 
+                normalize(d.TIME) === normalize(team) && 
+                normalize(d.RD) === normalize(rd) && 
+                normalize(d.Q) === normalize(q)
+            );
+            const pos = teamDetail?.POS || 'N/A';
+            const isBooyah = teamDetail?.POS === '1' || teamDetail?.B === '1';
+
+            if (!roundMatrixMap.has(rd)) {
+                roundMatrixMap.set(rd, {
+                    rd,
+                    totalKills: 0,
+                    totalMatches: 0,
+                    totalZero: 0,
+                    totalDamage: 0,
+                    dropsMap: new Map()
+                });
+            }
+
+            const rdObj = roundMatrixMap.get(rd)!;
+            rdObj.totalKills += kills;
+            rdObj.totalMatches += 1;
+            if (isZero) rdObj.totalZero += 1;
+            rdObj.totalDamage += dano;
+
+            rdObj.dropsMap.set(q, {
+                q,
+                kills,
+                dano,
+                mapa,
+                deitados,
+                assistencias,
+                pos,
+                isBooyah,
+                isZero
+            });
+        });
+
+        const sortedRoundsMatrix = Array.from(roundMatrixMap.values()).sort((a, b) => {
+            const numA = parseInt(a.rd.replace(/\D/g, '')) || 0;
+            const numB = parseInt(b.rd.replace(/\D/g, '')) || 0;
+            return numA - numB;
+        });
+
+        // Recorde de Kills em uma Partida (Match Record)
+        let maxMatchRecord: { kills: number; rd: string; q: string; mapa: string; dano: number; deitados: number; assistencias: number; isBooyah: boolean } | null = null;
+
+        records.forEach((r: PlayerData) => {
+            const k = parseNumber(r.Abates);
+            const d = parseNumber(r.Dano);
+            if (!maxMatchRecord || k > maxMatchRecord.kills || (k === maxMatchRecord.kills && d > maxMatchRecord.dano)) {
+                const rd = r.RD || 'N/A';
+                const q = r.Q ? r.Q.replace(/\D/g, '') : 'N/A';
+                const teamDetail = data.details?.find((det: any) => 
+                    normalize(det.TIME) === normalize(team) && 
+                    normalize(det.RD) === normalize(rd) && 
+                    normalize(det.Q) === normalize(q)
+                );
+                const isBooyah = teamDetail?.POS === '1' || teamDetail?.B === '1';
+
+                maxMatchRecord = {
+                    kills: k,
+                    rd,
+                    q,
+                    mapa: r.MAPA || 'N/A',
+                    dano: d,
+                    deitados: parseNumber(r.Deitados),
+                    assistencias: parseNumber(r.Assistencias),
+                    isBooyah
+                };
+            }
+        });
+
+        // Recorde de Kills em uma Rodada (Round Record)
+        let maxRoundRecord: { rd: string; kills: number; matches: number; avgKills: string; damage: number } | null = null;
+
+        Array.from(roundMatrixMap.values()).forEach(rdObj => {
+            if (!maxRoundRecord || rdObj.totalKills > maxRoundRecord.kills || (rdObj.totalKills === maxRoundRecord.kills && rdObj.totalDamage > maxRoundRecord.damage)) {
+                maxRoundRecord = {
+                    rd: rdObj.rd,
+                    kills: rdObj.totalKills,
+                    matches: rdObj.totalMatches,
+                    avgKills: (rdObj.totalKills / (rdObj.totalMatches || 1)).toFixed(2),
+                    damage: rdObj.totalDamage
+                };
+            }
+        });
+
         return { 
             team, 
             playerImg,
@@ -2564,7 +4062,14 @@ const PlayerProfile = ({ data, playerName, filters, characters }: any) => {
             roundKills, 
             dropKills, 
             topVictims, 
-            topKillers 
+            topKillers,
+            zeroKillsRecords,
+            zeroKillsByQ,
+            avgDamageInZeroKills,
+            topZeroDrop,
+            sortedRoundsMatrix,
+            maxMatchRecord,
+            maxRoundRecord
         };
     }, [data, playerName, filters, characters]);
 
@@ -2631,8 +4136,436 @@ const PlayerProfile = ({ data, playerName, filters, characters }: any) => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                <div className="bg-[#1a1a1a] p-4 rounded-2xl border border-gray-800 flex flex-col items-center">
+            {/* Banner de Recordes Individuais do Jogador */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-gradient-to-r from-red-950/40 via-black to-black p-5 rounded-2xl border border-red-500/30 shadow-xl flex items-center gap-4 relative overflow-hidden">
+                    <div className="p-3.5 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-500 flex-shrink-0">
+                        <Trophy size={28} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <span className="text-[10px] font-black text-red-400 uppercase tracking-widest block mb-0.5">RECORDE DE KILLS EM 1 PARTIDA</span>
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-3xl font-black text-white italic">{stats.maxMatchRecord ? stats.maxMatchRecord.kills : 0}</span>
+                            <span className="text-xs font-bold text-red-400 uppercase">Kills</span>
+                            {stats.maxMatchRecord?.isBooyah && (
+                                <span className="px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 text-[9px] font-black uppercase inline-flex items-center gap-1">
+                                    <Crown size={10} /> Booyah!
+                                </span>
+                            )}
+                        </div>
+                        {stats.maxMatchRecord ? (
+                            <p className="text-[11px] text-gray-400 font-medium truncate mt-1">
+                                <span className="text-white font-bold">{stats.maxMatchRecord.rd} • Q{stats.maxMatchRecord.q}</span> ({stats.maxMatchRecord.mapa}) • <span className="text-amber-400 font-mono">{stats.maxMatchRecord.dano} Dano</span>
+                            </p>
+                        ) : (
+                            <p className="text-[11px] text-gray-500 italic mt-1">Sem registros no período</p>
+                        )}
+                    </div>
+                </div>
+
+                <div className="bg-gradient-to-r from-yellow-950/40 via-black to-black p-5 rounded-2xl border border-yellow-500/30 shadow-xl flex items-center gap-4 relative overflow-hidden">
+                    <div className="p-3.5 rounded-2xl bg-yellow-500/10 border border-yellow-500/30 text-yellow-500 flex-shrink-0">
+                        <Crown size={28} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <span className="text-[10px] font-black text-yellow-400 uppercase tracking-widest block mb-0.5">RECORDE DE KILLS EM 1 RODADA (RD)</span>
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-3xl font-black text-white italic">{stats.maxRoundRecord ? stats.maxRoundRecord.kills : 0}</span>
+                            <span className="text-xs font-bold text-yellow-400 uppercase">Kills Acumuladas</span>
+                            {stats.maxRoundRecord && (
+                                <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/40 text-[9px] font-black uppercase">
+                                    Média {stats.maxRoundRecord.avgKills}/Q
+                                </span>
+                            )}
+                        </div>
+                        {stats.maxRoundRecord ? (
+                            <p className="text-[11px] text-gray-400 font-medium truncate mt-1">
+                                <span className="text-white font-bold">{stats.maxRoundRecord.rd}</span> ({stats.maxRoundRecord.matches} Quedas disputadas) • <span className="text-amber-400 font-mono">{stats.maxRoundRecord.damage.toLocaleString()} Dano Total</span>
+                            </p>
+                        ) : (
+                            <p className="text-[11px] text-gray-500 italic mt-1">Sem registros no período</p>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* Navegação de Sub-abas do Perfil */}
+            <div className="flex flex-wrap items-center justify-between gap-4 bg-[#121215] p-2.5 rounded-2xl border border-white/5 shadow-lg">
+                <div className="flex flex-wrap items-center gap-2">
+                    <button
+                        onClick={() => setProfileSubTab('all')}
+                        className={`px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 ${
+                            profileSubTab === 'all'
+                                ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20'
+                                : 'bg-black/40 text-gray-400 hover:text-white hover:bg-white/5'
+                        }`}
+                    >
+                        <Activity size={15} /> Visão Geral Completa
+                    </button>
+
+                    <button
+                        onClick={() => setProfileSubTab('zeradas')}
+                        className={`px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 ${
+                            profileSubTab === 'zeradas'
+                                ? 'bg-red-600 text-white shadow-lg shadow-red-600/20'
+                                : 'bg-black/40 text-gray-400 hover:text-white hover:bg-white/5'
+                        }`}
+                    >
+                        <AlertTriangle size={15} className={profileSubTab === 'zeradas' ? 'text-white' : 'text-red-400'} /> Detalhes Quedas Zeradas
+                        <span className="ml-1 px-2 py-0.5 rounded-full bg-red-950/80 text-red-300 border border-red-500/30 text-[10px]">
+                            {stats.zeroKillsMatches}
+                        </span>
+                    </button>
+
+                    <button
+                        onClick={() => setProfileSubTab('rounds')}
+                        className={`px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 ${
+                            profileSubTab === 'rounds'
+                                ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
+                                : 'bg-black/40 text-gray-400 hover:text-white hover:bg-white/5'
+                        }`}
+                    >
+                        <ListOrdered size={15} className={profileSubTab === 'rounds' ? 'text-white' : 'text-blue-300'} /> Detalhes por Rodada (RD x Q)
+                        <span className="ml-1 px-2 py-0.5 rounded-full bg-blue-950/80 text-blue-300 border border-blue-500/30 text-[10px]">
+                            {stats.sortedRoundsMatrix.length} RDs
+                        </span>
+                    </button>
+
+                    <button
+                        onClick={() => setProfileSubTab('history')}
+                        className={`px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 ${
+                            profileSubTab === 'history'
+                                ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/20'
+                                : 'bg-black/40 text-gray-400 hover:text-white hover:bg-white/5'
+                        }`}
+                    >
+                        <Sparkles size={15} className={profileSubTab === 'history' ? 'text-white' : 'text-amber-300'} /> Histórico Loadouts
+                    </button>
+                </div>
+
+                <div className="flex items-center gap-3">
+                    {/* Botão de Mostrar / Ocultar Detalhamento */}
+                    <button
+                        onClick={() => setShowDetails(!showDetails)}
+                        className={`px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 border shadow-md ${
+                            showDetails 
+                                ? 'bg-red-500/10 border-red-500/40 text-red-400 hover:bg-red-500/20' 
+                                : 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/20'
+                        }`}
+                        title={showDetails ? "Ocultar blocos de detalhamento" : "Exibir blocos de detalhamento"}
+                    >
+                        {showDetails ? (
+                            <>
+                                <EyeOff size={15} /> Ocultar Detalhamento
+                            </>
+                        ) : (
+                            <>
+                                <Eye size={15} /> Mostrar Detalhamento
+                            </>
+                        )}
+                    </button>
+                </div>
+            </div>
+
+            {!showDetails && (
+                <div className="bg-[#121215] p-5 rounded-2xl border border-white/5 text-center flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                        <Info size={18} className="text-yellow-500 flex-shrink-0" />
+                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider text-left">
+                            O detalhamento avançado de Quedas Zeradas e Matriz por Rodada está <strong className="text-red-400">oculto</strong> no momento.
+                        </span>
+                    </div>
+                    <button
+                        onClick={() => setShowDetails(true)}
+                        className="px-4 py-2 rounded-xl bg-emerald-500 text-black font-black text-xs uppercase tracking-wider hover:bg-emerald-400 transition-all shadow-lg flex items-center gap-2 flex-shrink-0"
+                    >
+                        <Eye size={14} /> Expandir Detalhamento
+                    </button>
+                </div>
+            )}
+
+            {/* Conteúdo: Visão Geral ou Abas Específicas */}
+            {showDetails && (profileSubTab === 'all' || profileSubTab === 'zeradas') && (
+                <div className="bg-[#0e0e11] p-6 rounded-3xl border border-red-900/30 shadow-2xl space-y-6">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-4">
+                        <div>
+                            <h3 className="text-lg font-black text-white uppercase italic tracking-tight flex items-center gap-3">
+                                <AlertTriangle size={20} className="text-red-500" />
+                                DETALHAMENTO DE QUEDAS ZERADAS ({stats.zeroKillsMatches} PARTIDAS)
+                            </h3>
+                            <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mt-1">
+                                Análise aprofundada de todas as partidas em que o jogador finalizou sem abates
+                            </p>
+                        </div>
+                        <div className="bg-red-500/10 border border-red-500/30 px-4 py-2 rounded-2xl flex items-center gap-2">
+                            <span className="text-[10px] font-black text-red-400 uppercase tracking-widest">Frequência Zerada:</span>
+                            <span className="text-sm font-black text-red-500 italic">{stats.zeroKillsPct}% das Quedas</span>
+                        </div>
+                    </div>
+
+                    {/* Cards Resumo das Quedas Zeradas */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="bg-black/60 p-4 rounded-2xl border border-white/5 text-center">
+                            <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block mb-1">Total de Partidas Zeradas</span>
+                            <span className="text-2xl font-black text-red-500 italic">{stats.zeroKillsMatches} / {stats.matches}</span>
+                            <span className="text-[10px] text-gray-500 font-bold block mt-1">{stats.zeroKillsPct}% do Total</span>
+                        </div>
+                        <div className="bg-black/60 p-4 rounded-2xl border border-white/5 text-center">
+                            <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block mb-1">Partidas com Kills</span>
+                            <span className="text-2xl font-black text-green-500 italic">{stats.withKillsMatches} / {stats.matches}</span>
+                            <span className="text-[10px] text-gray-500 font-bold block mt-1">{stats.withKillsPct}% de Sucesso</span>
+                        </div>
+                        <div className="bg-black/60 p-4 rounded-2xl border border-white/5 text-center">
+                            <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block mb-1">Dano Médio nas Zeradas</span>
+                            <span className="text-2xl font-black text-amber-400 italic">{stats.avgDamageInZeroKills}</span>
+                            <span className="text-[10px] text-gray-500 font-bold block mt-1">Dano sem Finalizar Kills</span>
+                        </div>
+                        <div className="bg-black/60 p-4 rounded-2xl border border-white/5 text-center">
+                            <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block mb-1">Queda C/ Mais Zeradas</span>
+                            <span className="text-2xl font-black text-yellow-500 italic">
+                                {stats.topZeroDrop ? `Q${stats.topZeroDrop.q}` : 'N/A'}
+                            </span>
+                            <span className="text-[10px] text-gray-500 font-bold block mt-1">
+                                {stats.topZeroDrop ? `${stats.topZeroDrop.zero} zeradas (${stats.topZeroDrop.rate}%)` : 'Sem zeradas'}
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Distribuição de Zeradas por Queda (Q1 a Q6) */}
+                    <div className="bg-black/40 p-5 rounded-2xl border border-white/5 space-y-3">
+                        <h4 className="text-xs font-black text-gray-300 uppercase tracking-widest flex items-center gap-2">
+                            <TargetIcon size={14} className="text-yellow-500" /> FREQUÊNCIA DE ZERADAS POR NÚMERO DA QUEDA (Q1 A Q6)
+                        </h4>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+                            {['Q1','Q2','Q3','Q4','Q5','Q6'].map(qKey => {
+                                const item = stats.zeroKillsByQ[qKey] || { total: 0, zero: 0, rate: '0.0' };
+                                const isHigh = parseFloat(item.rate) >= 40;
+                                return (
+                                    <div key={qKey} className={`p-3 rounded-xl border text-center transition-all ${
+                                        item.zero > 0 
+                                            ? isHigh ? 'bg-red-950/30 border-red-500/50' : 'bg-amber-950/20 border-amber-500/30'
+                                            : 'bg-emerald-950/20 border-emerald-500/30'
+                                    }`}>
+                                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block">{qKey}</span>
+                                        <span className={`text-lg font-black italic block my-0.5 ${item.zero > 0 ? (isHigh ? 'text-red-400' : 'text-amber-400') : 'text-emerald-400'}`}>
+                                            {item.zero} <span className="text-xs text-gray-500">/ {item.total}</span>
+                                        </span>
+                                        <span className="text-[9px] font-bold text-gray-400 block">{item.rate}% Zerada</span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Tabela de Partidas Zeradas */}
+                    <div className="space-y-3">
+                        <h4 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-2">
+                            <ListOrdered size={14} className="text-red-400" /> LISTA INDIVIDUAL DE PARTIDAS ZERADAS
+                        </h4>
+
+                        {stats.zeroKillsRecords.length > 0 ? (
+                            <div className="overflow-x-auto custom-scrollbar border border-white/5 rounded-2xl bg-black/60">
+                                <table className="w-full text-left text-xs whitespace-nowrap">
+                                    <thead>
+                                        <tr className="bg-black/80 text-gray-400 text-[10px] uppercase font-black tracking-widest border-b border-white/10">
+                                            <th className="px-4 py-3 text-center">#</th>
+                                            <th className="px-4 py-3">RODADA</th>
+                                            <th className="px-4 py-3">QUEDA</th>
+                                            <th className="px-4 py-3">MAPA</th>
+                                            <th className="px-4 py-3 text-right">DANO</th>
+                                            <th className="px-4 py-3 text-center">DEITADOS</th>
+                                            <th className="px-4 py-3 text-center">ASSIST.</th>
+                                            <th className="px-4 py-3 text-center">POS. EQUIPE</th>
+                                            <th className="px-4 py-3 text-center">STATUS</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/5 font-mono">
+                                        {stats.zeroKillsRecords.map((z: any, idx: number) => (
+                                            <tr key={idx} className="hover:bg-white/[0.03] transition-colors">
+                                                <td className="px-4 py-3 text-center text-gray-500 font-bold">{idx + 1}</td>
+                                                <td className="px-4 py-3 font-bold text-white uppercase">{z.rd}</td>
+                                                <td className="px-4 py-3 text-yellow-400 font-bold">QUEDA {z.q}</td>
+                                                <td className="px-4 py-3 text-gray-300 uppercase font-bold">{z.mapa}</td>
+                                                <td className="px-4 py-3 text-right text-amber-400 font-black">{z.dano}</td>
+                                                <td className="px-4 py-3 text-center text-orange-400 font-bold">{z.deitados}</td>
+                                                <td className="px-4 py-3 text-center text-blue-400 font-bold">{z.assistencias}</td>
+                                                <td className="px-4 py-3 text-center">
+                                                    {z.isBooyah ? (
+                                                        <span className="px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 text-[10px] font-black uppercase inline-flex items-center justify-center gap-1">
+                                                            <Crown size={11} /> #1 Booyah
+                                                        </span>
+                                                    ) : z.pos !== 'N/A' ? (
+                                                        <span className="text-gray-300 font-bold">#{z.pos}</span>
+                                                    ) : (
+                                                        <span className="text-gray-600">-</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-4 py-3 text-center">
+                                                    <span className="px-2 py-0.5 rounded bg-red-950/80 text-red-400 border border-red-500/30 text-[10px] font-black uppercase">
+                                                        0 KILLS {z.dano >= 400 ? '• DANO ALTO' : ''}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <div className="p-8 text-center bg-emerald-950/20 border border-emerald-500/30 rounded-2xl text-emerald-400 font-black italic uppercase text-xs">
+                                👏 O jogador não possui nenhuma queda zerada no período selecionado!
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {showDetails && (profileSubTab === 'all' || profileSubTab === 'rounds') && (
+                <div className="bg-[#0e0e11] p-6 rounded-3xl border border-blue-900/30 shadow-2xl space-y-6">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-4">
+                        <div>
+                            <h3 className="text-lg font-black text-white uppercase italic tracking-tight flex items-center gap-3">
+                                <ListOrdered size={20} className="text-blue-400" />
+                                DETALHAMENTO DE QUEDAS POR RODADA (MATRIZ RD x Q)
+                            </h3>
+                            <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mt-1">
+                                Desempenho partida por partida em cada rodada disputada pelo jogador
+                            </p>
+                        </div>
+                        <div className="bg-blue-500/10 border border-blue-500/30 px-4 py-2 rounded-2xl flex items-center gap-2">
+                            <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Total Rodadas:</span>
+                            <span className="text-sm font-black text-white italic">{stats.sortedRoundsMatrix.length} Rodadas</span>
+                        </div>
+                    </div>
+
+                    {/* Matriz Geral RD x Q Table */}
+                    <div className="overflow-x-auto custom-scrollbar border border-white/5 rounded-2xl bg-black/60 p-2">
+                        <table className="w-full text-left text-xs whitespace-nowrap border-collapse">
+                            <thead>
+                                <tr className="bg-black/80 text-gray-400 text-[10px] uppercase font-black tracking-widest border-b border-white/10">
+                                    <th className="px-4 py-3">RODADA</th>
+                                    <th className="px-3 py-3 text-center bg-red-950/30 text-red-400">KILLS</th>
+                                    <th className="px-3 py-3 text-center text-gray-300">PJ</th>
+                                    <th className="px-3 py-3 text-center text-yellow-500">MÉDIA</th>
+                                    <th className="px-3 py-3 text-center text-red-500">ZERADAS</th>
+                                    {['Q1','Q2','Q3','Q4','Q5','Q6'].map(q => (
+                                        <th key={q} className="px-3 py-3 text-center text-gray-300 min-w-[100px]">{q}</th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-white/5 font-mono">
+                                {stats.sortedRoundsMatrix.map((rdObj: any) => {
+                                    const avgRD = (rdObj.totalKills / (rdObj.totalMatches || 1)).toFixed(2);
+                                    return (
+                                        <tr key={rdObj.rd} className="hover:bg-white/[0.03] transition-colors">
+                                            <td className="px-4 py-3 font-black text-white uppercase italic">{rdObj.rd}</td>
+                                            <td className="px-3 py-3 text-center font-black text-red-400 bg-red-950/20 text-sm">{rdObj.totalKills}</td>
+                                            <td className="px-3 py-3 text-center font-bold text-gray-300">{rdObj.totalMatches}</td>
+                                            <td className="px-3 py-3 text-center font-black text-yellow-500">{avgRD}</td>
+                                            <td className="px-3 py-3 text-center font-black text-red-500">{rdObj.totalZero}</td>
+
+                                            {['1','2','3','4','5','6'].map(qNum => {
+                                                const dropData = rdObj.dropsMap.get(qNum) || rdObj.dropsMap.get(`Q${qNum}`);
+                                                if (!dropData) {
+                                                    return <td key={qNum} className="px-2 py-3 text-center text-gray-700 font-bold">-</td>;
+                                                }
+
+                                                const isZero = dropData.isZero;
+                                                return (
+                                                    <td key={qNum} className="px-2 py-2 text-center">
+                                                        <div className={`p-1.5 rounded-xl border flex flex-col items-center justify-center transition-all ${
+                                                            isZero 
+                                                                ? 'bg-red-950/40 border-red-500/40 text-red-400' 
+                                                                : 'bg-emerald-950/30 border-emerald-500/40 text-emerald-400'
+                                                        }`}>
+                                                            <div className="flex items-center gap-1 font-black text-xs">
+                                                                {dropData.isBooyah && <Crown size={11} className="text-yellow-400" />}
+                                                                <span>{isZero ? '0 Kills' : `+${dropData.kills} Kills`}</span>
+                                                            </div>
+                                                            <span className="text-[9px] font-bold text-gray-400 uppercase truncate max-w-[90px]">
+                                                                {dropData.mapa}
+                                                            </span>
+                                                            <span className="text-[8px] text-gray-500 font-mono">
+                                                                {dropData.dano}d
+                                                            </span>
+                                                        </div>
+                                                    </td>
+                                                );
+                                            })}
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {/* Detalhamento Card por Card de Cada Rodada */}
+                    <div className="space-y-4">
+                        <h4 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-2">
+                            <TargetIcon size={14} className="text-blue-400" /> RESUMO INDIVIDUAL DE CADA RODADA
+                        </h4>
+
+                        <div className="grid grid-cols-1 gap-4">
+                            {stats.sortedRoundsMatrix.map((rdObj: any) => {
+                                const avgRD = (rdObj.totalKills / (rdObj.totalMatches || 1)).toFixed(2);
+                                return (
+                                    <div key={rdObj.rd} className="bg-black/50 p-5 rounded-2xl border border-white/5 space-y-4">
+                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-white/5 pb-3">
+                                            <div className="flex items-center gap-3">
+                                                <span className="px-3 py-1 bg-blue-500/10 border border-blue-500/30 text-blue-400 font-black text-xs rounded-xl uppercase italic">
+                                                    {rdObj.rd}
+                                                </span>
+                                                <span className="text-sm font-black text-white uppercase">
+                                                    {rdObj.totalKills} Abates
+                                                </span>
+                                                <span className="text-xs text-gray-500 font-bold uppercase">
+                                                    • {rdObj.totalMatches} Quedas • Média {avgRD}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center gap-3 text-xs">
+                                                <span className="text-amber-400 font-bold">{rdObj.totalDamage.toLocaleString()} Dano Total</span>
+                                                <span className={`font-black ${rdObj.totalZero > 0 ? 'text-red-500' : 'text-emerald-400'}`}>
+                                                    {rdObj.totalZero} Quedas Zeradas
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* Cards das Quedas da Rodada */}
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+                                            {Array.from(rdObj.dropsMap.values()).map((drop: any, dIdx: number) => (
+                                                <div key={dIdx} className={`p-3 rounded-xl border flex flex-col justify-between ${
+                                                    drop.isZero ? 'bg-red-950/20 border-red-500/30' : 'bg-black/80 border-white/10'
+                                                }`}>
+                                                    <div>
+                                                        <div className="flex justify-between items-center mb-1">
+                                                            <span className="text-[10px] font-black text-yellow-500 uppercase">Q{drop.q}</span>
+                                                            {drop.isBooyah && <Crown size={12} className="text-yellow-400" />}
+                                                        </div>
+                                                        <span className="text-[10px] font-black text-gray-300 uppercase block truncate mb-2">{drop.mapa}</span>
+                                                    </div>
+                                                    <div>
+                                                        <div className={`text-base font-black italic mb-1 ${drop.isZero ? 'text-red-500' : 'text-emerald-400'}`}>
+                                                            {drop.kills} Kills
+                                                        </div>
+                                                        <div className="text-[9px] font-mono text-gray-400 flex justify-between">
+                                                            <span>{drop.dano}d</span>
+                                                            <span>{drop.deitados}dts</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {(profileSubTab === 'all' || profileSubTab === 'overview') && (
+                <>
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                        <div className="bg-[#1a1a1a] p-4 rounded-2xl border border-gray-800 flex flex-col items-center">
                     <span className="text-[9px] text-gray-500 font-black uppercase tracking-widest mb-1">Dano Médio</span>
                     <span className="text-xl font-black text-white italic">{stats.avgDmg}</span>
                 </div>
@@ -2788,24 +4721,28 @@ const PlayerProfile = ({ data, playerName, filters, characters }: any) => {
                     </div>
                 </div>
             </div>
-
-            {/* Loadout Competitivo */}
-            {stats.loadout && (
-                <div className="bg-[#0e0e11] p-8 rounded-3xl border border-gray-800 shadow-xl">
-                    <div className="flex items-center justify-between mb-8 border-b border-white/5 pb-4">
-                        <h3 className="text-sm font-black text-white uppercase flex items-center gap-3 tracking-widest"><Zap size={18} className="text-yellow-500" /> CONFIGURAÇÃO ATUAL</h3>
-                        <span className="text-[10px] text-gray-500 font-mono italic">ÚLTIMA QUEDA: Q{stats.loadout.Q}</span>
-                    </div>
-                    <div className="flex flex-wrap gap-4 justify-between">
-                         <PremiumLoadoutCard title="ATIVA" name={stats.loadout.Hab1} img={stats.loadout.hab1Img} highlight />
-                         <PremiumLoadoutCard title="HAB 2" name={stats.loadout.Hab2} img={stats.loadout.hab2Img} />
-                         <PremiumLoadoutCard title="HAB 3" name={stats.loadout.Hab3} img={stats.loadout.hab3Img} />
-                         <PremiumLoadoutCard title="HAB 4" name={stats.loadout.Hab4} img={stats.loadout.hab4Img} />
-                         <PremiumLoadoutCard title="PET" name={stats.loadout.Pet} img={stats.loadout.petImg} />
-                         <PremiumLoadoutCard title="ITEM" name={stats.loadout.Item} img={stats.loadout.itemImg} />
-                    </div>
-                </div>
+                </>
             )}
+
+            {/* Loadout Competitivo & Histórico Completo */}
+            {(profileSubTab === 'all' || profileSubTab === 'overview' || profileSubTab === 'history') && (
+                <>
+                    {stats.loadout && (
+                        <div className="bg-[#0e0e11] p-8 rounded-3xl border border-gray-800 shadow-xl">
+                            <div className="flex items-center justify-between mb-8 border-b border-white/5 pb-4">
+                                <h3 className="text-sm font-black text-white uppercase flex items-center gap-3 tracking-widest"><Zap size={18} className="text-yellow-500" /> CONFIGURAÇÃO ATUAL</h3>
+                                <span className="text-[10px] text-gray-500 font-mono italic">ÚLTIMA QUEDA: Q{stats.loadout.Q}</span>
+                            </div>
+                            <div className="flex flex-wrap gap-4 justify-between">
+                                 <PremiumLoadoutCard title="ATIVA" name={stats.loadout.Hab1} img={stats.loadout.hab1Img} highlight />
+                                 <PremiumLoadoutCard title="HAB 2" name={stats.loadout.Hab2} img={stats.loadout.hab2Img} />
+                                 <PremiumLoadoutCard title="HAB 3" name={stats.loadout.Hab3} img={stats.loadout.hab3Img} />
+                                 <PremiumLoadoutCard title="HAB 4" name={stats.loadout.Hab4} img={stats.loadout.hab4Img} />
+                                 <PremiumLoadoutCard title="PET" name={stats.loadout.Pet} img={stats.loadout.petImg} />
+                                 <PremiumLoadoutCard title="ITEM" name={stats.loadout.Item} img={stats.loadout.itemImg} />
+                            </div>
+                        </div>
+                    )}
 
             {/* Histórico Completo de Personagens por Queda */}
             {(() => {
@@ -2932,6 +4869,8 @@ const PlayerProfile = ({ data, playerName, filters, characters }: any) => {
                     </div>
                 );
             })()}
+                </>
+            )}
         </div>
     );
 };

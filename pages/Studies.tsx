@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Map, Trash2, Crosshair, ZoomIn, ZoomOut, Move, LogIn, LogOut, X, Download, Upload, Tv, Play, Plus, ExternalLink, Youtube, Film, Info, Shield } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Map as MapIcon, Trash2, Crosshair, ZoomIn, ZoomOut, Move, LogIn, LogOut, X, Download, Upload, Tv, Play, Plus, ExternalLink, Youtube, Film, Info, Shield, BarChart2, Trophy, Flame, Target, Layers, ListOrdered, TrendingUp, User, Users, Search, Award, Swords, LayoutGrid, ArrowUpDown, MapPin } from 'lucide-react';
 import { doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db, auth, isFirebasePlaceholder } from '../firebase';
 import { OperationType, handleFirestoreError } from '../utils/firestoreError';
@@ -115,6 +115,10 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
     const [authMessage, setAuthMessage] = useState('');
     
     const containerRef = useRef<HTMLDivElement>(null);
+
+    // Map Streams Data State
+
+
 
     const saveMapStreamsData = async (streams: MapStreamItem[]) => {
         setMapStreams(streams);
@@ -766,7 +770,7 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
                             </div>
                             <div className="w-px h-8 bg-gray-800 mx-2"></div>
                             <div className="flex items-center gap-3">
-                                <Map size={18} className="text-blue-500" />
+                                <MapIcon size={18} className="text-blue-500" />
                                 <div>
                                     <span className="block text-[10px] text-gray-500 font-bold uppercase tracking-widest">Zonas Distintas</span>
                                     <span className="block text-xl font-black text-white italic leading-none">{points.length}</span>
@@ -777,7 +781,7 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
                 </div>
             )}
 
-            {/* TAB 2: MAPSTREAM */}
+            {/* TAB 3: MAPSTREAM */}
             {activeMainTab === 'mapstream' && (
                 <div className="space-y-6 animate-in fade-in duration-300">
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
