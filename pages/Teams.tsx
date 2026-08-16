@@ -43,7 +43,10 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
   const [selectedMap, setSelectedMap] = useState<string | null>(null);
   const [selectedDrop, setSelectedDrop] = useState<string | null>(null);
   const [selectedPosition, setSelectedPosition] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'gallery' | 'mapRanking' | 'bottomRanking' | 'mapAnalysis' | 'safeAnalysis' | 'comparison' | 'pointsTable' | 'teamRounds'>('gallery');
+  const [activeTab, setActiveTab] = useState<'gallery' | 'positions' | 'mapRanking' | 'bottomRanking' | 'mapAnalysis' | 'safeAnalysis' | 'comparison' | 'pointsTable' | 'teamRounds'>('gallery');
+  const [positionTabFilter, setPositionTabFilter] = useState<number | 'ALL'>('ALL');
+  const [positionSortConfig, setPositionSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'pos1', direction: 'desc' });
+  const [expandedPositionTeam, setExpandedPositionTeam] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'pts', direction: 'desc' });
   const [compareTeamB, setCompareTeamB] = useState<string | null>(null);
   const [compositionModal, setCompositionModal] = useState<{ teamName: string; round: string; drop: string; mapa?: string; confronto?: string } | null>(null);
@@ -208,7 +211,7 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
     setTeamRoundsMapFilter('ALL');
     setExpandAllLineups(false);
     setSelectedSafeLocation(null);
-    if (filters.team.length === 1 && activeTab !== 'comparison') {
+    if (filters.team.length === 1 && activeTab !== 'comparison' && activeTab !== 'teamRounds' && activeTab !== 'positions') {
       setActiveTab('gallery');
     }
   }, [filters.team]);
@@ -644,6 +647,134 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
     });
   }, [data, selectedSafeLocation, safeSortConfig]);
 
+  // Estatísticas de Posições (1º ao 12º Lugar) para Todas as Equipes
+  const allTeamsPositionStats = useMemo(() => {
+    const teamsMap = new Map<string, {
+      name: string;
+      image?: string;
+      grupo?: string;
+      totalMatches: number;
+      posCounts: Record<number, number>;
+      posKills: Record<number, number>;
+      posPts: Record<number, number>;
+      posDetails: Record<number, MatchDetails[]>;
+    }>();
+
+    // Inicializar mapa de times com base nos filteredTeamStats
+    filteredTeamStats.forEach(t => {
+      teamsMap.set(t.name, {
+        name: t.name,
+        image: t.image,
+        grupo: t.grupo,
+        totalMatches: 0,
+        posCounts: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0 },
+        posKills: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0 },
+        posPts: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0 },
+        posDetails: { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: [], 8: [], 9: [], 10: [], 11: [], 12: [] }
+      });
+    });
+
+    filteredData.details.forEach(d => {
+      if (!d.TIME) return;
+      let teamObj = teamsMap.get(d.TIME);
+      if (!teamObj) {
+        const foundKey = Array.from(teamsMap.keys()).find(k => normalize(k) === normalize(d.TIME));
+        if (foundKey) {
+          teamObj = teamsMap.get(foundKey);
+        }
+      }
+      if (!teamObj) return;
+
+      const pos = parseInt(d.POS) || 0;
+      if (pos >= 1 && pos <= 12) {
+        teamObj.totalMatches += 1;
+        teamObj.posCounts[pos] = (teamObj.posCounts[pos] || 0) + 1;
+        teamObj.posKills[pos] = (teamObj.posKills[pos] || 0) + (parseInt(d.ABTS) || 0);
+        teamObj.posPts[pos] = (teamObj.posPts[pos] || 0) + (parseInt(d.PTS) || 0);
+        teamObj.posDetails[pos].push(d);
+      }
+    });
+
+    return Array.from(teamsMap.values()).map(t => {
+      const top3 = (t.posCounts[1] || 0) + (t.posCounts[2] || 0) + (t.posCounts[3] || 0);
+      const top6 = top3 + (t.posCounts[4] || 0) + (t.posCounts[5] || 0) + (t.posCounts[6] || 0);
+      const bottom3 = (t.posCounts[10] || 0) + (t.posCounts[11] || 0) + (t.posCounts[12] || 0);
+      
+      let sumPos = 0;
+      for (let p = 1; p <= 12; p++) {
+        sumPos += p * (t.posCounts[p] || 0);
+      }
+      const avgPos = t.totalMatches > 0 ? sumPos / t.totalMatches : 12;
+
+      return {
+        ...t,
+        top3,
+        top3Pct: t.totalMatches > 0 ? (top3 / t.totalMatches) * 100 : 0,
+        top6,
+        top6Pct: t.totalMatches > 0 ? (top6 / t.totalMatches) * 100 : 0,
+        bottom3,
+        bottom3Pct: t.totalMatches > 0 ? (bottom3 / t.totalMatches) * 100 : 0,
+        avgPos,
+        avgPosFormatted: avgPos.toFixed(2)
+      };
+    });
+  }, [filteredTeamStats, filteredData.details]);
+
+  // Lista ordenada das equipes para a tabela de posições
+  const sortedPositionRanking = useMemo(() => {
+    return [...allTeamsPositionStats].sort((a, b) => {
+      let valA = 0;
+      let valB = 0;
+
+      if (positionSortConfig.key.startsWith('pos')) {
+        const p = parseInt(positionSortConfig.key.replace('pos', ''));
+        valA = a.posCounts[p] || 0;
+        valB = b.posCounts[p] || 0;
+      } else {
+        switch (positionSortConfig.key) {
+          case 'name':
+            return positionSortConfig.direction === 'asc' 
+              ? a.name.localeCompare(b.name) 
+              : b.name.localeCompare(a.name);
+          case 'totalMatches':
+            valA = a.totalMatches;
+            valB = b.totalMatches;
+            break;
+          case 'top3':
+            valA = a.top3;
+            valB = b.top3;
+            break;
+          case 'top6':
+            valA = a.top6;
+            valB = b.top6;
+            break;
+          case 'bottom3':
+            valA = a.bottom3;
+            valB = b.bottom3;
+            break;
+          case 'avgPos':
+            valA = a.avgPos;
+            valB = b.avgPos;
+            // Para posição média, menor é melhor!
+            return positionSortConfig.direction === 'asc' ? valA - valB : valB - valA;
+          default:
+            valA = a.posCounts[1] || 0;
+            valB = b.posCounts[1] || 0;
+            break;
+        }
+      }
+
+      if (valA === valB) {
+        if (a.posCounts[1] !== b.posCounts[1]) {
+          return b.posCounts[1] - a.posCounts[1];
+        }
+        return a.avgPos - b.avgPos;
+      }
+
+      return positionSortConfig.direction === 'desc' ? valB - valA : valA - valB;
+    });
+  }, [allTeamsPositionStats, positionSortConfig]);
+
   // Análise de Fechamento de Safe (Onde Fechou)
   const safeAnalysisData = useMemo(() => {
     const analysis: Record<string, { totals: number, locals: Record<string, number> }> = {};
@@ -678,13 +809,19 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
             <FilterBar filters={filters} setFilters={setFilters} options={filterOptions} />
             
             <div className="flex items-center gap-4">
-                {(!selectedTeamName || activeTab === 'comparison' || activeTab === 'teamRounds') && (
+                {(!selectedTeamName || activeTab === 'comparison' || activeTab === 'teamRounds' || activeTab === 'positions') && (
                     <div className="flex bg-black/40 p-1 rounded-xl border border-white/5">
                         <button 
                             onClick={() => setActiveTab('gallery')}
                             className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === 'gallery' ? 'bg-yellow-500 text-black' : 'text-gray-500 hover:text-white'}`}
                         >
                             <LayoutGrid size={14} /> Galeria
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('positions')}
+                            className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === 'positions' ? 'bg-yellow-500 text-black' : 'text-gray-500 hover:text-white'}`}
+                        >
+                            <Trophy size={14} /> Posições (1º-12º)
                         </button>
                         <button 
                             onClick={() => setActiveTab('mapRanking')}
@@ -1365,6 +1502,656 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                         </div>
                     </div>
                 </div>
+            </div>
+        ) : activeTab === 'positions' ? (
+            <div className="space-y-8 animate-in fade-in duration-500">
+                {/* Header & Subtitle */}
+                <div className="bg-[#1a1a1a] rounded-3xl p-6 md:p-8 border border-gray-800 shadow-2xl relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-96 h-96 bg-yellow-500/5 blur-[120px] -mr-48 -mt-48 rounded-full pointer-events-none" />
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+                        <div>
+                            <div className="flex items-center gap-3 mb-2">
+                                <div className="p-2.5 bg-yellow-500/10 border border-yellow-500/30 rounded-xl text-yellow-500 shadow-lg">
+                                    <Trophy size={22} />
+                                </div>
+                                <h2 className="text-2xl md:text-3xl font-black italic text-white uppercase tracking-tighter">
+                                    Ranking de Posições (1º ao 12º Lugar)
+                                </h2>
+                            </div>
+                            <p className="text-xs text-gray-400 font-medium max-w-2xl">
+                                Descubra quais times mais ficaram em cada colocação específica (do 1º ao 12º lugar), taxas de Booyah, Top 3, Top 6 e desempenho por posição.
+                            </p>
+                        </div>
+
+                        {/* Badges de Destaque Geral */}
+                        <div className="flex flex-wrap gap-2">
+                            <div className="px-4 py-2 bg-black/60 rounded-xl border border-white/5 flex items-center gap-2.5">
+                                <span className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse" />
+                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">
+                                    {allTeamsPositionStats.length} Equipes Mapeadas
+                                </span>
+                            </div>
+                            <div className="px-4 py-2 bg-black/60 rounded-xl border border-white/5 flex items-center gap-2.5">
+                                <span className="text-yellow-500 font-black text-xs">
+                                    {allTeamsPositionStats.reduce((acc, t) => acc + t.totalMatches, 0)}
+                                </span>
+                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">
+                                    Total de Quedas
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Sub-selector de Posição (Pills 1º ao 12º + Geral) */}
+                    <div className="mt-8 pt-6 border-t border-white/5 flex flex-wrap items-center gap-2">
+                        <button
+                            onClick={() => {
+                                setPositionTabFilter('ALL');
+                                setExpandedPositionTeam(null);
+                            }}
+                            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                                positionTabFilter === 'ALL' 
+                                    ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black' 
+                                    : 'bg-black/60 text-gray-400 hover:text-white hover:bg-white/5 border border-white/5'
+                            }`}
+                        >
+                            <LayoutGrid size={14} /> Matriz Geral (1º-12º)
+                        </button>
+
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(pos => {
+                            const isFirst = pos === 1;
+                            const isSecond = pos === 2;
+                            const isThird = pos === 3;
+                            const isLast = pos === 12;
+                            const isSelected = positionTabFilter === pos;
+
+                            let badgeColor = 'border-white/5 text-gray-400';
+                            if (isFirst) badgeColor = 'border-yellow-500/30 text-yellow-500';
+                            else if (isSecond) badgeColor = 'border-gray-400/30 text-gray-300';
+                            else if (isThird) badgeColor = 'border-amber-600/30 text-amber-500';
+                            else if (isLast) badgeColor = 'border-red-500/30 text-red-400';
+
+                            return (
+                                <button
+                                    key={pos}
+                                    onClick={() => {
+                                        setPositionTabFilter(pos);
+                                        setExpandedPositionTeam(null);
+                                        setPositionSortConfig({ key: `pos${pos}`, direction: 'desc' });
+                                    }}
+                                    className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                                        isSelected 
+                                            ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black' 
+                                            : `bg-black/60 hover:bg-white/5 border ${badgeColor} hover:text-white`
+                                    }`}
+                                >
+                                    <span>{pos}º</span>
+                                    <span className="text-[10px] opacity-80">{pos === 1 ? 'Booyah' : 'Lugar'}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* CONTEÚDO 1: VISÃO DE UMA POSIÇÃO ESPECÍFICA (Ex: 1º Lugar, 4º Lugar, 12º Lugar) */}
+                {positionTabFilter !== 'ALL' ? (
+                    <div className="space-y-6">
+                        {(() => {
+                            const pos = positionTabFilter as number;
+                            const sortedByThisPos = [...allTeamsPositionStats].sort((a, b) => {
+                                const countDiff = (b.posCounts[pos] || 0) - (a.posCounts[pos] || 0);
+                                if (countDiff !== 0) return countDiff;
+                                return (b.posKills[pos] || 0) - (a.posKills[pos] || 0);
+                            });
+
+                            const top3Teams = sortedByThisPos.slice(0, 3);
+                            const totalOcorrencias = sortedByThisPos.reduce((acc, t) => acc + (t.posCounts[pos] || 0), 0);
+                            const totalAbatesPos = sortedByThisPos.reduce((acc, t) => acc + (t.posKills[pos] || 0), 0);
+
+                            return (
+                                <>
+                                    {/* Pódio / Top 3 da Posição */}
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        {top3Teams.map((team, rankIdx) => {
+                                            const count = team.posCounts[pos] || 0;
+                                            const pct = team.totalMatches > 0 ? ((count / team.totalMatches) * 100).toFixed(1) : "0.0";
+                                            const kills = team.posKills[pos] || 0;
+                                            const avgKills = count > 0 ? (kills / count).toFixed(1) : "0.0";
+                                            const pts = team.posPts[pos] || 0;
+
+                                            const medals = ['🥇 1º Mais Frequente', '🥈 2º Mais Frequente', '🥉 3º Mais Frequente'];
+                                            const borderColors = [
+                                                'border-yellow-500/40 bg-gradient-to-b from-yellow-500/10 to-transparent',
+                                                'border-gray-400/30 bg-gradient-to-b from-gray-400/10 to-transparent',
+                                                'border-amber-600/30 bg-gradient-to-b from-amber-600/10 to-transparent'
+                                            ];
+
+                                            return (
+                                                <div 
+                                                    key={team.name}
+                                                    className={`bg-[#1a1a1a] rounded-3xl p-6 border ${borderColors[rankIdx] || 'border-gray-800'} shadow-xl relative overflow-hidden group hover:border-yellow-500/50 transition-all`}
+                                                >
+                                                    <div className="flex justify-between items-start mb-4">
+                                                        <span className="text-[10px] font-black uppercase tracking-widest text-yellow-500 bg-yellow-500/10 px-2.5 py-1 rounded-lg border border-yellow-500/20">
+                                                            {medals[rankIdx]}
+                                                        </span>
+                                                        <span className="text-3xl font-black italic text-white">
+                                                            {count}<small className="text-xs text-gray-500 font-bold ml-1">x</small>
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="flex items-center gap-4 mb-6">
+                                                        <div className="w-14 h-14 bg-black rounded-2xl border border-white/10 p-2 flex items-center justify-center flex-shrink-0 shadow-inner group-hover:scale-105 transition-transform">
+                                                            {team.image ? (
+                                                                <img src={team.image} alt={team.name} className="w-full h-full object-contain" />
+                                                            ) : (
+                                                                <Shield size={24} className="text-gray-700" />
+                                                            )}
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <h3 className="text-lg font-black text-white italic uppercase tracking-wider truncate group-hover:text-yellow-500 transition-colors">
+                                                                {team.name}
+                                                            </h3>
+                                                            <p className="text-[10px] text-gray-400 font-bold uppercase">
+                                                                {pct}% de suas quedas jogadas
+                                                            </p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-3 gap-2 pt-4 border-t border-white/5 text-center">
+                                                        <div className="bg-black/40 rounded-xl p-2 border border-white/5">
+                                                            <span className="text-[8px] text-gray-500 font-black uppercase tracking-wider block">Kills</span>
+                                                            <span className="text-sm font-black text-red-400">{kills}</span>
+                                                        </div>
+                                                        <div className="bg-black/40 rounded-xl p-2 border border-white/5">
+                                                            <span className="text-[8px] text-gray-500 font-black uppercase tracking-wider block">Média K</span>
+                                                            <span className="text-sm font-black text-orange-400">{avgKills}</span>
+                                                        </div>
+                                                        <div className="bg-black/40 rounded-xl p-2 border border-white/5">
+                                                            <span className="text-[8px] text-gray-500 font-black uppercase tracking-wider block">Pontos</span>
+                                                            <span className="text-sm font-black text-yellow-500">{pts}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Tabela Ranqueada Completa para a Posição */}
+                                    <div className="bg-[#1a1a1a] rounded-3xl overflow-hidden border border-gray-800 shadow-2xl">
+                                        <div className="p-6 bg-black/40 border-b border-gray-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                            <div>
+                                                <h3 className="text-lg font-black italic text-white uppercase tracking-wider flex items-center gap-2">
+                                                    <Trophy size={18} className="text-yellow-500" />
+                                                    Classificação de Times em {pos}º Lugar
+                                                </h3>
+                                                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
+                                                    Total de {totalOcorrencias} registros mapeados em {pos}º lugar no campeonato
+                                                </p>
+                                            </div>
+                                            <button
+                                                onClick={() => setPositionTabFilter('ALL')}
+                                                className="px-4 py-2 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 w-fit border border-white/5"
+                                            >
+                                                <ArrowLeft size={14} /> Voltar à Matriz Geral
+                                            </button>
+                                        </div>
+
+                                        <div className="overflow-x-auto w-full">
+                                            <table className="w-full text-left min-w-[850px]">
+                                                <thead className="bg-black/60 text-[10px] text-gray-400 uppercase tracking-widest font-black italic">
+                                                    <tr>
+                                                        <th className="p-4 w-16 text-center">#</th>
+                                                        <th className="p-4">Equipe</th>
+                                                        <th className="p-4 text-center text-yellow-500">Vezes em {pos}º</th>
+                                                        <th className="p-4 text-center">% das Quedas</th>
+                                                        <th className="p-4 w-40 text-center">Frequência</th>
+                                                        <th className="p-4 text-center text-red-400">Total Abates</th>
+                                                        <th className="p-4 text-center text-orange-400">Média Abates</th>
+                                                        <th className="p-4 text-center text-yellow-400">Total Pontos</th>
+                                                        <th className="p-4 text-center">Partidas</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-white/5">
+                                                    {sortedByThisPos.map((team, idx) => {
+                                                        const count = team.posCounts[pos] || 0;
+                                                        const pctNum = team.totalMatches > 0 ? (count / team.totalMatches) * 100 : 0;
+                                                        const pct = pctNum.toFixed(1);
+                                                        const kills = team.posKills[pos] || 0;
+                                                        const avgKills = count > 0 ? (kills / count).toFixed(1) : "0.0";
+                                                        const pts = team.posPts[pos] || 0;
+                                                        const isExpanded = expandedPositionTeam === team.name;
+                                                        const detailsList = team.posDetails[pos] || [];
+
+                                                        return (
+                                                            <React.Fragment key={team.name}>
+                                                                <tr className={`hover:bg-white/5 transition-colors group ${count > 0 ? '' : 'opacity-40'}`}>
+                                                                    <td className="p-4 text-center">
+                                                                        <div className={`w-6 h-6 mx-auto rounded flex items-center justify-center text-[10px] font-black italic ${
+                                                                            idx === 0 && count > 0 ? 'bg-yellow-500 text-black' :
+                                                                            idx === 1 && count > 0 ? 'bg-gray-300 text-black' :
+                                                                            idx === 2 && count > 0 ? 'bg-amber-600 text-white' :
+                                                                            'bg-black text-gray-500 border border-white/10'
+                                                                        }`}>
+                                                                            {idx + 1}
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="p-4">
+                                                                        <div className="flex items-center gap-3">
+                                                                            {team.image ? (
+                                                                                <img src={team.image} alt={team.name} className="w-8 h-8 rounded-lg object-contain bg-black border border-white/5" />
+                                                                            ) : (
+                                                                                <div className="w-8 h-8 rounded-lg bg-black border border-white/5 flex items-center justify-center">
+                                                                                    <Shield size={14} className="text-gray-700" />
+                                                                                </div>
+                                                                            )}
+                                                                            <span className="text-white font-black italic uppercase tracking-wider text-sm group-hover:text-yellow-500 transition-colors">
+                                                                                {team.name}
+                                                                            </span>
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="p-4 text-center">
+                                                                        <span className={`text-lg font-black italic ${count > 0 ? 'text-yellow-500' : 'text-gray-600'}`}>
+                                                                            {count}x
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="p-4 text-center">
+                                                                        <span className="text-gray-300 font-bold text-xs">{pct}%</span>
+                                                                        <span className="text-[9px] text-gray-500 block">({team.totalMatches} quedas)</span>
+                                                                    </td>
+                                                                    <td className="p-4">
+                                                                        <div className="w-full bg-black/60 h-2 rounded-full overflow-hidden border border-white/5">
+                                                                            <div 
+                                                                                className="h-full bg-gradient-to-r from-yellow-600 to-yellow-400 rounded-full transition-all"
+                                                                                style={{ width: `${Math.min(pctNum * 2, 100)}%` }}
+                                                                            />
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="p-4 text-center font-black text-red-400">{kills}</td>
+                                                                    <td className="p-4 text-center font-black text-orange-400">{avgKills}</td>
+                                                                    <td className="p-4 text-center font-black text-yellow-500">{pts}</td>
+                                                                    <td className="p-4 text-center">
+                                                                        {count > 0 ? (
+                                                                            <button
+                                                                                onClick={() => setExpandedPositionTeam(isExpanded ? null : team.name)}
+                                                                                className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all border cursor-pointer ${
+                                                                                    isExpanded 
+                                                                                        ? 'bg-yellow-500 text-black border-yellow-400 shadow-md' 
+                                                                                        : 'bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white border-white/5'
+                                                                                }`}
+                                                                            >
+                                                                                {isExpanded ? 'Ocultar' : `Ver Partidas (${count})`}
+                                                                            </button>
+                                                                        ) : (
+                                                                            <span className="text-gray-700 text-xs font-bold">-</span>
+                                                                        )}
+                                                                    </td>
+                                                                </tr>
+
+                                                                {/* Lista Expandida de Partidas nessa Colocação */}
+                                                                {isExpanded && detailsList.length > 0 && (
+                                                                    <tr className="bg-black/60 border-y border-yellow-500/20">
+                                                                        <td colSpan={9} className="p-4 md:p-6">
+                                                                            <div className="space-y-3">
+                                                                                <h4 className="text-xs font-black text-yellow-500 uppercase tracking-wider flex items-center gap-2">
+                                                                                    <Target size={14} /> Quedas onde {team.name} terminou em {pos}º Lugar
+                                                                                </h4>
+                                                                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                                                                                    {detailsList.map((d, mIdx) => (
+                                                                                        <div key={mIdx} className="bg-black/80 p-3.5 rounded-xl border border-white/10 space-y-2">
+                                                                                            <div className="flex justify-between items-center text-xs">
+                                                                                                <span className="font-black text-white">{d.CONFRONTO}</span>
+                                                                                                <span className="text-[10px] font-black text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded">
+                                                                                                    RD {d.RD} • Q{d.Q}
+                                                                                                </span>
+                                                                                            </div>
+                                                                                            <div className="flex justify-between items-center text-xs text-gray-400">
+                                                                                                <span className="font-bold uppercase text-[10px] text-gray-300">{d.MAPA}</span>
+                                                                                                <span className="text-red-400 font-black">{d.ABTS} Kills</span>
+                                                                                            </div>
+                                                                                            <div className="flex justify-between items-center text-[10px] pt-2 border-t border-white/5">
+                                                                                                <span className="text-gray-500">Pontos: <strong className="text-yellow-500">{d.PTS}</strong></span>
+                                                                                                {d.ONDE_FECHOU && (
+                                                                                                    <span className="text-[9px] text-gray-400 font-bold bg-white/5 px-1.5 py-0.5 rounded">
+                                                                                                        📍 {d.ONDE_FECHOU}
+                                                                                                    </span>
+                                                                                                )}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                )}
+                                                            </React.Fragment>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </>
+                            );
+                        })()}
+                    </div>
+                ) : (
+                    /* CONTEÚDO 2: VISÃO MATRIZ GERAL (1º AO 12º LUGAR) */
+                    <div className="space-y-8">
+                        {/* 12 Cards de Líderes por Posição (1º ao 12º) */}
+                        <div>
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-sm font-black italic text-white uppercase tracking-wider flex items-center gap-2">
+                                    <Star size={16} className="text-yellow-500" />
+                                    Times que Mais Ficaram em Cada Posição (1º ao 12º)
+                                </h3>
+                                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
+                                    Clique em qualquer posição para abrir a análise detalhada
+                                </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(pos => {
+                                    const sortedForPos = [...allTeamsPositionStats].sort((a, b) => (b.posCounts[pos] || 0) - (a.posCounts[pos] || 0));
+                                    const leader = sortedForPos[0];
+                                    const second = sortedForPos[1];
+                                    const leaderCount = leader ? (leader.posCounts[pos] || 0) : 0;
+                                    const leaderPct = leader && leader.totalMatches > 0 ? ((leaderCount / leader.totalMatches) * 100).toFixed(0) : "0";
+
+                                    let titleColor = 'text-gray-300';
+                                    let borderAccent = 'border-white/5 hover:border-yellow-500/40';
+                                    let badgeBg = 'bg-gray-800 text-gray-300';
+                                    let label = `${pos}º Lugar`;
+
+                                    if (pos === 1) {
+                                        titleColor = 'text-yellow-400';
+                                        borderAccent = 'border-yellow-500/30 hover:border-yellow-500 bg-gradient-to-b from-yellow-500/5 to-transparent';
+                                        badgeBg = 'bg-yellow-500 text-black font-black';
+                                        label = '1º (Booyah)';
+                                    } else if (pos === 2) {
+                                        titleColor = 'text-gray-200';
+                                        borderAccent = 'border-gray-400/30 hover:border-gray-400 bg-gradient-to-b from-gray-400/5 to-transparent';
+                                        badgeBg = 'bg-gray-300 text-black font-black';
+                                        label = '2º (Vice)';
+                                    } else if (pos === 3) {
+                                        titleColor = 'text-amber-500';
+                                        borderAccent = 'border-amber-600/30 hover:border-amber-600 bg-gradient-to-b from-amber-600/5 to-transparent';
+                                        badgeBg = 'bg-amber-600 text-white font-black';
+                                        label = '3º Lugar';
+                                    } else if (pos === 12) {
+                                        titleColor = 'text-red-400';
+                                        borderAccent = 'border-red-500/30 hover:border-red-500 bg-gradient-to-b from-red-500/5 to-transparent';
+                                        badgeBg = 'bg-red-600 text-white font-black';
+                                        label = '12º (Último)';
+                                    }
+
+                                    return (
+                                        <div
+                                            key={pos}
+                                            onClick={() => {
+                                                setPositionTabFilter(pos);
+                                                setPositionSortConfig({ key: `pos${pos}`, direction: 'desc' });
+                                            }}
+                                            className={`bg-[#1a1a1a] rounded-2xl p-4 border ${borderAccent} shadow-xl cursor-pointer transition-all hover:scale-[1.02] flex flex-col justify-between group`}
+                                        >
+                                            <div className="flex justify-between items-center mb-3">
+                                                <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${badgeBg}`}>
+                                                    {label}
+                                                </span>
+                                                <ChevronDown size={14} className="text-gray-600 -rotate-90 group-hover:text-yellow-500 transition-colors" />
+                                            </div>
+
+                                            {leader && leaderCount > 0 ? (
+                                                <div className="space-y-2 my-1">
+                                                    <div className="flex items-center gap-2.5">
+                                                        <div className="w-8 h-8 bg-black rounded-lg border border-white/10 p-1 flex items-center justify-center flex-shrink-0">
+                                                            {leader.image ? (
+                                                                <img src={leader.image} alt={leader.name} className="w-full h-full object-contain" />
+                                                            ) : (
+                                                                <Shield size={14} className="text-gray-700" />
+                                                            )}
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <span className="text-xs font-black text-white italic uppercase tracking-wider block truncate group-hover:text-yellow-500 transition-colors">
+                                                                {leader.name}
+                                                            </span>
+                                                            <span className="text-[9px] text-gray-500 font-bold block">
+                                                                {leaderPct}% das quedas
+                                                            </span>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex justify-between items-center pt-2 border-t border-white/5 text-xs">
+                                                        <span className="text-[10px] text-gray-500 font-bold uppercase">Líder:</span>
+                                                        <span className="font-black italic text-yellow-500">{leaderCount}x</span>
+                                                    </div>
+
+                                                    {second && (second.posCounts[pos] || 0) > 0 && (
+                                                        <div className="flex justify-between items-center text-[9px] text-gray-500">
+                                                            <span className="truncate max-w-[80px]">2º {second.name}</span>
+                                                            <span className="font-bold">{second.posCounts[pos]}x</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div className="py-4 text-center text-[10px] text-gray-600 font-bold uppercase">
+                                                    Sem registros
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Tabela Matriz Completa de Posições (1º ao 12º) */}
+                        <div className="bg-[#1a1a1a] rounded-3xl overflow-hidden border border-gray-800 shadow-2xl">
+                            <div className="p-6 bg-black/40 border-b border-gray-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                <div>
+                                    <h3 className="text-lg font-black italic text-white uppercase tracking-wider flex items-center gap-2">
+                                        <ListOrdered size={20} className="text-yellow-500" />
+                                        Matriz de Colocações por Equipe
+                                    </h3>
+                                    <p className="text-xs text-gray-400 font-medium">
+                                        Clique em qualquer cabeçalho de coluna (1º, 2º, 3º... 12º, Top 3, Top 6, Média) para ordenar os times por aquela colocação.
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] text-gray-500 font-black uppercase tracking-wider bg-black/60 px-3 py-1.5 rounded-xl border border-white/5">
+                                        Ordenando por: <strong className="text-yellow-500 uppercase">{positionSortConfig.key.toUpperCase()} ({positionSortConfig.direction === 'desc' ? 'Maior p/ Menor' : 'Menor p/ Maior'})</strong>
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="overflow-x-auto w-full">
+                                <table className="w-full text-left min-w-[1100px] border-collapse select-none">
+                                    <thead className="bg-black/70 text-[9px] text-gray-400 uppercase tracking-widest font-black italic border-b border-gray-800">
+                                        <tr>
+                                            <th className="p-3.5 w-12 text-center">#</th>
+                                            <th 
+                                                className="p-3.5 cursor-pointer hover:text-white transition-colors"
+                                                onClick={() => setPositionSortConfig(prev => ({
+                                                    key: 'name',
+                                                    direction: prev.key === 'name' && prev.direction === 'asc' ? 'desc' : 'asc'
+                                                }))}
+                                            >
+                                                <div className="flex items-center gap-1">
+                                                    <span>Equipe</span>
+                                                    {positionSortConfig.key === 'name' && (
+                                                        <ArrowDown size={10} className={`text-yellow-500 ${positionSortConfig.direction === 'asc' ? 'rotate-180' : ''}`} />
+                                                    )}
+                                                </div>
+                                            </th>
+                                            <th 
+                                                className="p-3.5 text-center cursor-pointer hover:text-white transition-colors"
+                                                onClick={() => setPositionSortConfig(prev => ({
+                                                    key: 'totalMatches',
+                                                    direction: prev.key === 'totalMatches' && prev.direction === 'desc' ? 'asc' : 'desc'
+                                                }))}
+                                            >
+                                                <div className="flex items-center justify-center gap-1">
+                                                    <span>Quedas (S)</span>
+                                                    {positionSortConfig.key === 'totalMatches' && (
+                                                        <ArrowDown size={10} className={`text-yellow-500 ${positionSortConfig.direction === 'asc' ? 'rotate-180' : ''}`} />
+                                                    )}
+                                                </div>
+                                            </th>
+
+                                            {/* Colunas de 1º a 12º Lugar */}
+                                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(pos => {
+                                                const key = `pos${pos}`;
+                                                const isActive = positionSortConfig.key === key;
+
+                                                let labelColor = 'hover:text-white';
+                                                if (pos === 1) labelColor = 'text-yellow-400';
+                                                else if (pos === 2) labelColor = 'text-gray-300';
+                                                else if (pos === 3) labelColor = 'text-amber-500';
+                                                else if (pos === 12) labelColor = 'text-red-400';
+
+                                                return (
+                                                    <th 
+                                                        key={pos}
+                                                        className={`p-3.5 text-center cursor-pointer transition-colors ${labelColor} ${isActive ? 'bg-white/5' : ''}`}
+                                                        onClick={() => setPositionSortConfig(prev => ({
+                                                            key,
+                                                            direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc'
+                                                        }))}
+                                                    >
+                                                        <div className="flex items-center justify-center gap-0.5">
+                                                            <span className={isActive ? 'text-yellow-500 font-black' : ''}>{pos}º</span>
+                                                            {isActive && (
+                                                                <ArrowDown size={10} className={`text-yellow-500 ${positionSortConfig.direction === 'asc' ? 'rotate-180' : ''}`} />
+                                                            )}
+                                                        </div>
+                                                    </th>
+                                                );
+                                            })}
+
+                                            <th 
+                                                className="p-3.5 text-center cursor-pointer hover:text-white transition-colors"
+                                                onClick={() => setPositionSortConfig(prev => ({
+                                                    key: 'top3',
+                                                    direction: prev.key === 'top3' && prev.direction === 'desc' ? 'asc' : 'desc'
+                                                }))}
+                                            >
+                                                <div className="flex items-center justify-center gap-1 text-yellow-500">
+                                                    <span>Top 3</span>
+                                                    {positionSortConfig.key === 'top3' && (
+                                                        <ArrowDown size={10} className={`text-yellow-500 ${positionSortConfig.direction === 'asc' ? 'rotate-180' : ''}`} />
+                                                    )}
+                                                </div>
+                                            </th>
+                                            <th 
+                                                className="p-3.5 text-center cursor-pointer hover:text-white transition-colors"
+                                                onClick={() => setPositionSortConfig(prev => ({
+                                                    key: 'top6',
+                                                    direction: prev.key === 'top6' && prev.direction === 'desc' ? 'asc' : 'desc'
+                                                }))}
+                                            >
+                                                <div className="flex items-center justify-center gap-1 text-blue-400">
+                                                    <span>Top 6</span>
+                                                    {positionSortConfig.key === 'top6' && (
+                                                        <ArrowDown size={10} className={`text-yellow-500 ${positionSortConfig.direction === 'asc' ? 'rotate-180' : ''}`} />
+                                                    )}
+                                                </div>
+                                            </th>
+                                            <th 
+                                                className="p-3.5 text-center cursor-pointer hover:text-white transition-colors"
+                                                onClick={() => setPositionSortConfig(prev => ({
+                                                    key: 'avgPos',
+                                                    direction: prev.key === 'avgPos' && prev.direction === 'asc' ? 'desc' : 'asc'
+                                                }))}
+                                            >
+                                                <div className="flex items-center justify-center gap-1 text-purple-400">
+                                                    <span>Pos. Média</span>
+                                                    {positionSortConfig.key === 'avgPos' && (
+                                                        <ArrowDown size={10} className={`text-yellow-500 ${positionSortConfig.direction === 'asc' ? 'rotate-180' : ''}`} />
+                                                    )}
+                                                </div>
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/5 text-xs">
+                                        {sortedPositionRanking.map((team, idx) => {
+                                            return (
+                                                <tr key={team.name} className="hover:bg-white/5 transition-colors group">
+                                                    <td className="p-3.5 text-center font-mono text-gray-500 text-[10px]">
+                                                        {idx + 1}
+                                                    </td>
+                                                    <td className="p-3.5">
+                                                        <div 
+                                                            className="flex items-center gap-3 cursor-pointer"
+                                                            onClick={() => setFilters(prev => ({...prev, team: [team.name]}))}
+                                                        >
+                                                            {team.image ? (
+                                                                <img src={team.image} alt={team.name} className="w-7 h-7 rounded-lg object-contain bg-black border border-white/5 flex-shrink-0" />
+                                                            ) : (
+                                                                <div className="w-7 h-7 rounded-lg bg-black border border-white/5 flex items-center justify-center flex-shrink-0">
+                                                                    <Shield size={12} className="text-gray-700" />
+                                                                </div>
+                                                            )}
+                                                            <span className="text-white font-black italic uppercase tracking-wider group-hover:text-yellow-500 transition-colors">
+                                                                {team.name}
+                                                            </span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="p-3.5 text-center font-bold text-gray-400">
+                                                        {team.totalMatches}
+                                                    </td>
+
+                                                    {/* Células de 1º a 12º Lugar */}
+                                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(pos => {
+                                                        const count = team.posCounts[pos] || 0;
+                                                        const isSortedCol = positionSortConfig.key === `pos${pos}`;
+
+                                                        let badgeStyle = 'text-gray-600 font-bold';
+                                                        if (count > 0) {
+                                                            if (pos === 1) badgeStyle = 'text-yellow-400 font-black bg-yellow-500/10 rounded px-1.5 py-0.5 border border-yellow-500/20';
+                                                            else if (pos === 2) badgeStyle = 'text-gray-200 font-black bg-gray-400/10 rounded px-1.5 py-0.5 border border-gray-400/20';
+                                                            else if (pos === 3) badgeStyle = 'text-amber-500 font-black bg-amber-600/10 rounded px-1.5 py-0.5 border border-amber-600/20';
+                                                            else if (pos === 12) badgeStyle = 'text-red-400 font-black bg-red-500/10 rounded px-1.5 py-0.5 border border-red-500/20';
+                                                            else if (pos <= 6) badgeStyle = 'text-blue-300 font-bold';
+                                                            else badgeStyle = 'text-gray-300 font-bold';
+                                                        }
+
+                                                        return (
+                                                            <td 
+                                                                key={pos} 
+                                                                className={`p-3.5 text-center cursor-pointer transition-colors hover:bg-yellow-500/10 ${isSortedCol ? 'bg-white/[0.03]' : ''}`}
+                                                                onClick={() => {
+                                                                    setPositionTabFilter(pos);
+                                                                    setPositionSortConfig({ key: `pos${pos}`, direction: 'desc' });
+                                                                }}
+                                                            >
+                                                                <span className={badgeStyle}>
+                                                                    {count > 0 ? `${count}` : '-'}
+                                                                </span>
+                                                            </td>
+                                                        );
+                                                    })}
+
+                                                    <td className="p-3.5 text-center">
+                                                        <span className="text-yellow-500 font-black">{team.top3}</span>
+                                                        <span className="text-[9px] text-gray-500 font-bold block">{team.top3Pct.toFixed(0)}%</span>
+                                                    </td>
+                                                    <td className="p-3.5 text-center">
+                                                        <span className="text-blue-400 font-black">{team.top6}</span>
+                                                        <span className="text-[9px] text-gray-500 font-bold block">{team.top6Pct.toFixed(0)}%</span>
+                                                    </td>
+                                                    <td className="p-3.5 text-center">
+                                                        <span className="text-purple-400 font-black italic bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
+                                                            {team.avgPosFormatted}º
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         ) : activeTab === 'mapRanking' ? (
             <div className="space-y-6 animate-in fade-in duration-500">
