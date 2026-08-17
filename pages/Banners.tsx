@@ -73,7 +73,7 @@ const PlayerStatCard = ({ title, data, statKey, avgKey, statLabel, color }: any)
 };
 
 const Banners: React.FC<BannersProps> = ({ data }) => {
-  const [activeTab, setActiveTab] = useState<'teams' | 'players' | 'team_perf' | 'map_kings' | 'drop_kings' | 'map_kings_stories' | 'drop_kings_stories'>('teams');
+  const [activeTab, setActiveTab] = useState<'teams' | 'players' | 'team_perf' | 'map_kings' | 'drop_kings' | 'role_kings' | 'map_kings_stories' | 'drop_kings_stories' | 'role_kings_stories'>('teams');
   const [selectedMapOrDrop, setSelectedMapOrDrop] = useState<string>('');
   const [selectedTeam, setSelectedTeam] = useState<string>('');
   const [selectedRd, setSelectedRd] = useState<string>('all');
@@ -110,7 +110,120 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
 
       
   const kingsData = useMemo(() => {
-    if (activeTab !== "map_kings" && activeTab !== "drop_kings" && activeTab !== "map_kings_stories" && activeTab !== "drop_kings_stories") return [];
+    if (
+      activeTab !== "map_kings" && 
+      activeTab !== "drop_kings" && 
+      activeTab !== "role_kings" && 
+      activeTab !== "map_kings_stories" && 
+      activeTab !== "drop_kings_stories" && 
+      activeTab !== "role_kings_stories"
+    ) return [];
+
+    // Pre-calculate deaths from killFeed
+    const totalDeathsMap = new Map<string, number>();
+    data.killFeed.forEach(f => {
+      const victim = f.VITIMA;
+      if (!victim) return;
+      const normalizedVictim = victim.trim().toUpperCase();
+      totalDeathsMap.set(normalizedVictim, (totalDeathsMap.get(normalizedVictim) || 0) + 1);
+    });
+
+    if (activeTab === "role_kings" || activeTab === "role_kings_stories") {
+      // 1. Aggregate player stats across all matches
+      const playerStatsMap = new Map<string, any>();
+      
+      data.players.forEach(p => {
+        const pName = p.PLAYER;
+        if (!pName) return;
+        const normalizedPName = pName.trim().toUpperCase();
+
+        if (!playerStatsMap.has(normalizedPName)) {
+          playerStatsMap.set(normalizedPName, {
+            name: p.PLAYER,
+            team: p.TIME,
+            playerImg: findDimImg(data.playersDimension, p.PLAYER) || "",
+            teamImg: findTeamLogo(p.TIME, data.teamsReference),
+            kills: 0,
+            damage: 0,
+            hs: 0,
+            knocks: 0,
+            reviveu: 0,
+            aliadosRevividos: 0,
+            mvp: 0,
+            matches: 0,
+            zeroKills: 0,
+            withKills: 0,
+            deaths: totalDeathsMap.get(normalizedPName) || 0
+          });
+        }
+
+        const stats = playerStatsMap.get(normalizedPName);
+        const kills = parseNumber(p.Abates);
+        stats.kills += kills;
+        stats.damage += parseNumber(p.Dano);
+        stats.hs += parseNumber(p.HS);
+        stats.knocks += parseNumber(p.Deitados);
+        stats.reviveu += parseNumber(p.Reviveu);
+        stats.aliadosRevividos += parseNumber(p.AliadosRevividos);
+        stats.mvp += parseNumber(p.MVP);
+        stats.matches += 1;
+
+        if (kills === 0) stats.zeroKills += 1;
+        else stats.withKills += 1;
+      });
+
+      // 2. Map players to their respective roles (Função and Função2)
+      const roleGroupsMap = new Map<string, Map<string, any>>();
+
+      data.playersDimension.forEach(dim => {
+        const pName = dim.Name;
+        if (!pName) return;
+        const normalizedPName = pName.trim().toUpperCase();
+        const baseStats = playerStatsMap.get(normalizedPName);
+        if (!baseStats) return;
+
+        const role1 = dim.Funcao?.trim().toUpperCase();
+        const role2 = dim.Funcao2?.trim().toUpperCase();
+
+        const addPlayerToRole = (role: string) => {
+          if (!role || role === 'N/A' || role === '-' || role === 'SEM FUNÇÃO') return;
+          if (!roleGroupsMap.has(role)) {
+            roleGroupsMap.set(role, new Map());
+          }
+          roleGroupsMap.get(role)!.set(normalizedPName, { ...baseStats });
+        };
+
+        if (role1) addPlayerToRole(role1);
+        if (role2 && role2 !== role1) addPlayerToRole(role2);
+      });
+
+      return Array.from(roleGroupsMap.entries()).map(([roleName, playersMap]) => {
+        const players = Array.from(playersMap.values()).map(p => ({
+          ...p,
+          avgKills: p.matches > 0 ? (p.kills / p.matches) : 0,
+          avgDamage: p.matches > 0 ? (p.damage / p.matches) : 0,
+          avgHs: p.matches > 0 ? (p.hs / p.matches) : 0,
+          avgKnocks: p.matches > 0 ? (p.knocks / p.matches) : 0,
+          zeroRate: p.matches > 0 ? (p.zeroKills / p.matches) * 100 : 0
+        })).sort((a, b) => b.kills - a.kills || b.avgKills - a.avgKills);
+
+        const getTop = (sortFn: (a: any, b: any) => number) => [...players].sort(sortFn)[0] || null;
+
+        return {
+          name: roleName,
+          players,
+          topDamage: getTop((a, b) => b.damage - a.damage),
+          topAvgKills: getTop((a, b) => b.avgKills - a.avgKills),
+          topKnocks: getTop((a, b) => b.knocks - a.knocks),
+          topHs: getTop((a, b) => b.hs - a.hs),
+          topZero: getTop((a, b) => b.zeroKills - a.zeroKills),
+          topRevives: getTop((a, b) => b.reviveu - a.reviveu),
+          topAlliesRevived: getTop((a, b) => b.aliadosRevividos - a.aliadosRevividos),
+          topMvp: getTop((a, b) => b.mvp - a.mvp),
+          topDeaths: getTop((a, b) => b.deaths - a.deaths)
+        };
+      }).sort((a, b) => a.name.localeCompare(b.name));
+    }
 
     const processGroup = (keyExtractor: (p: any) => string) => {
         // Pre-calculate deaths from killFeed for this grouping
@@ -408,7 +521,7 @@ const handleDownload = async () => {
     await new Promise(r => setTimeout(r, 100)); // allow DOM to update
 
     try {
-      const isFeed = activeTab === 'map_kings' || activeTab === 'drop_kings';
+      const isFeed = activeTab === 'map_kings' || activeTab === 'drop_kings' || activeTab === 'role_kings';
       const canvasHeight = isFeed ? 1350 : 1920;
 
       const canvas = await html2canvas(bannerRef.current, {
@@ -424,9 +537,9 @@ const handleDownload = async () => {
       const link = document.createElement('a');
       
       let filename = "";
-      if (activeTab === 'map_kings' || activeTab === 'drop_kings') {
+      if (activeTab === 'map_kings' || activeTab === 'drop_kings' || activeTab === 'role_kings') {
         filename = `Post_Instagram_${activeTab}_${selectedMapOrDrop.replace(/\//g, '-')}.png`;
-      } else if (activeTab === 'map_kings_stories' || activeTab === 'drop_kings_stories') {
+      } else if (activeTab === 'map_kings_stories' || activeTab === 'drop_kings_stories' || activeTab === 'role_kings_stories') {
         filename = `Stories_Instagram_${activeTab}_${storiesSubtype}_${selectedMapOrDrop.replace(/\//g, '-')}.png`;
       } else {
         filename = `Stories_Banner_${activeTab}_${selectedRd}.png`;
@@ -509,6 +622,15 @@ const handleDownload = async () => {
                 >
                   Reis da Queda
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('role_kings_stories')}
+                  className={`px-3 py-1.5 rounded-lg font-bold text-xs uppercase tracking-wider transition-all ${
+                    activeTab === 'role_kings_stories' ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Top Funções
+                </button>
               </div>
             </div>
 
@@ -534,15 +656,26 @@ const handleDownload = async () => {
                 >
                   Reis da Queda
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('role_kings')}
+                  className={`px-3 py-1.5 rounded-lg font-bold text-xs uppercase tracking-wider transition-all ${
+                    activeTab === 'role_kings' ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Top Funções
+                </button>
               </div>
             </div>
           </div>
 
           <div className="flex flex-wrap items-end gap-3 flex-1 md:flex-initial">
-            {/* Map/Drop Selector */}
-            {(activeTab === 'map_kings' || activeTab === 'drop_kings' || activeTab === 'map_kings_stories' || activeTab === 'drop_kings_stories') && (
+            {/* Map/Drop/Role Selector */}
+            {(activeTab === 'map_kings' || activeTab === 'drop_kings' || activeTab === 'role_kings' || activeTab === 'map_kings_stories' || activeTab === 'drop_kings_stories' || activeTab === 'role_kings_stories') && (
               <div className="flex flex-col gap-1.5">
-                <span className="text-gray-500 font-bold uppercase tracking-widest text-[11px] leading-none">Mapa/Queda</span>
+                <span className="text-gray-500 font-bold uppercase tracking-widest text-[11px] leading-none">
+                  {(activeTab === 'role_kings' || activeTab === 'role_kings_stories') ? 'Função' : (activeTab === 'map_kings' || activeTab === 'map_kings_stories') ? 'Mapa' : 'Queda'}
+                </span>
                 <select 
                   value={selectedMapOrDrop}
                   onChange={(e) => setSelectedMapOrDrop(e.target.value)}
@@ -556,7 +689,7 @@ const handleDownload = async () => {
             )}
 
             {/* Stories Subtype Model Selector */}
-            {(activeTab === 'map_kings_stories' || activeTab === 'drop_kings_stories') && (
+            {(activeTab === 'map_kings_stories' || activeTab === 'drop_kings_stories' || activeTab === 'role_kings_stories') && (
               <div className="flex flex-col gap-1.5">
                 <span className="text-gray-500 font-bold uppercase tracking-widest text-[11px] leading-none">Modelo Stories</span>
                 <select 
@@ -595,7 +728,7 @@ const handleDownload = async () => {
               </div>
             )}
 
-            {activeTab !== 'map_kings' && activeTab !== 'drop_kings' && activeTab !== 'map_kings_stories' && activeTab !== 'drop_kings_stories' && (
+            {activeTab !== 'map_kings' && activeTab !== 'drop_kings' && activeTab !== 'role_kings' && activeTab !== 'map_kings_stories' && activeTab !== 'drop_kings_stories' && activeTab !== 'role_kings_stories' && (
               <div className="flex flex-col gap-1.5">
                 <span className="text-gray-500 font-bold uppercase tracking-widest text-[11px] leading-none">Rodada</span>
                 <select
@@ -617,9 +750,9 @@ const handleDownload = async () => {
               onClick={handleDownload}
               disabled={
                 isGenerating || 
-                ((activeTab !== 'map_kings' && activeTab !== 'drop_kings' && activeTab !== 'map_kings_stories' && activeTab !== 'drop_kings_stories') && !selectedRd) || 
+                ((activeTab !== 'map_kings' && activeTab !== 'drop_kings' && activeTab !== 'role_kings' && activeTab !== 'map_kings_stories' && activeTab !== 'drop_kings_stories' && activeTab !== 'role_kings_stories') && !selectedRd) || 
                 (activeTab === 'team_perf' && !selectedTeam) || 
-                ((activeTab === 'map_kings' || activeTab === 'drop_kings' || activeTab === 'map_kings_stories' || activeTab === 'drop_kings_stories') && !selectedMapOrDrop)
+                ((activeTab === 'map_kings' || activeTab === 'drop_kings' || activeTab === 'role_kings' || activeTab === 'map_kings_stories' || activeTab === 'drop_kings_stories' || activeTab === 'role_kings_stories') && !selectedMapOrDrop)
               }
               className="flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-400 hover:to-amber-500 text-black font-black uppercase rounded-xl transition-all shadow-[0_0_20px_rgba(234,179,8,0.3)] disabled:opacity-50 shrink-0 text-xs h-[38px] md:h-auto"
             >
@@ -634,11 +767,11 @@ const handleDownload = async () => {
       <div className="flex md:justify-center bg-black/40 p-4 md:p-8 rounded-3xl border border-white/5 overflow-x-auto">
         
         {/* Banner Real (Scale down for preview, full size for render) */}
-        <div className={`relative origin-top transform scale-[0.4] sm:scale-[0.5] md:scale-[0.6] lg:scale-[0.7] ${(activeTab === 'map_kings' || activeTab === 'drop_kings') ? '-mb-[810px] sm:-mb-[675px] md:-mb-[540px] lg:-mb-[405px]' : '-mb-[1152px] sm:-mb-[960px] md:-mb-[768px] lg:-mb-[576px]'}`}>
+        <div className={`relative origin-top transform scale-[0.4] sm:scale-[0.5] md:scale-[0.6] lg:scale-[0.7] ${(activeTab === 'map_kings' || activeTab === 'drop_kings' || activeTab === 'role_kings') ? '-mb-[810px] sm:-mb-[675px] md:-mb-[540px] lg:-mb-[405px]' : '-mb-[1152px] sm:-mb-[960px] md:-mb-[768px] lg:-mb-[576px]'}`}>
           
           <div 
             ref={bannerRef}
-            className={`bg-gradient-to-br from-[#1a1a1a] to-black w-[1080px] ${(activeTab === 'map_kings' || activeTab === 'drop_kings') ? 'h-[1350px]' : 'h-[1920px]'} relative overflow-hidden flex flex-col font-display border border-white/5`}
+            className={`bg-gradient-to-br from-[#1a1a1a] to-black w-[1080px] ${(activeTab === 'map_kings' || activeTab === 'drop_kings' || activeTab === 'role_kings') ? 'h-[1350px]' : 'h-[1920px]'} relative overflow-hidden flex flex-col font-display border border-white/5`}
             style={{ padding: '80px', boxSizing: 'border-box' }}
           >
             {/* Background Effects */}
@@ -646,7 +779,7 @@ const handleDownload = async () => {
             <div className="absolute bottom-0 left-0 w-[800px] h-[800px] bg-purple-500/10 blur-[150px] rounded-full mix-blend-screen pointer-events-none translate-y-1/2 -translate-x-1/3"></div>
             
             {/* Header */}
-            {activeTab !== 'map_kings' && activeTab !== 'drop_kings' && (
+            {activeTab !== 'map_kings' && activeTab !== 'drop_kings' && activeTab !== 'role_kings' && (
               <div className="text-center mb-12 relative z-10">
                 <h1 className="text-[60px] font-black text-white uppercase tracking-[0.2em] italic mb-4">
                   {activeTab === 'team_perf' ? 'Desempenho' : 'Rodada'} <span className="text-yellow-500">{activeTab === 'team_perf' ? (selectedRd === 'all' ? 'Geral' : 'Rodada ' + selectedRd) : selectedRd}</span>
@@ -877,11 +1010,12 @@ const handleDownload = async () => {
                 )}
               </div>
 
-            ) : (activeTab === 'map_kings_stories' || activeTab === 'drop_kings_stories') && kingsData.length > 0 && selectedMapOrDrop ? (
+            ) : (activeTab === 'map_kings_stories' || activeTab === 'drop_kings_stories' || activeTab === 'role_kings_stories') && kingsData.length > 0 && selectedMapOrDrop ? (
               (() => {
                 const group = kingsData.find(g => g.name === selectedMapOrDrop);
                 if (!group) return null;
-                const type = activeTab === 'map_kings_stories' ? 'map' : 'drop';
+                const type = activeTab === 'map_kings_stories' ? 'map' : activeTab === 'drop_kings_stories' ? 'drop' : 'role';
+                const groupPrefix = type === 'role' ? `FUNÇÃO ${group.name}` : `REIS DE ${group.name}`;
                 
                 let title = "";
                 let playersList = [...group.players];
@@ -891,70 +1025,70 @@ const handleDownload = async () => {
 
                 switch (storiesSubtype) {
                   case 'matches':
-                    title = `REIS DE ${group.name}\nPARTIDAS E MÉDIAS`;
+                    title = `${groupPrefix}\nPARTIDAS E MÉDIAS`;
                     playersList.sort((a, b) => b.matches - a.matches || b.kills - a.kills);
                     valueLabel = "Partidas";
                     valueExtractor = (p) => `${p.matches}`;
                     subValueExtractor = (p) => `Média Kills: ${p.avgKills.toFixed(2)}`;
                     break;
                   case 'damage':
-                    title = `REIS DE ${group.name}\nMAIORES DANOS`;
+                    title = `${groupPrefix}\nMAIORES DANOS`;
                     playersList.sort((a, b) => b.damage - a.damage);
                     valueLabel = "Dano";
                     valueExtractor = (p) => `${p.damage}`;
                     subValueExtractor = (p) => `Média: ${p.avgDamage.toFixed(0)}`;
                     break;
                   case 'avg_kills':
-                    title = `REIS DE ${group.name}\nMÉDIA DE KILLS`;
+                    title = `${groupPrefix}\nMÉDIA DE KILLS`;
                     playersList.sort((a, b) => b.avgKills - a.avgKills || b.kills - a.kills);
                     valueLabel = "Média";
                     valueExtractor = (p) => `${p.avgKills.toFixed(2)}`;
                     subValueExtractor = (p) => `Total Kills: ${p.kills}`;
                     break;
                   case 'knocks':
-                    title = `REIS DE ${group.name}\nMAIS DERRUBA`;
+                    title = `${groupPrefix}\nMAIS DERRUBA`;
                     playersList.sort((a, b) => b.knocks - a.knocks);
                     valueLabel = "Deitados";
                     valueExtractor = (p) => `${p.knocks}`;
                     subValueExtractor = (p) => `Média: ${p.avgKnocks.toFixed(2)}`;
                     break;
                   case 'hs':
-                    title = `REIS DE ${group.name}\nMAIS HEADSHOTS`;
+                    title = `${groupPrefix}\nMAIS HEADSHOTS`;
                     playersList.sort((a, b) => b.hs - a.hs);
                     valueLabel = "HS";
                     valueExtractor = (p) => `${p.hs}`;
                     subValueExtractor = (p) => `Média: ${p.avgHs.toFixed(2)}`;
                     break;
                   case 'zero_kills':
-                    title = `REIS DE ${group.name}\nMAIS ZERA`;
+                    title = `${groupPrefix}\nMAIS ZERA`;
                     playersList.sort((a, b) => b.zeroKills - a.zeroKills);
                     valueLabel = "Zeradão";
                     valueExtractor = (p) => `${p.zeroKills}`;
                     subValueExtractor = (p) => `Taxa: ${p.zeroRate.toFixed(1)}%`;
                     break;
                   case 'revives':
-                    title = `REIS DE ${group.name}\nMAIS REVIVEU`;
+                    title = `${groupPrefix}\nMAIS REVIVEU`;
                     playersList.sort((a, b) => b.reviveu - a.reviveu);
                     valueLabel = "Revives";
                     valueExtractor = (p) => `${p.reviveu}`;
                     subValueExtractor = (p) => `Média: ${(p.reviveu / p.matches).toFixed(2)}`;
                     break;
                   case 'allies_revived':
-                    title = `REIS DE ${group.name}\nALIADOS REVIVIDOS`;
+                    title = `${groupPrefix}\nALIADOS REVIVIDOS`;
                     playersList.sort((a, b) => b.aliadosRevividos - a.aliadosRevividos);
                     valueLabel = "Aliados";
                     valueExtractor = (p) => `${p.aliadosRevividos}`;
                     subValueExtractor = (p) => `Média: ${(p.aliadosRevividos / p.matches).toFixed(2)}`;
                     break;
                   case 'mvp':
-                    title = `REIS DE ${group.name}\nMAIS MVPs`;
+                    title = `${groupPrefix}\nMAIS MVPs`;
                     playersList.sort((a, b) => b.mvp - a.mvp);
                     valueLabel = "MVPs";
                     valueExtractor = (p) => `${p.mvp}`;
                     subValueExtractor = (p) => `Partidas: ${p.matches}`;
                     break;
                   case 'deaths':
-                    title = `REIS DE ${group.name}\nMAIS MORREU`;
+                    title = `${groupPrefix}\nMAIS MORREU`;
                     playersList.sort((a, b) => b.deaths - a.deaths);
                     valueLabel = "Mortes";
                     valueExtractor = (p) => `${p.deaths}`;
@@ -962,7 +1096,7 @@ const handleDownload = async () => {
                     break;
                   case 'highlights':
                   default:
-                    title = `TOP 5 REIS DO ${type === 'map' ? 'MAPA' : 'QUEDA'}`;
+                    title = type === 'role' ? 'TOP 5 REIS POR FUNÇÃO' : `TOP 5 REIS DO ${type === 'map' ? 'MAPA' : 'QUEDA'}`;
                     playersList.sort((a, b) => b.kills - a.kills || b.avgKills - a.avgKills);
                     break;
                 }
@@ -975,7 +1109,7 @@ const handleDownload = async () => {
                       {/* Header */}
                       <div className="flex flex-col items-center">
                         <h1 className="text-[52px] font-black text-white uppercase italic tracking-tighter leading-none text-center">
-                          TOP 5 REIS DO {type === 'map' ? 'MAPA' : 'QUEDA'}
+                          {type === 'role' ? 'TOP 5 REIS POR FUNÇÃO' : `TOP 5 REIS DO ${type === 'map' ? 'MAPA' : 'QUEDA'}`}
                         </h1>
                         <div className="mt-2 px-6 py-1.5 bg-yellow-500 rounded-xl">
                           <span className="text-[32px] font-black text-black uppercase tracking-wider">{group.name}</span>
@@ -1114,79 +1248,91 @@ const handleDownload = async () => {
                   );
                 }
               })()
-            ) : (activeTab === 'map_kings' || activeTab === 'drop_kings') && kingsData.length > 0 && selectedMapOrDrop ? (
+            ) : (activeTab === 'map_kings' || activeTab === 'drop_kings' || activeTab === 'role_kings') && kingsData.length > 0 && selectedMapOrDrop ? (
               (() => {
                 const group = kingsData.find(g => g.name === selectedMapOrDrop);
                 if (!group) return null;
-                const type = activeTab === 'map_kings' ? 'map' : 'drop';
+                const type = activeTab === 'map_kings' ? 'map' : activeTab === 'drop_kings' ? 'drop' : 'role';
                 const top5 = group.players.slice(0, 5);
                 return (
                   <div className="absolute inset-0 z-10 flex flex-col bg-[#0a0a0a]">
                     <div className="pt-24 px-16 z-10 flex flex-col items-center">
-                        <h1 className="text-[80px] font-black text-white uppercase italic tracking-tighter leading-none text-center">
-                            TOP 5 REIS DO {type === 'map' ? 'MAPA' : 'QUEDA'}
+                        <h1 className="text-[75px] font-black text-white uppercase italic tracking-tighter leading-none text-center">
+                            {type === 'role' ? 'TOP 5 REIS POR FUNÇÃO' : `TOP 5 REIS DO ${type === 'map' ? 'MAPA' : 'QUEDA'}`}
                         </h1>
                         <div className="mt-4 px-10 py-3 bg-yellow-500 rounded-2xl">
-                            <span className="text-[50px] font-black text-black uppercase tracking-widest">{group.name}</span>
+                            <span className="text-[48px] font-black text-black uppercase tracking-widest">{group.name}</span>
                         </div>
                     </div>
 
                     <div className="flex-1 flex justify-center items-center gap-8 px-8 pt-4 pb-10 z-10">
                         {/* Left Side: Top 5 Ranking */}
-                        <div className="w-[530px] flex flex-col gap-6 justify-center pb-0">
-                            <h2 className="text-[35px] font-black text-yellow-500 uppercase tracking-widest border-b-4 border-yellow-500/30 pb-4 mb-2">Ranking de Abates</h2>
+                        <div className="w-[560px] flex flex-col gap-5 justify-center pb-0">
+                            <h2 className="text-[32px] font-black text-yellow-500 uppercase tracking-widest border-b-4 border-yellow-500/30 pb-3 mb-1">Ranking de Abates</h2>
                             {top5.map((p, idx) => (
-                                <div key={idx} className="flex items-center gap-4 bg-white/5 rounded-2xl py-3 px-4 border border-white/10">
-                                    <div className="w-[60px] h-[60px] flex-shrink-0 bg-black/50 rounded-xl flex items-center justify-center font-black text-[30px] text-gray-500 border border-white/5">
-                                        {idx === 0 ? <Crown size={36} className="text-yellow-500" /> : idx + 1}
+                                <div key={idx} className="flex items-center gap-3 bg-white/5 rounded-2xl py-3 px-4 border border-white/10">
+                                    <div className="w-[55px] h-[55px] flex-shrink-0 bg-black/50 rounded-xl flex items-center justify-center font-black text-[26px] text-gray-500 border border-white/5">
+                                        {idx === 0 ? <Crown size={32} className="text-yellow-500" /> : idx + 1}
                                     </div>
                                     {p.playerImg ? (
-                                        <img src={p.playerImg} alt="" crossOrigin="anonymous" className={`${idx === 0 ? 'w-[100px] h-[100px] border-yellow-500 shadow-[0_0_20px_rgba(234,179,8,0.4)]' : 'w-[80px] h-[80px] border-gray-800'} flex-shrink-0 rounded-full border-4 object-cover`} />
+                                        <img src={p.playerImg} alt="" crossOrigin="anonymous" className={`${idx === 0 ? 'w-[85px] h-[85px] border-yellow-500 shadow-[0_0_18px_rgba(234,179,8,0.4)]' : 'w-[70px] h-[70px] border-gray-800'} flex-shrink-0 rounded-full border-4 object-cover`} />
                                     ) : (
-                                        <div className="w-[80px] h-[80px] flex-shrink-0 rounded-full bg-gray-900 border-4 border-gray-800 flex items-center justify-center">
-                                            <span className="text-gray-600">N/A</span>
+                                        <div className="w-[70px] h-[70px] flex-shrink-0 rounded-full bg-gray-900 border-4 border-gray-800 flex items-center justify-center">
+                                            <span className="text-gray-600 font-bold">N/A</span>
                                         </div>
                                     )}
-                                    <div className="flex-1 flex flex-col justify-center">
-                                        <span className={`font-black uppercase italic leading-none ${idx === 0 ? 'text-yellow-500 text-[60px] drop-shadow-[0_0_15px_rgba(234,179,8,0.5)]' : 'text-white text-[40px]'}`}>{p.name}</span>
-                                        <div className="flex items-center gap-3 mt-1">
-                                            {p.teamImg && <img src={p.teamImg} alt="" crossOrigin="anonymous" className="w-8 h-8 object-contain opacity-70" />}
-                                            <span className="text-[22px] font-bold text-gray-400 uppercase tracking-widest">{p.team}</span>
+                                    <div className="flex-1 flex flex-col justify-center min-w-0">
+                                        <span className={`font-black uppercase italic leading-none truncate ${idx === 0 ? 'text-yellow-500 text-[42px] drop-shadow-[0_0_12px_rgba(234,179,8,0.4)]' : 'text-white text-[32px]'}`}>{p.name}</span>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            {p.teamImg && <img src={p.teamImg} alt="" crossOrigin="anonymous" className="w-6 h-6 object-contain opacity-70" />}
+                                            <span className="text-[16px] font-bold text-gray-400 uppercase tracking-widest truncate">{p.team}</span>
                                         </div>
                                     </div>
-                                    <div className="flex flex-col items-center justify-center w-[120px]">
-                                        <span className="text-[45px] font-black text-yellow-500 leading-none">{p.kills}</span>
-                                        <span className="text-[18px] font-bold text-gray-500 uppercase">Kills</span>
+                                    <div className="flex items-center gap-3 text-right shrink-0">
+                                        <div className="flex flex-col items-center min-w-[45px]">
+                                            <span className="text-[26px] font-black text-white leading-none">{p.matches}</span>
+                                            <span className="text-[12px] font-bold text-gray-500 uppercase tracking-wider leading-none mt-1">Partidas</span>
+                                        </div>
+                                        <div className="w-[1px] h-8 bg-white/10" />
+                                        <div className="flex flex-col items-center min-w-[50px]">
+                                            <span className="text-[26px] font-black text-white leading-none">{p.avgKills.toFixed(2)}</span>
+                                            <span className="text-[12px] font-bold text-gray-500 uppercase tracking-wider leading-none mt-1">Média</span>
+                                        </div>
+                                        <div className="w-[1px] h-8 bg-white/10" />
+                                        <div className="flex flex-col items-center min-w-[55px]">
+                                            <span className="text-[38px] font-black text-yellow-500 leading-none">{p.kills}</span>
+                                            <span className="text-[12px] font-bold text-yellow-500 uppercase tracking-wider leading-none mt-1">Kills</span>
+                                        </div>
                                     </div>
                                 </div>
                             ))}
                         </div>
 
                         {/* Right Side: Highlights Grid */}
-                        <div className="w-[430px] flex flex-col gap-6">
-                            <h2 className="text-[35px] font-black text-yellow-500 uppercase tracking-widest border-b-4 border-yellow-500/30 pb-4 mb-2">Destaques</h2>
+                        <div className="w-[410px] flex flex-col gap-5">
+                            <h2 className="text-[32px] font-black text-yellow-500 uppercase tracking-widest border-b-4 border-yellow-500/30 pb-3 mb-1">Destaques</h2>
                             
-                            <div className="grid grid-cols-1 gap-4">
+                            <div className="grid grid-cols-1 gap-3.5">
                                 {[
-                                    { title: "Maior Dano", player: group.topDamage, value: group.topDamage?.damage, icon: <Flame className="text-red-500" size={32} />, color: "bg-red-500/10 border-red-500/20 text-red-500" },
-                                    { title: "Média Kills", player: group.topAvgKills, value: group.topAvgKills?.avgKills.toFixed(2), icon: <Crosshair className="text-green-500" size={32} />, color: "bg-green-500/10 border-green-500/20 text-green-500" },
-                                    { title: "Mais Derruba", player: group.topKnocks, value: group.topKnocks?.knocks, icon: <AlertTriangle className="text-orange-500" size={32} />, color: "bg-orange-500/10 border-orange-500/20 text-orange-500" },
-                                    { title: "Mais HS", player: group.topHs, value: group.topHs?.hs, icon: <TargetIcon className="text-yellow-500" size={32} />, color: "bg-yellow-500/10 border-yellow-500/20 text-yellow-500" },
-                                    { title: "Mais Zera", player: group.topZero, value: `${group.topZero?.zeroKills}`, icon: <Skull className="text-gray-400" size={32} />, color: "bg-gray-500/10 border-gray-500/20 text-gray-400" },
-                                    { title: "Mais Revive", player: group.topRevives, value: group.topRevives?.reviveu, icon: <Activity className="text-cyan-500" size={32} />, color: "bg-cyan-500/10 border-cyan-500/20 text-cyan-500" },
-                                    { title: "Aliados Rev", player: group.topAlliesRevived, value: group.topAlliesRevived?.aliadosRevividos, icon: <Shield className="text-emerald-500" size={32} />, color: "bg-emerald-500/10 border-emerald-500/20 text-emerald-500" },
-                                    { title: "Mais MVP", player: group.topMvp, value: group.topMvp?.mvp, icon: <Star className="text-purple-500" size={32} />, color: "bg-purple-500/10 border-purple-500/20 text-purple-500" },
-                                    { title: "Mais Morre", player: group.topDeaths, value: group.topDeaths?.deaths, icon: <Skull className="text-rose-500" size={32} />, color: "bg-rose-500/10 border-rose-500/20 text-rose-500" },
+                                    { title: "Maior Dano", player: group.topDamage, value: group.topDamage?.damage, icon: <Flame className="text-red-500" size={28} />, color: "bg-red-500/10 border-red-500/20 text-red-500" },
+                                    { title: "Média Kills", player: group.topAvgKills, value: group.topAvgKills?.avgKills.toFixed(2), icon: <Crosshair className="text-green-500" size={28} />, color: "bg-green-500/10 border-green-500/20 text-green-500" },
+                                    { title: "Mais Derruba", player: group.topKnocks, value: group.topKnocks?.knocks, icon: <AlertTriangle className="text-orange-500" size={28} />, color: "bg-orange-500/10 border-orange-500/20 text-orange-500" },
+                                    { title: "Mais HS", player: group.topHs, value: group.topHs?.hs, icon: <TargetIcon className="text-yellow-500" size={28} />, color: "bg-yellow-500/10 border-yellow-500/20 text-yellow-500" },
+                                    { title: "Mais Zera", player: group.topZero, value: `${group.topZero?.zeroKills}`, icon: <Skull className="text-gray-400" size={28} />, color: "bg-gray-500/10 border-gray-500/20 text-gray-400" },
+                                    { title: "Mais Revive", player: group.topRevives, value: group.topRevives?.reviveu, icon: <Activity className="text-cyan-500" size={28} />, color: "bg-cyan-500/10 border-cyan-500/20 text-cyan-500" },
+                                    { title: "Aliados Rev", player: group.topAlliesRevived, value: group.topAlliesRevived?.aliadosRevividos, icon: <Shield className="text-emerald-500" size={28} />, color: "bg-emerald-500/10 border-emerald-500/20 text-emerald-500" },
+                                    { title: "Mais MVP", player: group.topMvp, value: group.topMvp?.mvp, icon: <Star className="text-purple-500" size={28} />, color: "bg-purple-500/10 border-purple-500/20 text-purple-500" },
+                                    { title: "Mais Morre", player: group.topDeaths, value: group.topDeaths?.deaths, icon: <Skull className="text-rose-500" size={28} />, color: "bg-rose-500/10 border-rose-500/20 text-rose-500" },
                                 ].map((h, i) => (
-                                    <div key={i} className={`flex items-center gap-4 py-3 px-5 rounded-3xl border border-white/5 bg-black/40`}>
-                                        <div className={`p-4 rounded-2xl ${h.color} border`}>
+                                    <div key={i} className={`flex items-center gap-3.5 py-2.5 px-4 rounded-2xl border border-white/5 bg-black/40`}>
+                                        <div className={`p-3 rounded-xl ${h.color} border`}>
                                             {h.icon}
                                         </div>
-                                        <div className="flex-1 flex flex-col justify-center">
-                                            <span className="text-[20px] font-black text-gray-500 uppercase tracking-widest leading-none mb-1">{h.title}</span>
-                                            <span className="text-[35px] font-black text-white italic uppercase leading-none">{h.player?.name || "-"}</span>
+                                        <div className="flex-1 flex flex-col justify-center min-w-0">
+                                            <span className="text-[16px] font-black text-gray-500 uppercase tracking-widest leading-none mb-1">{h.title}</span>
+                                            <span className="text-[28px] font-black text-white italic uppercase leading-none truncate">{h.player?.name || "-"}</span>
                                         </div>
-                                        <span className={`text-[45px] font-black italic ${h.color.split(' ')[2]}`}>
+                                        <span className={`text-[36px] font-black italic shrink-0 ${h.color.split(' ')[2]}`}>
                                             {h.value || 0}
                                         </span>
                                     </div>
@@ -1201,7 +1347,7 @@ const handleDownload = async () => {
 
 
             {/* Footer */}
-            {activeTab !== 'map_kings' && activeTab !== 'drop_kings' && activeTab !== 'map_kings_stories' && activeTab !== 'drop_kings_stories' && (
+            {activeTab !== 'map_kings' && activeTab !== 'drop_kings' && activeTab !== 'role_kings' && activeTab !== 'map_kings_stories' && activeTab !== 'drop_kings_stories' && activeTab !== 'role_kings_stories' && (
               <div className="mt-16 text-center text-gray-500 text-2xl font-bold uppercase tracking-widest border-t border-white/5 pt-8 relative z-10">
                 FFWS BR 2026 - SPLIT 2
               </div>
