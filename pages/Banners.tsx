@@ -1004,9 +1004,21 @@ const handleDownload = async () => {
                                 <span className="text-[14px] font-bold text-gray-400 uppercase tracking-wider">{p.team}</span>
                               </div>
                             </div>
-                            <div className="flex flex-col items-center justify-center w-[80px]">
-                              <span className="text-[28px] font-black text-yellow-500 leading-none">{p.kills}</span>
-                              <span className="text-[12px] font-bold text-gray-500 uppercase">Kills</span>
+                            <div className="flex items-center gap-3 text-right">
+                              <div className="flex flex-col items-center">
+                                <span className="text-[18px] font-black text-white leading-none">{p.matches}</span>
+                                <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider leading-none mt-0.5">Partidas</span>
+                              </div>
+                              <div className="w-[1px] h-6 bg-white/10" />
+                              <div className="flex flex-col items-center">
+                                <span className="text-[18px] font-black text-white leading-none">{p.avgKills.toFixed(2)}</span>
+                                <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider leading-none mt-0.5">Média</span>
+                              </div>
+                              <div className="w-[1px] h-6 bg-white/10" />
+                              <div className="flex flex-col items-center min-w-[45px]">
+                                <span className="text-[26px] font-black text-yellow-500 leading-none">{p.kills}</span>
+                                <span className="text-[9px] font-bold text-yellow-500 uppercase tracking-wider leading-none mt-0.5">Kills</span>
+                              </div>
                             </div>
                           </div>
                         ))}
