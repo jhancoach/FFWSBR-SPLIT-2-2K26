@@ -412,7 +412,7 @@ const handleDownload = async () => {
       const canvasHeight = isFeed ? 1350 : 1920;
 
       const canvas = await html2canvas(bannerRef.current, {
-        scale: 2, // Melhor qualidade
+        scale: 3, // Alta definição
         backgroundColor: '#000000',
         useCORS: true,
         width: 1080,
@@ -982,9 +982,10 @@ const handleDownload = async () => {
                         </div>
                       </div>
 
-                      {/* Top 5 list */}
-                      <div className="flex flex-col gap-3 mt-6">
-                        <h2 className="text-[26px] font-black text-yellow-500 uppercase tracking-widest border-b-2 border-yellow-500/30 pb-2 mb-1">Ranking de Abates</h2>
+                      <div className="flex-1 flex flex-col justify-start gap-8 mt-6">
+                        {/* Top 5 list */}
+                        <div className="flex flex-col gap-3">
+                          <h2 className="text-[26px] font-black text-yellow-500 uppercase tracking-widest border-b-2 border-yellow-500/30 pb-2 mb-1">Ranking de Abates</h2>
                         {top5.map((p, idx) => (
                           <div key={idx} className="flex items-center gap-3 bg-white/5 rounded-xl py-2 px-3 border border-white/10">
                             <div className="w-[45px] h-[45px] flex-shrink-0 bg-black/50 rounded-lg flex items-center justify-center font-black text-[22px] text-gray-500 border border-white/5">
@@ -1004,20 +1005,20 @@ const handleDownload = async () => {
                                 <span className="text-[14px] font-bold text-gray-400 uppercase tracking-wider">{p.team}</span>
                               </div>
                             </div>
-                            <div className="flex items-center gap-3 text-right">
+                            <div className="flex items-center gap-4 text-right">
                               <div className="flex flex-col items-center">
-                                <span className="text-[18px] font-black text-white leading-none">{p.matches}</span>
-                                <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider leading-none mt-0.5">Partidas</span>
+                                <span className="text-[26px] font-black text-white leading-none">{p.matches}</span>
+                                <span className="text-[13px] font-bold text-gray-500 uppercase tracking-wider leading-none mt-1">Partidas</span>
                               </div>
-                              <div className="w-[1px] h-6 bg-white/10" />
+                              <div className="w-[1px] h-8 bg-white/10" />
                               <div className="flex flex-col items-center">
-                                <span className="text-[18px] font-black text-white leading-none">{p.avgKills.toFixed(2)}</span>
-                                <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider leading-none mt-0.5">Média</span>
+                                <span className="text-[26px] font-black text-white leading-none">{p.avgKills.toFixed(2)}</span>
+                                <span className="text-[13px] font-bold text-gray-500 uppercase tracking-wider leading-none mt-1">Média</span>
                               </div>
-                              <div className="w-[1px] h-6 bg-white/10" />
-                              <div className="flex flex-col items-center min-w-[45px]">
-                                <span className="text-[26px] font-black text-yellow-500 leading-none">{p.kills}</span>
-                                <span className="text-[9px] font-bold text-yellow-500 uppercase tracking-wider leading-none mt-0.5">Kills</span>
+                              <div className="w-[1px] h-8 bg-white/10" />
+                              <div className="flex flex-col items-center min-w-[55px]">
+                                <span className="text-[36px] font-black text-yellow-500 leading-none">{p.kills}</span>
+                                <span className="text-[13px] font-bold text-yellow-500 uppercase tracking-wider leading-none mt-1">Kills</span>
                               </div>
                             </div>
                           </div>
@@ -1044,17 +1045,18 @@ const handleDownload = async () => {
                                 <div className={`p-1.5 rounded-lg ${h.color} border flex-shrink-0`}>
                                   {h.icon}
                                 </div>
-                                <span className="text-[11px] font-black text-gray-400 uppercase tracking-wider truncate flex-1 leading-none">{h.title}</span>
+                                <span className="text-[13px] font-black text-gray-400 uppercase tracking-wider truncate flex-1 leading-none">{h.title}</span>
                               </div>
-                              <div className="flex flex-col mt-1.5 justify-center">
-                                <span className="text-[18px] font-black text-white italic uppercase truncate leading-none mb-0.5">{h.player?.name || "-"}</span>
-                                <span className={`text-[20px] font-black italic leading-none ${h.color.split(' ')[2]}`}>
+                              <div className="flex flex-col mt-2 justify-center">
+                                <span className="text-[22px] font-black text-white italic uppercase truncate leading-none mb-1">{h.player?.name || "-"}</span>
+                                <span className={`text-[28px] font-black italic leading-none ${h.color.split(' ')[2]}`}>
                                   {h.value || 0}
                                 </span>
                               </div>
                             </div>
                           ))}
                         </div>
+                      </div>
                       </div>
 
                       {/* Footer */}
@@ -1076,7 +1078,7 @@ const handleDownload = async () => {
                       </div>
 
                       {/* Top 5 list */}
-                      <div className="flex-1 flex flex-col justify-center gap-6 my-10">
+                      <div className="flex-1 flex flex-col justify-start gap-6 mt-10">
                         {top5.map((p, idx) => (
                           <div key={idx} className="flex items-center gap-6 bg-white/5 rounded-3xl p-5 border border-white/10 hover:bg-white/10 transition-all">
                             <div className="w-[70px] h-[70px] flex-shrink-0 bg-black/60 rounded-2xl flex items-center justify-center font-black text-[35px] text-gray-500 border border-white/5 shadow-inner">
@@ -1129,9 +1131,9 @@ const handleDownload = async () => {
                         </div>
                     </div>
 
-                    <div className="flex-1 flex justify-between px-10 pt-16 pb-10 z-10">
+                    <div className="flex-1 flex justify-center items-center gap-8 px-8 pt-4 pb-10 z-10">
                         {/* Left Side: Top 5 Ranking */}
-                        <div className="w-[540px] flex flex-col gap-8 justify-center pb-0">
+                        <div className="w-[530px] flex flex-col gap-6 justify-center pb-0">
                             <h2 className="text-[35px] font-black text-yellow-500 uppercase tracking-widest border-b-4 border-yellow-500/30 pb-4 mb-2">Ranking de Abates</h2>
                             {top5.map((p, idx) => (
                                 <div key={idx} className="flex items-center gap-4 bg-white/5 rounded-2xl py-3 px-4 border border-white/10">
@@ -1161,7 +1163,7 @@ const handleDownload = async () => {
                         </div>
 
                         {/* Right Side: Highlights Grid */}
-                        <div className="w-[450px] flex flex-col gap-6">
+                        <div className="w-[430px] flex flex-col gap-6">
                             <h2 className="text-[35px] font-black text-yellow-500 uppercase tracking-widest border-b-4 border-yellow-500/30 pb-4 mb-2">Destaques</h2>
                             
                             <div className="grid grid-cols-1 gap-4">
