@@ -713,7 +713,15 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
       return isNaN(p) ? 0 : p;
     };
 
-    const teamMatches = filteredData.details.filter(d => normalize(d.TIME) === normalize(selectedTeamName));
+    const teamMatches = filteredData.details.filter(d => {
+      if (normalize(d.TIME) !== normalize(selectedTeamName)) return false;
+      
+      const hasMap = d.MAPA && d.MAPA.trim() !== "";
+      const hasPts = d.PTS !== "" && d.PTS !== undefined && d.PTS !== null;
+      const hasAbts = d.ABTS !== "" && d.ABTS !== undefined && d.ABTS !== null;
+      
+      return hasMap && (hasPts || hasAbts);
+    });
     const totalMatches = teamMatches.length;
 
     const zeroPointsAndKillsMatches: MatchDetails[] = [];
