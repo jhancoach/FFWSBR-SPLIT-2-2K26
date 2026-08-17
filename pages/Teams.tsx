@@ -69,9 +69,11 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
   const [mapStatsSort, setMapStatsSort] = useState<{ field: 'totalKills' | 'avgKillsPerMatch' | 'totalMatches' | 'mapName'; direction: 'asc' | 'desc' }>({ field: 'totalKills', direction: 'desc' });
   const [mapRoundViewMode, setMapRoundViewMode] = useState<'matrix' | 'cards'>('matrix');
   const [teamProfileSubTab, setTeamProfileSubTab] = useState<'all' | 'zeradas' | 'rounds' | 'mapKills' | 'safes'>('all');
+  const [compareSubTab, setCompareSubTab] = useState<'overview' | 'zeradas' | 'mapKills' | 'safes'>('overview');
   const [showTeamDetails, setShowTeamDetails] = useState<boolean>(true);
   const [matrixViewMode, setMatrixViewMode] = useState<'both' | 'points' | 'kills'>('both');
   const [expandedMatrixCell, setExpandedMatrixCell] = useState<{ rd: string; q: string } | null>(null);
+  const [expandedSafesMap, setExpandedSafesMap] = useState<Record<string, boolean>>({});
 
   const normalize = (val: string | undefined) => (val || '').trim().toUpperCase();
 
@@ -111,13 +113,6 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
     });
   }, [data, filters, compareTeamB]);
 
-  useEffect(() => {
-      if (location.state?.team) {
-          setFilters(prev => ({ ...prev, team: [location.state.team] }));
-          window.history.replaceState({}, document.title);
-      }
-  }, [location.state]);
-
   const filteredData = useMemo(() => {
     const filteredDetails = data.details.filter(d => {
       if (filters.map.length > 0 && !filters.map.some(m => normalize(m) === normalize(d.MAPA))) return false;
@@ -150,6 +145,299 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
       killFeed: filteredKillFeed
     };
   }, [data, filters]);
+
+  // Comparativo de Estatísticas de Quedas Zeradas (0 pts ou 0 kills)
+  const compareZeroStats = useMemo(() => {
+    const teamA = filters.team[0];
+    const teamB = compareTeamB;
+    if (!teamA || !teamB) return null;
+
+    const parseNumber = (v: string | number | undefined) => {
+      if (typeof v === 'number') return isNaN(v) ? 0 : v;
+      if (!v) return 0;
+      const p = parseFloat(String(v).replace(',', '.'));
+      return isNaN(p) ? 0 : p;
+    };
+
+    const computeZero = (team: string) => {
+      const normT = normalize(team);
+      const teamMatches = filteredData.details.filter(d => normalize(d.TIME) === normT);
+      const totalMatches = teamMatches.length;
+
+      let zeroPointsAndKills = 0;
+      let zeroKillsOnly = 0;
+      let zeroPointsOnly = 0;
+
+      teamMatches.forEach(m => {
+        const pts = parseNumber(m.PTS);
+        const abts = parseNumber(m.ABTS);
+        if (pts === 0 && abts === 0) zeroPointsAndKills++;
+        else if (abts === 0) zeroKillsOnly++;
+        else if (pts === 0) zeroPointsOnly++;
+      });
+
+      const totalZeroPts = zeroPointsAndKills + zeroPointsOnly;
+      const totalZeroKills = zeroPointsAndKills + zeroKillsOnly;
+      const pctZeroPts = totalMatches > 0 ? ((totalZeroPts / totalMatches) * 100).toFixed(1) : '0.0';
+
+      return {
+        totalMatches,
+        zeroPointsAndKills,
+        zeroKillsOnly,
+        zeroPointsOnly,
+        totalZeroPts,
+        totalZeroKills,
+        pctZeroPts
+      };
+    };
+
+    return {
+      teamA: computeZero(teamA),
+      teamB: computeZero(teamB)
+    };
+  }, [filteredData.details, filters.team, compareTeamB]);
+
+  // Comparativo de Abates por Rodada de Cada Mapa e MVPs
+  const compareMapKillsAndMvpData = useMemo(() => {
+    const teamA = filters.team[0];
+    const teamB = compareTeamB;
+    if (!teamA || !teamB) return [];
+
+    const parseNumber = (v: string | number | undefined) => {
+      if (typeof v === 'number') return isNaN(v) ? 0 : v;
+      if (!v) return 0;
+      const p = parseFloat(String(v).replace(',', '.'));
+      return isNaN(p) ? 0 : p;
+    };
+
+    const normA = normalize(teamA);
+    const normB = normalize(teamB);
+
+    // Mapear mapas disputados por qualquer uma das equipes
+    const mapsSet = new Set<string>();
+    filteredData.details.forEach(m => {
+      if (m.MAPA && (normalize(m.TIME) === normA || normalize(m.TIME) === normB)) {
+        mapsSet.add(m.MAPA.trim());
+      }
+    });
+
+    const sortedMaps = Array.from(mapsSet).sort((a, b) => a.localeCompare(b));
+
+    return sortedMaps.map(mapName => {
+      const normMap = normalize(mapName);
+
+      const getTeamMapData = (teamName: string, normT: string) => {
+        const teamMatches = filteredData.details.filter(d => normalize(d.TIME) === normT && normalize(d.MAPA) === normMap);
+        const teamPlayerRecords = filteredData.players.filter(p => normalize(p.TIME) === normT && normalize(p.MAPA) === normMap);
+
+        const totalMatches = teamMatches.length;
+        const totalTeamKills = teamMatches.reduce((acc, m) => acc + parseNumber(m.ABTS), 0);
+        const avgKillsPerMatch = totalMatches > 0 ? (totalTeamKills / totalMatches).toFixed(2) : '0.00';
+
+        // Abates por Rodada de Cada Mapa
+        const roundKillsMap: Record<string, { totalKills: number; matchesCount: number }> = {};
+        teamMatches.forEach(m => {
+          const rd = m.RD ? m.RD.trim() : 'N/A';
+          if (!roundKillsMap[rd]) {
+            roundKillsMap[rd] = { totalKills: 0, matchesCount: 0 };
+          }
+          roundKillsMap[rd].totalKills += parseNumber(m.ABTS);
+          roundKillsMap[rd].matchesCount += 1;
+        });
+
+        const roundsList = Object.entries(roundKillsMap).map(([rd, rObj]) => {
+          const avgKills = rObj.matchesCount > 0 ? (rObj.totalKills / rObj.matchesCount).toFixed(2) : '0.00';
+          return {
+            rd,
+            totalKills: rObj.totalKills,
+            matchesCount: rObj.matchesCount,
+            avgKills
+          };
+        }).sort((x, y) => {
+          const numX = parseInt(x.rd.replace(/\D/g, '')) || 0;
+          const numY = parseInt(y.rd.replace(/\D/g, '')) || 0;
+          if (numX !== numY) return numX - numY;
+          return x.rd.localeCompare(y.rd);
+        });
+
+        // Abates por Jogador da Equipe neste Mapa
+        const playerStatsMap = new Map<string, {
+          name: string;
+          kills: number;
+          dano: number;
+          hs: number;
+          matches: Set<string>;
+        }>();
+
+        teamPlayerRecords.forEach(p => {
+          const pName = p.PLAYER ? p.PLAYER.trim() : '';
+          if (!pName) return;
+
+          if (!playerStatsMap.has(pName)) {
+            playerStatsMap.set(pName, {
+              name: pName,
+              kills: 0,
+              dano: 0,
+              hs: 0,
+              matches: new Set()
+            });
+          }
+
+          const pObj = playerStatsMap.get(pName)!;
+          pObj.kills += parseNumber(p.Abates);
+          pObj.dano += parseNumber(p.Dano);
+          pObj.hs += parseNumber(p.HS);
+          const matchKey = `${p.RD || ''}-${p.Q || ''}-${p.CONFRONTO || ''}`;
+          pObj.matches.add(matchKey);
+        });
+
+        const playerList = Array.from(playerStatsMap.values()).map(p => {
+          const matchesCount = p.matches.size || 1;
+          const avgKills = (p.kills / matchesCount).toFixed(2);
+          const avgDano = (p.dano / matchesCount).toFixed(0);
+          const playerImg = findDimImg(data.playersDimension, p.name);
+
+          return {
+            name: p.name,
+            kills: p.kills,
+            dano: p.dano,
+            hs: p.hs,
+            matchesCount,
+            avgKills,
+            avgKillsNum: parseFloat(avgKills),
+            avgDano,
+            playerImg
+          };
+        }).sort((x, y) => {
+          if (y.kills !== x.kills) return y.kills - x.kills;
+          if (y.dano !== x.dano) return y.dano - x.dano;
+          return x.name.localeCompare(y.name);
+        });
+
+        const mvpPlayer = playerList.length > 0 ? playerList[0] : null;
+
+        return {
+          totalMatches,
+          totalTeamKills,
+          avgKillsPerMatch,
+          roundsList,
+          playerList,
+          mvpPlayer
+        };
+      };
+
+      return {
+        mapName,
+        teamA: getTeamMapData(teamA, normA),
+        teamB: getTeamMapData(teamB, normB)
+      };
+    }).sort((x, y) => x.mapName.localeCompare(y.mapName));
+  }, [filteredData.details, filteredData.players, filters.team, compareTeamB, data.playersDimension]);
+
+  // Comparativo de Desempenho por Safe
+  const compareSafesMapData = useMemo(() => {
+    const teamA = filters.team[0];
+    const teamB = compareTeamB;
+    if (!teamA || !teamB) return [];
+
+    const parseNumber = (v: string | number | undefined) => {
+      if (typeof v === 'number') return isNaN(v) ? 0 : v;
+      if (!v) return 0;
+      const p = parseFloat(String(v).replace(',', '.'));
+      return isNaN(p) ? 0 : p;
+    };
+
+    const normA = normalize(teamA);
+    const normB = normalize(teamB);
+
+    // Mapear mapas disputados por qualquer uma das equipes
+    const mapsSet = new Set<string>();
+    filteredData.details.forEach(m => {
+      if (m.MAPA && m.ONDE_FECHOU && (normalize(m.TIME) === normA || normalize(m.TIME) === normB)) {
+        mapsSet.add(m.MAPA.trim());
+      }
+    });
+
+    const sortedMaps = Array.from(mapsSet).sort((x, y) => x.localeCompare(y));
+
+    return sortedMaps.map(mapName => {
+      const normMap = normalize(mapName);
+
+      const getTeamSafeData = (normT: string) => {
+        const teamMatches = filteredData.details.filter(d => normalize(d.TIME) === normT && normalize(d.MAPA) === normMap && d.ONDE_FECHOU);
+        
+        const localsMap = new Map<string, {
+          localName: string;
+          matchesCount: number;
+          totalPts: number;
+          totalKills: number;
+          booyahs: number;
+        }>();
+
+        teamMatches.forEach(m => {
+          const local = m.ONDE_FECHOU.trim();
+          if (!localsMap.has(local)) {
+            localsMap.set(local, {
+              localName: local,
+              matchesCount: 0,
+              totalPts: 0,
+              totalKills: 0,
+              booyahs: 0
+            });
+          }
+          const obj = localsMap.get(local)!;
+          obj.matchesCount += 1;
+          obj.totalPts += parseNumber(m.PTS);
+          obj.totalKills += parseNumber(m.ABTS);
+          const pos = parseNumber(m.POS);
+          if (pos === 1 || parseNumber(m.B) > 0) {
+            obj.booyahs += 1;
+          }
+        });
+
+        return Array.from(localsMap.values()).map(loc => {
+          const avgPts = loc.matchesCount > 0 ? loc.totalPts / loc.matchesCount : 0;
+          const avgKills = loc.matchesCount > 0 ? loc.totalKills / loc.matchesCount : 0;
+          return {
+            ...loc,
+            avgPts: avgPts.toFixed(2),
+            avgPtsNum: avgPts,
+            avgKills: avgKills.toFixed(2),
+            avgKillsNum: avgKills
+          };
+        }).sort((x, y) => y.avgPtsNum - x.avgPtsNum);
+      };
+
+      const safesA = getTeamSafeData(normA);
+      const safesB = getTeamSafeData(normB);
+
+      // Best & Worst (Top 3)
+      const bestA = safesA.slice(0, 3);
+      const worstA = [...safesA].reverse().filter(s => !bestA.includes(s)).slice(0, 3);
+
+      const bestB = safesB.slice(0, 3);
+      const worstB = [...safesB].reverse().filter(s => !bestB.includes(s)).slice(0, 3);
+
+      return {
+        mapName,
+        teamA: {
+          best: bestA,
+          worst: worstA
+        },
+        teamB: {
+          best: bestB,
+          worst: worstB
+        }
+      };
+    }).sort((x, y) => x.mapName.localeCompare(y.mapName));
+  }, [filteredData.details, filters.team, compareTeamB]);
+
+  useEffect(() => {
+      if (location.state?.team) {
+          setFilters(prev => ({ ...prev, team: [location.state.team] }));
+          window.history.replaceState({}, document.title);
+      }
+  }, [location.state]);
 
   const filteredTeamStats = useMemo(() => {
     const stats = calculateTeamStats(filteredData);
@@ -587,6 +875,8 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
       return isNaN(p) ? 0 : p;
     };
 
+    const teamPlayers = new Set(data.players.filter(p => normalize(p.TIME) === normalize(selectedTeamName)).map(p => normalize(p.PLAYER)));
+
     const teamMatches = filteredData.details.filter(d => normalize(d.TIME) === normalize(selectedTeamName) && d.MAPA && d.ONDE_FECHOU);
 
     const mapsMap = new Map<string, Map<string, {
@@ -671,18 +961,61 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
       });
       const worstSafes = sortedReverse.slice(0, 3);
 
+      const totalMatchesOnMap = localsList.reduce((acc, l) => acc + l.matchesCount, 0);
+      const totalKillsOnMap = localsList.reduce((acc, l) => acc + l.totalKills, 0);
+      const avgKillsPerSafeOnMap = totalMatchesOnMap > 0 ? (totalKillsOnMap / totalMatchesOnMap).toFixed(2) : '0.00';
+
+      // Distribuição de abates por safe do killfeed (Safe 1 a Safe 7)
+      const mapKillFeed = filteredData.killFeed.filter(k => normalize(k.MAPA) === normalize(mapName) && teamPlayers.has(normalize(k.PLAYER)));
+      
+      const safePhasesList = ['SAFE 1', 'SAFE 2', 'SAFE 3', 'SAFE 4', 'SAFE 5', 'SAFE 6', 'SAFE 7'];
+      const safeKillsCounts: Record<string, number> = {
+        'SAFE 1': 0,
+        'SAFE 2': 0,
+        'SAFE 3': 0,
+        'SAFE 4': 0,
+        'SAFE 5': 0,
+        'SAFE 6': 0,
+        'SAFE 7': 0,
+      };
+
+      mapKillFeed.forEach(k => {
+        const safeRaw = (k.SAFE || '').trim().toUpperCase();
+        if (safeRaw === '1' || safeRaw.includes('SAFE 1')) safeKillsCounts['SAFE 1']++;
+        else if (safeRaw === '2' || safeRaw.includes('SAFE 2')) safeKillsCounts['SAFE 2']++;
+        else if (safeRaw === '3' || safeRaw.includes('SAFE 3')) safeKillsCounts['SAFE 3']++;
+        else if (safeRaw === '4' || safeRaw.includes('SAFE 4')) safeKillsCounts['SAFE 4']++;
+        else if (safeRaw === '5' || safeRaw.includes('SAFE 5')) safeKillsCounts['SAFE 5']++;
+        else if (safeRaw === '6' || safeRaw.includes('SAFE 6')) safeKillsCounts['SAFE 6']++;
+        else if (safeRaw === '7' || safeRaw.includes('SAFE 7')) safeKillsCounts['SAFE 7']++;
+      });
+
+      const safeDistribution = safePhasesList.map(phase => {
+        const count = safeKillsCounts[phase] || 0;
+        const avg = totalMatchesOnMap > 0 ? (count / totalMatchesOnMap).toFixed(2) : '0.00';
+        return {
+          phase,
+          count,
+          avg,
+          avgNum: totalMatchesOnMap > 0 ? (count / totalMatchesOnMap) : 0
+        };
+      });
+
       return {
         mapName,
         allLocals: sortedByPerformance,
         bestSafes,
         worstSafes,
-        totalMatchesOnMap: localsList.reduce((acc, l) => acc + l.matchesCount, 0),
-        totalLocalsCount: localsList.length
+        totalMatchesOnMap,
+        totalLocalsCount: localsList.length,
+        totalKillsOnMap,
+        avgKillsPerSafeOnMap,
+        safeDistribution
       };
     }).sort((a, b) => a.mapName.localeCompare(b.mapName));
 
     return result;
-  }, [filteredData.details, selectedTeamName]);
+  }, [filteredData.details, data.players, filteredData.killFeed, selectedTeamName]);
 
   // Análise de Abates por Rodada de Cada Mapa e MVP da Equipe por Mapa
   const teamMapKillsAndMvpData = useMemo(() => {
@@ -2226,7 +2559,7 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
 
                                 return (
                                     <div key={mapGroup.mapName} className="bg-black/60 rounded-2xl border border-white/10 p-6 space-y-4 shadow-xl">
-                                        <div className="flex justify-between items-center border-b border-white/5 pb-3">
+                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-3">
                                             <div className="flex items-center gap-3">
                                                 {mapImg ? (
                                                     <img src={mapImg} alt={mapGroup.mapName} className="w-12 h-12 object-cover rounded-xl border border-amber-500/30 bg-black" />
@@ -2244,6 +2577,17 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                                     </span>
                                                 </div>
                                             </div>
+
+                                            <div className="flex flex-wrap items-center gap-3 shrink-0">
+                                                <div className="bg-amber-950/40 border border-amber-500/30 px-3.5 py-1.5 rounded-xl text-center">
+                                                    <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest block">TOTAL ABATES EM SAFES</span>
+                                                    <span className="text-sm font-black text-white italic block leading-tight">{mapGroup.totalKillsOnMap} Kills</span>
+                                                </div>
+                                                <div className="bg-amber-950/40 border border-amber-500/30 px-3.5 py-1.5 rounded-xl text-center">
+                                                    <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest block">MÉDIA DE ABATES / SAFE</span>
+                                                    <span className="text-sm font-black text-amber-300 italic block leading-tight">{mapGroup.avgKillsPerSafeOnMap} K/Q</span>
+                                                </div>
+                                            </div>
                                         </div>
 
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2257,7 +2601,7 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                                     {mapGroup.bestSafes.map((safe, idx) => (
                                                         <div key={idx} className="bg-black/80 p-3.5 rounded-xl border border-emerald-500/20 flex items-center justify-between gap-3">
                                                             <div className="min-w-0 flex-1">
-                                                                <div className="flex items-center gap-2">
+                                                                 <div className="flex items-center gap-2">
                                                                     <span className="w-5 h-5 rounded bg-emerald-500 text-black font-black text-[10px] flex items-center justify-center shrink-0">
                                                                         #{idx + 1}
                                                                     </span>
@@ -2276,6 +2620,7 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                                             <div className="text-right shrink-0">
                                                                 <span className="text-sm font-black text-yellow-400 block leading-none">{safe.avgPts} <small className="text-[9px] text-gray-500">Pts/Q</small></span>
                                                                 <span className="text-xs font-black text-red-400 block mt-1">{safe.avgKills} <small className="text-[8px] text-gray-500">K/Q</small></span>
+                                                                <span className="text-[10px] text-gray-400 font-bold block mt-0.5">({safe.totalKills} Kills)</span>
                                                             </div>
                                                         </div>
                                                     ))}
@@ -2311,6 +2656,7 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                                             <div className="text-right shrink-0">
                                                                 <span className="text-sm font-black text-red-400 block leading-none">{safe.avgPts} <small className="text-[9px] text-gray-500">Pts/Q</small></span>
                                                                 <span className="text-xs font-black text-gray-400 block mt-1">{safe.avgKills} <small className="text-[8px] text-gray-500">K/Q</small></span>
+                                                                <span className="text-[10px] text-gray-400 font-bold block mt-0.5">({safe.totalKills} Kills)</span>
                                                             </div>
                                                         </div>
                                                     ))}
@@ -2320,6 +2666,126 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                                 </div>
                                             </div>
                                         </div>
+
+                                        {/* Distribuição por Fase de Safe (Safe 1 a Safe 7) */}
+                                        <div className="bg-black/40 rounded-2xl border border-white/5 p-5 space-y-4">
+                                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-white/5 pb-2">
+                                                <h5 className="text-xs font-black text-white uppercase italic tracking-wider flex items-center gap-1.5">
+                                                    <Flame size={14} className="text-amber-500 animate-pulse" /> Distribuição de Abates por Fase de Safe (Killfeed)
+                                                </h5>
+                                                <span className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">
+                                                    Abates Totais & Médias por Queda
+                                                </span>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+                                                {mapGroup.safeDistribution?.map((dist) => {
+                                                    // Determine safe color accents based on phase
+                                                    let badgeBg = "bg-amber-500/10 border-amber-500/30 text-amber-400";
+                                                    let barColor = "bg-amber-500";
+                                                    if (dist.phase.includes('1') || dist.phase.includes('2')) {
+                                                        badgeBg = "bg-blue-500/10 border-blue-500/30 text-blue-400";
+                                                        barColor = "bg-blue-500";
+                                                    } else if (dist.phase.includes('3') || dist.phase.includes('4')) {
+                                                        badgeBg = "bg-orange-500/10 border-orange-500/30 text-orange-400";
+                                                        barColor = "bg-orange-500";
+                                                    } else {
+                                                        badgeBg = "bg-red-500/10 border-red-500/30 text-red-400";
+                                                        barColor = "bg-red-500";
+                                                    }
+
+                                                    // Calculate percentage width for visual indicator
+                                                    const maxKills = Math.max(...(mapGroup.safeDistribution?.map(d => d.count) || [1]));
+                                                    const pct = maxKills > 0 ? (dist.count / maxKills) * 100 : 0;
+
+                                                    return (
+                                                        <div key={dist.phase} className="bg-black/60 p-3 rounded-xl border border-white/5 flex flex-col justify-between space-y-2.5 relative overflow-hidden group hover:border-white/10 transition-all duration-300">
+                                                            <div className="flex justify-between items-center">
+                                                                <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border ${badgeBg}`}>
+                                                                    {dist.phase}
+                                                                </span>
+                                                                <span className="text-[10px] font-black text-white italic">
+                                                                    {dist.count} K
+                                                                </span>
+                                                            </div>
+                                                            
+                                                            <div className="space-y-1">
+                                                                <span className="text-[9px] text-gray-400 font-black uppercase tracking-widest block leading-none">Média / Queda</span>
+                                                                <span className="text-xs font-black text-yellow-500 block leading-tight">
+                                                                    {dist.avg} <small className="text-[8px] text-gray-500">K/Q</small>
+                                                                </span>
+                                                            </div>
+
+                                                            {/* Mini Progress Bar Indicator */}
+                                                            <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
+                                                                <div 
+                                                                    className={`h-full ${barColor} rounded-full transition-all duration-500 group-hover:brightness-125`} 
+                                                                    style={{ width: `${pct}%` }}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        {/* Botão de Expansão para Ver Todas as Safes */}
+                                        <div className="pt-2 border-t border-white/5 flex justify-center">
+                                            <button
+                                                onClick={() => setExpandedSafesMap(prev => ({
+                                                    ...prev,
+                                                    [mapGroup.mapName]: !prev[mapGroup.mapName]
+                                                }))}
+                                                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 shadow-lg cursor-pointer"
+                                            >
+                                                {expandedSafesMap[mapGroup.mapName] ? (
+                                                    <>Ocultar Todas as Safes ✕</>
+                                                ) : (
+                                                    <>Ver Todas as Safes ({mapGroup.allLocals.length}) 🗂️</>
+                                                )}
+                                            </button>
+                                        </div>
+
+                                        {/* Tabela de Todas as Safes do Mapa */}
+                                        {expandedSafesMap[mapGroup.mapName] && (
+                                            <div className="mt-4 bg-black/80 rounded-xl border border-white/5 p-4 space-y-3">
+                                                <h5 className="text-xs font-black text-white uppercase italic tracking-wider flex items-center gap-2 border-b border-white/10 pb-2">
+                                                    <ListOrdered size={14} className="text-amber-500" /> Todos os Abates e Estatísticas por Safe ({mapGroup.mapName})
+                                                </h5>
+                                                <div className="overflow-x-auto">
+                                                    <table className="w-full text-left border-collapse text-xs">
+                                                        <thead>
+                                                            <tr className="border-b border-white/10 text-[9px] text-gray-400 uppercase font-black tracking-wider bg-white/5">
+                                                                <th className="py-2.5 px-3">Região (Safe)</th>
+                                                                <th className="py-2.5 px-3 text-center">Partidas (PJ)</th>
+                                                                <th className="py-2.5 px-3 text-center">Total Abates</th>
+                                                                <th className="py-2.5 px-3 text-center">Média Abates</th>
+                                                                <th className="py-2.5 px-3 text-center">Booyahs</th>
+                                                                <th className="py-2.5 px-3 text-center">Pts Totais</th>
+                                                                <th className="py-2.5 px-3 text-right">Pos Média</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-white/5">
+                                                            {mapGroup.allLocals.map((safeLoc, idx) => (
+                                                                <tr key={idx} className="hover:bg-white/5 transition-colors">
+                                                                    <td className="py-2.5 px-3 font-black text-white italic uppercase">{safeLoc.localName}</td>
+                                                                    <td className="py-2.5 px-3 text-center font-bold text-gray-300">{safeLoc.matchesCount}</td>
+                                                                    <td className="py-2.5 px-3 text-center font-black text-red-400">{safeLoc.totalKills} abates</td>
+                                                                    <td className="py-2.5 px-3 text-center">
+                                                                        <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-full text-[10px] font-black">
+                                                                            {safeLoc.avgKills} / Q
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="py-2.5 px-3 text-center font-bold text-yellow-500">{safeLoc.booyahs} 🏆</td>
+                                                                    <td className="py-2.5 px-3 text-center font-black text-yellow-400">{safeLoc.totalPts} pts</td>
+                                                                    <td className="py-2.5 px-3 text-right font-bold text-gray-400">#{safeLoc.avgPos}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
@@ -5003,141 +5469,454 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                             })}
                         </div>
                         
-                        {/* Comparison per Map */}
-                        <div className="space-y-6">
-                            <div className="flex flex-col items-center">
-                                <div className="h-0.5 w-24 bg-gradient-to-r from-transparent via-gray-700 to-transparent mb-4" />
-                                <h3 className="text-[10px] font-black text-white/40 uppercase tracking-[0.5em] italic">Comparativo por Território</h3>
-                            </div>
-                            
-                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                                {comparisonMapStats.map((m, idx) => (
-                                    <div key={idx} className="bg-[#1a1a1a] rounded-3xl border border-gray-800 overflow-hidden shadow-xl flex flex-col">
-                                        <div className="bg-black/40 p-4 border-b border-gray-800 flex justify-center items-center gap-3">
-                                            <MapIcon size={14} className="text-gray-500" />
-                                            <span className="text-xs font-black text-white uppercase italic tracking-widest">{m.mapName}</span>
-                                        </div>
-                                        <div className="p-5 flex-grow">
-                                            <div className="flex items-center justify-between mb-4">
-                                                <div className="text-left">
-                                                    <span className="text-[8px] text-yellow-500 font-black block leading-none mb-1">TEAM A</span>
-                                                    <span className="text-[10px] text-white font-black truncate max-w-[80px] block">{filters.team[0]}</span>
+                        {/* Sub-tab Selector inside Comparison Mode */}
+                        <div className="flex flex-wrap items-center justify-center gap-2 p-1.5 bg-black/40 rounded-2xl border border-white/5 w-fit mx-auto no-print">
+                            {[
+                                { id: 'overview', label: 'Resumo Geral', icon: <LayoutGrid size={14} /> },
+                                { id: 'zeradas', label: 'Quedas Zeradas', icon: <AlertTriangle size={14} className="text-yellow-500" /> },
+                                { id: 'mapKills', label: 'Abates & MVP por Mapa', icon: <Crown size={14} className="text-orange-500" /> },
+                                { id: 'safes', label: 'Desempenho por Safe', icon: <MapPin size={14} className="text-blue-500" /> }
+                            ].map(tab => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setCompareSubTab(tab.id as any)}
+                                    className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+                                        compareSubTab === tab.id
+                                            ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20'
+                                            : 'text-gray-400 hover:text-white hover:bg-white/5'
+                                    }`}
+                                >
+                                    {tab.icon}
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* SUB-TAB: Overview (Existing Map and Metric Table Comparison) */}
+                        {compareSubTab === 'overview' && (
+                            <div className="space-y-8 animate-in fade-in duration-300">
+                                {/* Comparison per Map */}
+                                <div className="space-y-6">
+                                    <div className="flex flex-col items-center">
+                                        <div className="h-0.5 w-24 bg-gradient-to-r from-transparent via-gray-700 to-transparent mb-4" />
+                                        <h3 className="text-[10px] font-black text-white/40 uppercase tracking-[0.5em] italic">Comparativo por Território</h3>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                                        {comparisonMapStats.map((m, idx) => (
+                                            <div key={idx} className="bg-[#1a1a1a] rounded-3xl border border-gray-800 overflow-hidden shadow-xl flex flex-col">
+                                                <div className="bg-black/40 p-4 border-b border-gray-800 flex justify-center items-center gap-3">
+                                                    <MapIcon size={14} className="text-gray-500" />
+                                                    <span className="text-xs font-black text-white uppercase italic tracking-widest">{m.mapName}</span>
                                                 </div>
-                                                <div className="w-8 h-8 rounded-full bg-gray-900 border border-gray-800 flex items-center justify-center text-[8px] font-black text-gray-500">VS</div>
-                                                <div className="text-right">
-                                                    <span className="text-[8px] text-blue-500 font-black block leading-none mb-1">TEAM B</span>
-                                                    <span className="text-[10px] text-white font-black truncate max-w-[80px] block">{compareTeamB}</span>
+                                                <div className="p-5 flex-grow">
+                                                    <div className="flex items-center justify-between mb-4">
+                                                        <div className="text-left">
+                                                            <span className="text-[8px] text-yellow-500 font-black block leading-none mb-1">TEAM A</span>
+                                                            <span className="text-[10px] text-white font-black truncate max-w-[80px] block">{filters.team[0]}</span>
+                                                        </div>
+                                                        <div className="w-8 h-8 rounded-full bg-gray-900 border border-gray-800 flex items-center justify-center text-[8px] font-black text-gray-500">VS</div>
+                                                        <div className="text-right">
+                                                            <span className="text-[8px] text-blue-500 font-black block leading-none mb-1">TEAM B</span>
+                                                            <span className="text-[10px] text-white font-black truncate max-w-[80px] block">{compareTeamB}</span>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="space-y-3">
+                                                        {/* PTS Comparison */}
+                                                        <div className="space-y-1">
+                                                            <div className="flex justify-between text-[8px] font-black uppercase text-gray-500">
+                                                                <span>PTS Total: {m.teamA.pts}</span>
+                                                                <span>{m.teamB.pts}</span>
+                                                            </div>
+                                                            <div className="h-1.5 bg-black rounded-full overflow-hidden flex">
+                                                                <div className="h-full bg-yellow-500" style={{ width: `${(m.teamA.pts + m.teamB.pts) > 0 ? (m.teamA.pts / (m.teamA.pts + m.teamB.pts)) * 100 : 50}%` }} />
+                                                                <div className="h-full bg-blue-500" style={{ width: `${(m.teamA.pts + m.teamB.pts) > 0 ? (m.teamB.pts / (m.teamA.pts + m.teamB.pts)) * 100 : 50}%` }} />
+                                                            </div>
+                                                        </div>
+
+                                                        {/* KILLS Comparison */}
+                                                        <div className="space-y-1">
+                                                            <div className="flex justify-between text-[8px] font-black uppercase text-gray-500 border-t border-white/5 pt-1">
+                                                                <span>Kills: {m.teamA.abts}</span>
+                                                                <span>{m.teamB.abts}</span>
+                                                            </div>
+                                                            <div className="h-1 bg-black rounded-full overflow-hidden flex">
+                                                                <div className="h-full bg-red-600" style={{ width: `${(m.teamA.abts + m.teamB.abts) > 0 ? (m.teamA.abts / (m.teamA.abts + m.teamB.abts)) * 100 : 50}%` }} />
+                                                                <div className="h-full bg-red-400" style={{ width: `${(m.teamA.abts + m.teamB.abts) > 0 ? (m.teamB.abts / (m.teamA.abts + m.teamB.abts)) * 100 : 50}%` }} />
+                                                            </div>
+                                                        </div>
+
+                                                        {/* POS PTS Comparison */}
+                                                        <div className="space-y-1">
+                                                            <div className="flex justify-between text-[8px] font-black uppercase text-gray-500 border-t border-white/5 pt-1">
+                                                                <span>Pts Pos: {m.teamA.ptsc}</span>
+                                                                <span>{m.teamB.ptsc}</span>
+                                                            </div>
+                                                            <div className="h-1 bg-black rounded-full overflow-hidden flex">
+                                                                <div className="h-full bg-orange-600" style={{ width: `${(m.teamA.ptsc + m.teamB.ptsc) > 0 ? (m.teamA.ptsc / (m.teamA.ptsc + m.teamB.ptsc)) * 100 : 50}%` }} />
+                                                                <div className="h-full bg-orange-400" style={{ width: `${(m.teamA.ptsc + m.teamB.ptsc) > 0 ? (m.teamB.ptsc / (m.teamA.ptsc + m.teamB.ptsc)) * 100 : 50}%` }} />
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Averages Grid */}
+                                                        <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-gray-800">
+                                                            <div className="bg-black/40 rounded-xl p-2 text-center">
+                                                                <span className="text-[7px] text-gray-500 font-bold block mb-1">AVG PTS (A vs B)</span>
+                                                                <div className="flex justify-center items-center gap-1">
+                                                                    <span className="text-[9px] font-black text-yellow-500 italic">{m.teamA.avgPts}</span>
+                                                                    <span className="text-[7px] text-gray-700">|</span>
+                                                                    <span className="text-[9px] font-black text-blue-400 italic">{m.teamB.avgPts}</span>
+                                                                </div>
+                                                            </div>
+                                                            <div className="bg-black/40 rounded-xl p-2 text-center">
+                                                                <span className="text-[7px] text-gray-500 font-bold block mb-1">AVG KLLS (A vs B)</span>
+                                                                <div className="flex justify-center items-center gap-1">
+                                                                    <span className="text-[9px] font-black text-red-500 italic">{m.teamA.avgAbts}</span>
+                                                                    <span className="text-[7px] text-gray-700">|</span>
+                                                                    <span className="text-[9px] font-black text-red-400 italic">{m.teamB.avgAbts}</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
+                                        ))}
+                                    </div>
+                                </div>
 
-                                            <div className="space-y-3">
-                                                {/* PTS Comparison */}
-                                                <div className="space-y-1">
-                                                    <div className="flex justify-between text-[8px] font-black uppercase text-gray-500">
-                                                        <span>PTS Total: {m.teamA.pts}</span>
-                                                        <span>{m.teamB.pts}</span>
-                                                    </div>
-                                                    <div className="h-1.5 bg-black rounded-full overflow-hidden flex">
-                                                        <div className="h-full bg-yellow-500" style={{ width: `${(m.teamA.pts + m.teamB.pts) > 0 ? (m.teamA.pts / (m.teamA.pts + m.teamB.pts)) * 100 : 50}%` }} />
-                                                        <div className="h-full bg-blue-500" style={{ width: `${(m.teamA.pts + m.teamB.pts) > 0 ? (m.teamB.pts / (m.teamA.pts + m.teamB.pts)) * 100 : 50}%` }} />
-                                                    </div>
+                                {/* Comparison Table for detailed metrics */}
+                                <div className="bg-[#1a1a1a] rounded-[32px] border border-gray-800 overflow-hidden shadow-2xl no-print">
+                                    <div className="bg-black/40 px-8 py-6 border-b border-gray-800 flex items-center justify-between">
+                                        <h3 className="text-xs font-black text-white uppercase tracking-[0.3em]">Métricas Diretas</h3>
+                                        <div className="flex gap-2">
+                                            <div className="w-2 h-2 rounded-full bg-yellow-500" />
+                                            <div className="w-2 h-2 rounded-full bg-blue-500" />
+                                        </div>
+                                    </div>
+                                    <div className="overflow-x-auto custom-scrollbar">
+                                        <table className="w-full text-left border-collapse">
+                                            <tbody className="divide-y divide-gray-800/30">
+                                                {[
+                                                    { label: 'Total de Pontos', key: 'pts', color: 'text-yellow-500' },
+                                                    { label: 'Média de Pontos', key: 'avgPts', color: 'text-white' },
+                                                    { label: 'Total de Booyahs', key: 'b', color: 'text-orange-500' },
+                                                    { label: 'Total de Abates', key: 'abts', color: 'text-red-500' },
+                                                    { label: 'Média de Abates', key: 'avgAbts', color: 'text-white' },
+                                                    { label: 'Média Pts Posição', key: 'avgPtsc', color: 'text-blue-400' },
+                                                    { label: '% Abates no Score', key: 'percentAbts', color: 'text-gray-400' },
+                                                    { label: '% Posição no Score', key: 'percentPos', color: 'text-gray-400' },
+                                                ].map((row, rIdx) => {
+                                                    const valA = filteredTeamStats.find(s => s.name === filters.team[0])?.[row.key as keyof TeamStats] as number || 0;
+                                                    const valB = filteredTeamStats.find(s => s.name === compareTeamB)?.[row.key as keyof TeamStats] as number || 0;
+                                                    const isBetterA = valA > valB;
+                                                    const isBetterB = valB > valA;
+
+                                                    return (
+                                                        <tr key={rIdx} className="hover:bg-white/[0.02] transition-colors">
+                                                            <td className={`px-8 py-4 text-center font-black ${isBetterA ? 'text-yellow-500 scale-110' : 'text-gray-600'} transition-all`}>
+                                                                {valA}{(row.key.includes('percent')) ? '%' : ''}
+                                                            </td>
+                                                            <td className="px-8 py-4 text-center text-[10px] font-black text-white uppercase tracking-widest bg-black/20 italic">
+                                                                {row.label}
+                                                            </td>
+                                                            <td className={`px-8 py-4 text-center font-black ${isBetterB ? 'text-blue-500 scale-110' : 'text-gray-600'} transition-all`}>
+                                                                {valB}{(row.key.includes('percent')) ? '%' : ''}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* SUB-TAB: Quedas Zeradas */}
+                        {compareSubTab === 'zeradas' && compareZeroStats && (
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in duration-300">
+                                {/* Team A Zero Stats */}
+                                <div className="bg-[#1a1a1a] rounded-[40px] p-8 border border-yellow-500/20 relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 w-64 h-64 bg-yellow-500/5 blur-[100px] rounded-full" />
+                                    
+                                    <h4 className="text-xl font-black italic text-yellow-500 uppercase tracking-tighter mb-6 flex items-center gap-3">
+                                        <AlertTriangle size={20} /> {filters.team[0]}
+                                    </h4>
+                                    
+                                    <div className="grid grid-cols-2 gap-4 mb-8">
+                                        <div className="bg-black/40 p-4 rounded-3xl border border-white/5 text-center">
+                                            <span className="block text-[8px] text-gray-500 font-bold uppercase mb-1">TOTAL QUEDAS</span>
+                                            <span className="text-2xl font-black italic text-white">{compareZeroStats.teamA.totalMatches}</span>
+                                        </div>
+                                        <div className="bg-black/40 p-4 rounded-3xl border border-white/5 text-center">
+                                            <span className="block text-[8px] text-gray-500 font-bold uppercase mb-1">% QUEDAS ZERADAS</span>
+                                            <span className="text-2xl font-black italic text-red-500">{compareZeroStats.teamA.pctZeroPts}%</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest px-2 border-b border-white/5 pb-2">
+                                            <span className="text-gray-500">Apenas 0 Kills</span>
+                                            <span className="text-white">{compareZeroStats.teamA.zeroKillsOnly} quedas</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest px-2 border-b border-white/5 pb-2">
+                                            <span className="text-gray-500">Apenas 0 Pontos de Posição</span>
+                                            <span className="text-white">{compareZeroStats.teamA.zeroPointsOnly} quedas</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest px-2 pb-2">
+                                            <span className="text-gray-500">Zero Absoluto (0 Pts & 0 Kills)</span>
+                                            <span className="text-red-500">{compareZeroStats.teamA.zeroPointsAndKills} quedas</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Team B Zero Stats */}
+                                <div className="bg-[#1a1a1a] rounded-[40px] p-8 border border-blue-500/20 relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 blur-[100px] rounded-full" />
+                                    
+                                    <h4 className="text-xl font-black italic text-blue-400 uppercase tracking-tighter mb-6 flex items-center gap-3">
+                                        <AlertTriangle size={20} /> {compareTeamB}
+                                    </h4>
+                                    
+                                    <div className="grid grid-cols-2 gap-4 mb-8">
+                                        <div className="bg-black/40 p-4 rounded-3xl border border-white/5 text-center">
+                                            <span className="block text-[8px] text-gray-500 font-bold uppercase mb-1">TOTAL QUEDAS</span>
+                                            <span className="text-2xl font-black italic text-white">{compareZeroStats.teamB.totalMatches}</span>
+                                        </div>
+                                        <div className="bg-black/40 p-4 rounded-3xl border border-white/5 text-center">
+                                            <span className="block text-[8px] text-gray-500 font-bold uppercase mb-1">% QUEDAS ZERADAS</span>
+                                            <span className="text-2xl font-black italic text-red-500">{compareZeroStats.teamB.pctZeroPts}%</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest px-2 border-b border-white/5 pb-2">
+                                            <span className="text-gray-500">Apenas 0 Kills</span>
+                                            <span className="text-white">{compareZeroStats.teamB.zeroKillsOnly} quedas</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest px-2 border-b border-white/5 pb-2">
+                                            <span className="text-gray-500">Apenas 0 Pontos de Posição</span>
+                                            <span className="text-white">{compareZeroStats.teamB.zeroPointsOnly} quedas</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest px-2 pb-2">
+                                            <span className="text-gray-500">Zero Absoluto (0 Pts & 0 Kills)</span>
+                                            <span className="text-red-500">{compareZeroStats.teamB.zeroPointsAndKills} quedas</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* SUB-TAB: Abates & MVPs por Mapa */}
+                        {compareSubTab === 'mapKills' && compareMapKillsAndMvpData.map((m, mIdx) => (
+                            <div key={mIdx} className="bg-[#1a1a1a] rounded-[40px] border border-gray-800 p-8 space-y-6 shadow-2xl relative overflow-hidden animate-in fade-in duration-300">
+                                <div className="absolute top-0 right-0 w-96 h-96 bg-yellow-500/5 blur-[120px] rounded-full" />
+                                
+                                <div className="border-b border-gray-800 pb-4 flex flex-col md:flex-row justify-between items-center gap-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 bg-yellow-500/10 rounded-xl flex items-center justify-center text-yellow-500 border border-yellow-500/20">
+                                            <MapIcon size={18} />
+                                        </div>
+                                        <div>
+                                            <h4 className="text-xl font-black text-white uppercase italic tracking-widest">{m.mapName}</h4>
+                                            <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Histórico head-to-head por rodada</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-8">
+                                        <div className="text-center md:text-right">
+                                            <span className="block text-[8px] text-gray-500 font-bold">TOTAL ABATES ({filters.team[0]})</span>
+                                            <span className="text-lg font-black text-yellow-500 italic">{m.teamA.totalTeamKills} <span className="text-[10px] text-gray-500 font-normal">({m.teamA.avgKillsPerMatch} avg)</span></span>
+                                        </div>
+                                        <div className="text-center md:text-right">
+                                            <span className="block text-[8px] text-gray-500 font-bold">TOTAL ABATES ({compareTeamB})</span>
+                                            <span className="text-lg font-black text-blue-400 italic">{m.teamB.totalTeamKills} <span className="text-[10px] text-gray-500 font-normal">({m.teamB.avgKillsPerMatch} avg)</span></span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                                    {/* Team A Players & MVP */}
+                                    <div className="lg:col-span-4 bg-black/20 p-5 rounded-3xl border border-yellow-500/10 space-y-4">
+                                        <span className="text-[10px] text-yellow-500 font-black uppercase tracking-widest block border-b border-white/5 pb-2">MVP & Elenco ({filters.team[0]})</span>
+                                        {m.teamA.mvpPlayer ? (
+                                            <div className="flex items-center gap-4 bg-yellow-500/5 p-3 rounded-2xl border border-yellow-500/20">
+                                                <div className="w-12 h-12 bg-black rounded-xl border border-yellow-500/30 overflow-hidden flex items-center justify-center relative shrink-0">
+                                                    {m.teamA.mvpPlayer.playerImg ? (
+                                                        <img src={m.teamA.mvpPlayer.playerImg} alt={m.teamA.mvpPlayer.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <User size={20} className="text-yellow-500" />
+                                                    )}
+                                                    <div className="absolute top-0 left-0 bg-yellow-500 text-black px-1 py-0.5 rounded-br text-[6px] font-black uppercase">MVP</div>
                                                 </div>
-
-                                                {/* KILLS Comparison */}
-                                                <div className="space-y-1">
-                                                    <div className="flex justify-between text-[8px] font-black uppercase text-gray-500 border-t border-white/5 pt-1">
-                                                        <span>Kills: {m.teamA.abts}</span>
-                                                        <span>{m.teamB.abts}</span>
-                                                    </div>
-                                                    <div className="h-1 bg-black rounded-full overflow-hidden flex">
-                                                        <div className="h-full bg-red-600" style={{ width: `${(m.teamA.abts + m.teamB.abts) > 0 ? (m.teamA.abts / (m.teamA.abts + m.teamB.abts)) * 100 : 50}%` }} />
-                                                        <div className="h-full bg-red-400" style={{ width: `${(m.teamA.abts + m.teamB.abts) > 0 ? (m.teamB.abts / (m.teamA.abts + m.teamB.abts)) * 100 : 50}%` }} />
-                                                    </div>
+                                                <div className="min-w-0">
+                                                    <span className="block text-xs font-black text-white truncate">{m.teamA.mvpPlayer.name}</span>
+                                                    <span className="block text-[8px] text-gray-500 font-bold uppercase">{m.teamA.mvpPlayer.kills} kills ({m.teamA.mvpPlayer.avgKills} avg)</span>
                                                 </div>
-
-                                                {/* POS PTS Comparison */}
-                                                <div className="space-y-1">
-                                                    <div className="flex justify-between text-[8px] font-black uppercase text-gray-500 border-t border-white/5 pt-1">
-                                                        <span>Pts Pos: {m.teamA.ptsc}</span>
-                                                        <span>{m.teamB.ptsc}</span>
-                                                    </div>
-                                                    <div className="h-1 bg-black rounded-full overflow-hidden flex">
-                                                        <div className="h-full bg-orange-600" style={{ width: `${(m.teamA.ptsc + m.teamB.ptsc) > 0 ? (m.teamA.ptsc / (m.teamA.ptsc + m.teamB.ptsc)) * 100 : 50}%` }} />
-                                                        <div className="h-full bg-orange-400" style={{ width: `${(m.teamA.ptsc + m.teamB.ptsc) > 0 ? (m.teamB.ptsc / (m.teamA.ptsc + m.teamB.ptsc)) * 100 : 50}%` }} />
-                                                    </div>
+                                            </div>
+                                        ) : (
+                                            <span className="text-[10px] text-gray-600 italic block">Nenhum registro de jogador</span>
+                                        )}
+                                        <div className="space-y-2">
+                                            <span className="text-[8px] text-gray-500 font-bold uppercase tracking-wider block">Lista de Jogadores</span>
+                                            {m.teamA.playerList.slice(0, 5).map((p, pIdx) => (
+                                                <div key={pIdx} className="flex justify-between items-center text-xs">
+                                                    <span className="text-gray-400 font-bold truncate max-w-[120px]">{p.name}</span>
+                                                    <span className="text-white font-black">{p.kills} <span className="text-[8px] text-gray-600">({p.avgKills})</span></span>
                                                 </div>
+                                            ))}
+                                        </div>
+                                    </div>
 
-                                                {/* Averages Grid */}
-                                                <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-gray-800">
-                                                    <div className="bg-black/40 rounded-xl p-2 text-center">
-                                                        <span className="text-[7px] text-gray-500 font-bold block mb-1">AVG PTS (A vs B)</span>
-                                                        <div className="flex justify-center items-center gap-1">
-                                                            <span className="text-[9px] font-black text-yellow-500 italic">{m.teamA.avgPts}</span>
-                                                            <span className="text-[7px] text-gray-700">|</span>
-                                                            <span className="text-[9px] font-black text-blue-400 italic">{m.teamB.avgPts}</span>
+                                    {/* Round comparison list */}
+                                    <div className="lg:col-span-4 bg-black/40 p-5 rounded-3xl border border-white/5 space-y-4">
+                                        <span className="text-[10px] text-white/40 font-black uppercase tracking-widest block border-b border-white/5 pb-2 text-center">Confronto por Rodada</span>
+                                        <div className="space-y-3">
+                                            {(() => {
+                                                const allRds = Array.from(new Set([
+                                                    ...m.teamA.roundsList.map(r => r.rd),
+                                                    ...m.teamB.roundsList.map(r => r.rd)
+                                                ])).sort((x, y) => {
+                                                    const numX = parseInt(x.replace(/\D/g, '')) || 0;
+                                                    const numY = parseInt(y.replace(/\D/g, '')) || 0;
+                                                    if (numX !== numY) return numX - numY;
+                                                    return x.localeCompare(y);
+                                                });
+
+                                                if (allRds.length === 0) {
+                                                    return <span className="text-[10px] text-gray-600 italic block text-center py-4">Sem dados por rodada</span>;
+                                                }
+
+                                                return allRds.map(rd => {
+                                                    const rdA = m.teamA.roundsList.find(r => r.rd === rd);
+                                                    const rdB = m.teamB.roundsList.find(r => r.rd === rd);
+                                                    const killsA = rdA ? rdA.totalKills : 0;
+                                                    const killsB = rdB ? rdB.totalKills : 0;
+                                                    
+                                                    const isGreaterA = killsA > killsB;
+                                                    const isGreaterB = killsB > killsA;
+
+                                                    return (
+                                                        <div key={rd} className="flex justify-between items-center text-xs">
+                                                            <span className={`w-8 text-left font-black ${isGreaterA ? 'text-yellow-500 scale-105 font-extrabold' : 'text-gray-500'}`}>{killsA}</span>
+                                                            <span className="text-[8px] text-gray-600 font-black uppercase bg-black/50 px-2 py-1 rounded-md border border-white/5 min-w-[50px] text-center">{rd}</span>
+                                                            <span className={`w-8 text-right font-black ${isGreaterB ? 'text-blue-400 scale-105 font-extrabold' : 'text-gray-500'}`}>{killsB}</span>
                                                         </div>
-                                                    </div>
-                                                    <div className="bg-black/40 rounded-xl p-2 text-center">
-                                                        <span className="text-[7px] text-gray-500 font-bold block mb-1">AVG KLLS (A vs B)</span>
-                                                        <div className="flex justify-center items-center gap-1">
-                                                            <span className="text-[9px] font-black text-red-500 italic">{m.teamA.avgAbts}</span>
-                                                            <span className="text-[7px] text-gray-700">|</span>
-                                                            <span className="text-[9px] font-black text-red-400 italic">{m.teamB.avgAbts}</span>
-                                                        </div>
-                                                    </div>
+                                                    );
+                                                });
+                                            })()}
+                                        </div>
+                                    </div>
+
+                                    {/* Team B Players & MVP */}
+                                    <div className="lg:col-span-4 bg-black/20 p-5 rounded-3xl border border-blue-500/10 space-y-4">
+                                        <span className="text-[10px] text-blue-400 font-black uppercase tracking-widest block border-b border-white/5 pb-2">MVP & Elenco ({compareTeamB})</span>
+                                        {m.teamB.mvpPlayer ? (
+                                            <div className="flex items-center gap-4 bg-blue-500/5 p-3 rounded-2xl border border-blue-500/20">
+                                                <div className="w-12 h-12 bg-black rounded-xl border border-blue-500/30 overflow-hidden flex items-center justify-center relative shrink-0">
+                                                    {m.teamB.mvpPlayer.playerImg ? (
+                                                        <img src={m.teamB.mvpPlayer.playerImg} alt={m.teamB.mvpPlayer.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <User size={20} className="text-blue-400" />
+                                                    )}
+                                                    <div className="absolute top-0 left-0 bg-blue-500 text-white px-1 py-0.5 rounded-br text-[6px] font-black uppercase">MVP</div>
                                                 </div>
+                                                <div className="min-w-0">
+                                                    <span className="block text-xs font-black text-white truncate">{m.teamB.mvpPlayer.name}</span>
+                                                    <span className="block text-[8px] text-gray-500 font-bold uppercase">{m.teamB.mvpPlayer.kills} kills ({m.teamB.mvpPlayer.avgKills} avg)</span>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <span className="text-[10px] text-gray-600 italic block">Nenhum registro de jogador</span>
+                                        )}
+                                        <div className="space-y-2">
+                                            <span className="text-[8px] text-gray-500 font-bold uppercase tracking-wider block">Lista de Jogadores</span>
+                                            {m.teamB.playerList.slice(0, 5).map((p, pIdx) => (
+                                                <div key={pIdx} className="flex justify-between items-center text-xs">
+                                                    <span className="text-gray-400 font-bold truncate max-w-[120px]">{p.name}</span>
+                                                    <span className="text-white font-black">{p.kills} <span className="text-[8px] text-gray-600">({p.avgKills})</span></span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+
+                        {/* SUB-TAB: Safes */}
+                        {compareSubTab === 'safes' && compareSafesMapData.map((m, mIdx) => (
+                            <div key={mIdx} className="bg-[#1a1a1a] rounded-[40px] border border-gray-800 p-8 space-y-6 shadow-2xl relative overflow-hidden animate-in fade-in duration-300">
+                                <div className="absolute top-0 right-0 w-96 h-96 bg-blue-500/5 blur-[120px] rounded-full" />
+                                
+                                <div className="border-b border-gray-800 pb-4 flex justify-between items-center">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center text-blue-500 border border-blue-500/20">
+                                            <MapPin size={18} />
+                                        </div>
+                                        <div>
+                                            <h4 className="text-xl font-black text-white uppercase italic tracking-widest">{m.mapName}</h4>
+                                            <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Locais onde as equipes mais pontuam ou falham</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                    {/* Team A Safes */}
+                                    <div className="space-y-4">
+                                        <span className="text-xs font-black text-yellow-500 uppercase tracking-widest block border-b border-white/5 pb-2">{filters.team[0]}</span>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {/* Best */}
+                                            <div className="bg-emerald-950/20 p-4 rounded-2xl border border-emerald-500/20 space-y-3">
+                                                <span className="text-[9px] text-emerald-400 font-black uppercase tracking-wider flex items-center gap-2"><ArrowUp size={12} /> MELHORES SAFES</span>
+                                                {m.teamA.best.length > 0 ? m.teamA.best.map((s, idx) => (
+                                                    <div key={idx} className="flex justify-between items-center text-xs">
+                                                        <span className="text-gray-300 font-bold truncate max-w-[120px]">{s.localName}</span>
+                                                        <span className="text-emerald-400 font-black">{s.avgPts} pts</span>
+                                                    </div>
+                                                )) : <span className="text-[10px] text-gray-600 italic block">Sem registros</span>}
+                                            </div>
+                                            {/* Worst */}
+                                            <div className="bg-red-950/20 p-4 rounded-2xl border border-red-500/20 space-y-3">
+                                                <span className="text-[9px] text-red-400 font-black uppercase tracking-wider flex items-center gap-2"><ArrowDown size={12} /> PIORES SAFES</span>
+                                                {m.teamA.worst.length > 0 ? m.teamA.worst.map((s, idx) => (
+                                                    <div key={idx} className="flex justify-between items-center text-xs">
+                                                        <span className="text-gray-300 font-bold truncate max-w-[120px]">{s.localName}</span>
+                                                        <span className="text-red-400 font-black">{s.avgPts} pts</span>
+                                                    </div>
+                                                )) : <span className="text-[10px] text-gray-600 italic block">Sem registros</span>}
                                             </div>
                                         </div>
                                     </div>
-                                ))}
-                            </div>
-                        </div>
 
-                        {/* Comparison Table for detailed metrics */}
-                        <div className="bg-[#1a1a1a] rounded-[32px] border border-gray-800 overflow-hidden shadow-2xl no-print">
-                            <div className="bg-black/40 px-8 py-6 border-b border-gray-800 flex items-center justify-between">
-                                <h3 className="text-xs font-black text-white uppercase tracking-[0.3em]">Métricas Diretas</h3>
-                                <div className="flex gap-2">
-                                    <div className="w-2 h-2 rounded-full bg-yellow-500" />
-                                    <div className="w-2 h-2 rounded-full bg-blue-500" />
+                                    {/* Team B Safes */}
+                                    <div className="space-y-4">
+                                        <span className="text-xs font-black text-blue-400 uppercase tracking-widest block border-b border-white/5 pb-2">{compareTeamB}</span>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {/* Best */}
+                                            <div className="bg-emerald-950/20 p-4 rounded-2xl border border-emerald-500/20 space-y-3">
+                                                <span className="text-[9px] text-emerald-400 font-black uppercase tracking-wider flex items-center gap-2"><ArrowUp size={12} /> MELHORES SAFES</span>
+                                                {m.teamB.best.length > 0 ? m.teamB.best.map((s, idx) => (
+                                                    <div key={idx} className="flex justify-between items-center text-xs">
+                                                        <span className="text-gray-300 font-bold truncate max-w-[120px]">{s.localName}</span>
+                                                        <span className="text-emerald-400 font-black">{s.avgPts} pts</span>
+                                                    </div>
+                                                )) : <span className="text-[10px] text-gray-600 italic block">Sem registros</span>}
+                                            </div>
+                                            {/* Worst */}
+                                            <div className="bg-red-950/20 p-4 rounded-2xl border border-red-500/20 space-y-3">
+                                                <span className="text-[9px] text-red-400 font-black uppercase tracking-wider flex items-center gap-2"><ArrowDown size={12} /> PIORES SAFES</span>
+                                                {m.teamB.worst.length > 0 ? m.teamB.worst.map((s, idx) => (
+                                                    <div key={idx} className="flex justify-between items-center text-xs">
+                                                        <span className="text-gray-300 font-bold truncate max-w-[120px]">{s.localName}</span>
+                                                        <span className="text-red-400 font-black">{s.avgPts} pts</span>
+                                                    </div>
+                                                )) : <span className="text-[10px] text-gray-600 italic block">Sem registros</span>}
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <div className="overflow-x-auto custom-scrollbar">
-                                <table className="w-full text-left border-collapse">
-                                    <tbody className="divide-y divide-gray-800/30">
-                                        {[
-                                            { label: 'Total de Pontos', key: 'pts', color: 'text-yellow-500' },
-                                            { label: 'Média de Pontos', key: 'avgPts', color: 'text-white' },
-                                            { label: 'Total de Booyahs', key: 'b', color: 'text-orange-500' },
-                                            { label: 'Total de Abates', key: 'abts', color: 'text-red-500' },
-                                            { label: 'Média de Abates', key: 'avgAbts', color: 'text-white' },
-                                            { label: 'Média Pts Posição', key: 'avgPtsc', color: 'text-blue-400' },
-                                            { label: '% Abates no Score', key: 'percentAbts', color: 'text-gray-400' },
-                                            { label: '% Posição no Score', key: 'percentPos', color: 'text-gray-400' },
-                                        ].map((row, rIdx) => {
-                                            const valA = filteredTeamStats.find(s => s.name === filters.team[0])?.[row.key as keyof TeamStats] as number || 0;
-                                            const valB = filteredTeamStats.find(s => s.name === compareTeamB)?.[row.key as keyof TeamStats] as number || 0;
-                                            const isBetterA = valA > valB;
-                                            const isBetterB = valB > valA;
-
-                                            return (
-                                                <tr key={rIdx} className="hover:bg-white/[0.02] transition-colors">
-                                                    <td className={`px-8 py-4 text-center font-black ${isBetterA ? 'text-yellow-500 scale-110' : 'text-gray-600'} transition-all`}>
-                                                        {valA}{(row.key.includes('percent')) ? '%' : ''}
-                                                    </td>
-                                                    <td className="px-8 py-4 text-center text-[10px] font-black text-white uppercase tracking-widest bg-black/20 italic">
-                                                        {row.label}
-                                                    </td>
-                                                    <td className={`px-8 py-4 text-center font-black ${isBetterB ? 'text-blue-500 scale-110' : 'text-gray-600'} transition-all`}>
-                                                        {valB}{(row.key.includes('percent')) ? '%' : ''}
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
+                        ))}
                     </div>
                 ) : (
                     <div className="bg-[#1a1a1a] rounded-[50px] border-2 border-dashed border-gray-800 py-32 flex flex-col items-center justify-center space-y-6">
