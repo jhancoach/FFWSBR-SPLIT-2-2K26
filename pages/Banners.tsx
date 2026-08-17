@@ -73,10 +73,11 @@ const PlayerStatCard = ({ title, data, statKey, avgKey, statLabel, color }: any)
 };
 
 const Banners: React.FC<BannersProps> = ({ data }) => {
-  const [activeTab, setActiveTab] = useState<'teams' | 'players' | 'team_perf' | 'map_kings' | 'drop_kings'>('teams');
+  const [activeTab, setActiveTab] = useState<'teams' | 'players' | 'team_perf' | 'map_kings' | 'drop_kings' | 'map_kings_stories' | 'drop_kings_stories'>('teams');
   const [selectedMapOrDrop, setSelectedMapOrDrop] = useState<string>('');
   const [selectedTeam, setSelectedTeam] = useState<string>('');
   const [selectedRd, setSelectedRd] = useState<string>('all');
+  const [storiesSubtype, setStoriesSubtype] = useState<string>('highlights');
   const bannerRef = useRef<HTMLDivElement>(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -109,9 +110,26 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
 
       
   const kingsData = useMemo(() => {
-    if (activeTab !== "map_kings" && activeTab !== "drop_kings") return [];
+    if (activeTab !== "map_kings" && activeTab !== "drop_kings" && activeTab !== "map_kings_stories" && activeTab !== "drop_kings_stories") return [];
 
     const processGroup = (keyExtractor: (p: any) => string) => {
+        // Pre-calculate deaths from killFeed for this grouping
+        const groupDeathsMap = new Map<string, Map<string, number>>();
+        data.killFeed.forEach(f => {
+            const key = keyExtractor(f);
+            if (!key) return;
+            
+            const victim = f.VITIMA;
+            if (!victim) return;
+            const normalizedVictim = victim.trim().toUpperCase();
+            
+            if (!groupDeathsMap.has(key)) {
+                groupDeathsMap.set(key, new Map());
+            }
+            const playerDeaths = groupDeathsMap.get(key)!;
+            playerDeaths.set(normalizedVictim, (playerDeaths.get(normalizedVictim) || 0) + 1);
+        });
+
         const groupMap = new Map<string, Map<string, any>>();
         
         data.players.forEach(p => {
@@ -142,7 +160,8 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
                     mvp: 0,
                     matches: 0,
                     zeroKills: 0,
-                    withKills: 0
+                    withKills: 0,
+                    deaths: 0
                 });
             }
             
@@ -162,11 +181,21 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
             else stats.withKills += 1;
         });
 
+        // Set computed deaths to each player in the groupMap
+        groupMap.forEach((playerMap, groupName) => {
+            const deathsForThisGroup = groupDeathsMap.get(groupName) || new Map<string, number>();
+            playerMap.forEach((stats, normalizedPName) => {
+                stats.deaths = deathsForThisGroup.get(normalizedPName) || 0;
+            });
+        });
+
         return Array.from(groupMap.entries()).map(([groupName, playersMap]) => {
             const players = Array.from(playersMap.values()).map(p => ({
                 ...p,
                 avgKills: p.matches > 0 ? (p.kills / p.matches) : 0,
                 avgDamage: p.matches > 0 ? (p.damage / p.matches) : 0,
+                avgHs: p.matches > 0 ? (p.hs / p.matches) : 0,
+                avgKnocks: p.matches > 0 ? (p.knocks / p.matches) : 0,
                 zeroRate: p.matches > 0 ? (p.zeroKills / p.matches) * 100 : 0
             })).sort((a, b) => b.kills - a.kills || b.avgKills - a.avgKills);
 
@@ -182,7 +211,8 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
                 topZero: getTop((a, b) => b.zeroKills - a.zeroKills),
                 topRevives: getTop((a, b) => b.reviveu - a.reviveu),
                 topAlliesRevived: getTop((a, b) => b.aliadosRevividos - a.aliadosRevividos),
-                topMvp: getTop((a, b) => b.mvp - a.mvp)
+                topMvp: getTop((a, b) => b.mvp - a.mvp),
+                topDeaths: getTop((a, b) => b.deaths - a.deaths)
             };
         }).sort((a, b) => {
            const numA = parseInt(a.name.replace(/\D/g, ""));
@@ -192,12 +222,12 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
         });
     };
 
-    if (activeTab === "map_kings") {
+    if (activeTab === "map_kings" || activeTab === "map_kings_stories") {
         return processGroup(p => (p.MAPA || "").trim().toUpperCase());
     } else {
         return processGroup(p => (p.Q || "").trim().toUpperCase());
     }
-  }, [data.players, activeTab, data.playersDimension, data.teamsReference]);
+  }, [data.players, data.killFeed, activeTab, data.playersDimension, data.teamsReference]);
 
   useMemo(() => {
     if (kingsData.length > 0 && (!selectedMapOrDrop || !kingsData.find(g => g.name === selectedMapOrDrop))) {
@@ -378,18 +408,31 @@ const handleDownload = async () => {
     await new Promise(r => setTimeout(r, 100)); // allow DOM to update
 
     try {
+      const isFeed = activeTab === 'map_kings' || activeTab === 'drop_kings';
+      const canvasHeight = isFeed ? 1350 : 1920;
+
       const canvas = await html2canvas(bannerRef.current, {
         scale: 2, // Melhor qualidade
         backgroundColor: '#000000',
         useCORS: true,
         width: 1080,
-        height: 1920,
+        height: canvasHeight,
         windowWidth: 1080,
-        windowHeight: 1920,
+        windowHeight: canvasHeight,
       });
       const dataUrl = canvas.toDataURL('image/png');
       const link = document.createElement('a');
-      link.download = (activeTab === 'map_kings' || activeTab === 'drop_kings') ? `Post_Instagram_${activeTab}_${selectedMapOrDrop.replace(/\//g, '-')}.png` : `Stories_Banner_${activeTab}_${selectedRd}.png`;
+      
+      let filename = "";
+      if (activeTab === 'map_kings' || activeTab === 'drop_kings') {
+        filename = `Post_Instagram_${activeTab}_${selectedMapOrDrop.replace(/\//g, '-')}.png`;
+      } else if (activeTab === 'map_kings_stories' || activeTab === 'drop_kings_stories') {
+        filename = `Stories_Instagram_${activeTab}_${storiesSubtype}_${selectedMapOrDrop.replace(/\//g, '-')}.png`;
+      } else {
+        filename = `Stories_Banner_${activeTab}_${selectedRd}.png`;
+      }
+
+      link.download = filename;
       link.href = dataUrl;
       link.click();
     } catch (error) {
@@ -414,100 +457,176 @@ const handleDownload = async () => {
           <p className="text-gray-400 text-sm mt-1">Gere banners para Instagram Stories e Feed com os destaques.</p>
         </div>
         
-        <div className="flex items-center gap-4 w-full md:w-auto">
-          <div className="flex bg-black p-1 rounded-xl border border-white/10 shrink-0">
-            <button
-              onClick={() => setActiveTab('teams')}
-              className={`px-4 py-2 rounded-lg font-bold text-sm uppercase tracking-wider transition-all ${
-                activeTab === 'teams' ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              Top 3 (Stories)
-            </button>
-            <button
-              onClick={() => setActiveTab('players')}
-              className={`px-4 py-2 rounded-lg font-bold text-sm uppercase tracking-wider transition-all ${
-                activeTab === 'players' ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              Top Jogadores (Stories)
-            </button>
-            <button
-              onClick={() => setActiveTab('team_perf')}
-              className={`px-4 py-2 rounded-lg font-bold text-sm uppercase tracking-wider transition-all ${
-                activeTab === 'team_perf' ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              Por Equipe (Stories)
-            </button>
-            <button
-              onClick={() => setActiveTab('map_kings')}
-              className={`px-4 py-2 rounded-lg font-bold text-sm uppercase tracking-wider transition-all ${
-                activeTab === 'map_kings' ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              Reis do Mapa (Feed)
-            </button>
-            <button
-              onClick={() => setActiveTab('drop_kings')}
-              className={`px-4 py-2 rounded-lg font-bold text-sm uppercase tracking-wider transition-all ${
-                activeTab === 'drop_kings' ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              Reis da Queda (Feed)
-            </button>
+        <div className="flex flex-col xl:flex-row xl:items-end flex-wrap gap-4 w-full lg:w-auto">
+          {/* Tab Categories */}
+          <div className="flex flex-col md:flex-row gap-4">
+            {/* Stories Category */}
+            <div className="flex flex-col gap-1.5">
+              <span className="text-gray-500 font-bold uppercase tracking-widest text-[11px]">Stories (1080x1920)</span>
+              <div className="flex flex-wrap bg-black p-1 rounded-xl border border-white/10 gap-1">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('teams')}
+                  className={`px-3 py-1.5 rounded-lg font-bold text-xs uppercase tracking-wider transition-all ${
+                    activeTab === 'teams' ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Top 3
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('players')}
+                  className={`px-3 py-1.5 rounded-lg font-bold text-xs uppercase tracking-wider transition-all ${
+                    activeTab === 'players' ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Top Jogadores
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('team_perf')}
+                  className={`px-3 py-1.5 rounded-lg font-bold text-xs uppercase tracking-wider transition-all ${
+                    activeTab === 'team_perf' ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Por Equipe
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('map_kings_stories')}
+                  className={`px-3 py-1.5 rounded-lg font-bold text-xs uppercase tracking-wider transition-all ${
+                    activeTab === 'map_kings_stories' ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Reis do Mapa
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('drop_kings_stories')}
+                  className={`px-3 py-1.5 rounded-lg font-bold text-xs uppercase tracking-wider transition-all ${
+                    activeTab === 'drop_kings_stories' ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Reis da Queda
+                </button>
+              </div>
+            </div>
+
+            {/* Feed Category */}
+            <div className="flex flex-col gap-1.5">
+              <span className="text-gray-500 font-bold uppercase tracking-widest text-[11px]">Feed (1080x1350)</span>
+              <div className="flex flex-wrap bg-black p-1 rounded-xl border border-white/10 gap-1">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('map_kings')}
+                  className={`px-3 py-1.5 rounded-lg font-bold text-xs uppercase tracking-wider transition-all ${
+                    activeTab === 'map_kings' ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Reis do Mapa
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('drop_kings')}
+                  className={`px-3 py-1.5 rounded-lg font-bold text-xs uppercase tracking-wider transition-all ${
+                    activeTab === 'drop_kings' ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Reis da Queda
+                </button>
+              </div>
+            </div>
           </div>
 
-          
-          {(activeTab === 'map_kings' || activeTab === 'drop_kings') && (
-            <div className="flex flex-col gap-2">
-              <label className="text-gray-400 font-bold uppercase tracking-widest text-sm">Selecione o {activeTab === 'map_kings' ? 'Mapa' : 'Queda'}</label>
-              <select 
-                value={selectedMapOrDrop}
-                onChange={(e) => setSelectedMapOrDrop(e.target.value)}
-                className="bg-black border border-white/10 text-white rounded-xl px-4 py-3 font-bold uppercase"
-              >
-                {kingsData.map(g => (
-                  <option key={g.name} value={g.name}>{g.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-    {activeTab === 'team_perf' && (
-            <select
-              value={selectedTeam}
-              onChange={(e) => setSelectedTeam(e.target.value)}
-              className="bg-black border border-white/10 rounded-xl px-4 py-3 text-white font-bold focus:border-yellow-500 outline-none w-full md:w-48"
-            >
-              <option value="" disabled>Selecione a Equipe</option>
-              {availableTeams.map(t => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
-          )}
+          <div className="flex flex-wrap items-end gap-3 flex-1 md:flex-initial">
+            {/* Map/Drop Selector */}
+            {(activeTab === 'map_kings' || activeTab === 'drop_kings' || activeTab === 'map_kings_stories' || activeTab === 'drop_kings_stories') && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-gray-500 font-bold uppercase tracking-widest text-[11px] leading-none">Mapa/Queda</span>
+                <select 
+                  value={selectedMapOrDrop}
+                  onChange={(e) => setSelectedMapOrDrop(e.target.value)}
+                  className="bg-black border border-white/10 text-white rounded-xl px-3 py-2.5 font-bold uppercase text-xs"
+                >
+                  {kingsData.map(g => (
+                    <option key={g.name} value={g.name}>{g.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
-          {activeTab !== 'map_kings' && activeTab !== 'drop_kings' && (
-            <select
-              value={selectedRd}
-              onChange={(e) => setSelectedRd(e.target.value)}
-              className="bg-black border border-white/10 rounded-xl px-4 py-3 text-white font-bold focus:border-yellow-500 outline-none w-full md:w-48"
-            >
-              <option value="" disabled>Selecione a Rodada</option>
-              <option value="all">Geral (Todas)</option>
-              {availableRds.map(rd => (
-                <option key={rd} value={rd}>Rodada {rd}</option>
-              ))}
-            </select>
-          )}
+            {/* Stories Subtype Model Selector */}
+            {(activeTab === 'map_kings_stories' || activeTab === 'drop_kings_stories') && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-gray-500 font-bold uppercase tracking-widest text-[11px] leading-none">Modelo Stories</span>
+                <select 
+                  value={storiesSubtype}
+                  onChange={(e) => setStoriesSubtype(e.target.value)}
+                  className="bg-black border border-white/10 text-white rounded-xl px-3 py-2.5 font-bold uppercase text-xs"
+                >
+                  <option value="highlights">Destaques Completos</option>
+                  <option value="matches">Partidas e Médias</option>
+                  <option value="damage">Maiores Danos</option>
+                  <option value="avg_kills">Mais Média de Kills</option>
+                  <option value="knocks">Mais Derruba</option>
+                  <option value="hs">Mais HS e Médias</option>
+                  <option value="zero_kills">Mais Zera</option>
+                  <option value="revives">Mais Revive</option>
+                  <option value="allies_revived">Mais Aliados Revive</option>
+                  <option value="mvp">Mais MVP</option>
+                  <option value="deaths">Mais Morre</option>
+                </select>
+              </div>
+            )}
 
-          <button
-            onClick={handleDownload}
-            disabled={isGenerating || ((activeTab !== 'map_kings' && activeTab !== 'drop_kings') && !selectedRd) || (activeTab === 'team_perf' && !selectedTeam) || ((activeTab === 'map_kings' || activeTab === 'drop_kings') && !selectedMapOrDrop)}
-            className="flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-400 hover:to-amber-500 text-black font-black uppercase rounded-xl transition-all shadow-[0_0_20px_rgba(234,179,8,0.3)] disabled:opacity-50 w-full md:w-auto shrink-0"
-          >
-            <Download size={20} />
-            {isGenerating ? 'Gerando...' : 'Baixar'}
-          </button>
+            {activeTab === 'team_perf' && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-gray-500 font-bold uppercase tracking-widest text-[11px] leading-none">Equipe</span>
+                <select
+                  value={selectedTeam}
+                  onChange={(e) => setSelectedTeam(e.target.value)}
+                  className="bg-black border border-white/10 rounded-xl px-3 py-2.5 text-white font-bold focus:border-yellow-500 outline-none w-40 text-xs uppercase"
+                >
+                  <option value="" disabled>Equipe</option>
+                  {availableTeams.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {activeTab !== 'map_kings' && activeTab !== 'drop_kings' && activeTab !== 'map_kings_stories' && activeTab !== 'drop_kings_stories' && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-gray-500 font-bold uppercase tracking-widest text-[11px] leading-none">Rodada</span>
+                <select
+                  value={selectedRd}
+                  onChange={(e) => setSelectedRd(e.target.value)}
+                  className="bg-black border border-white/10 rounded-xl px-3 py-2.5 text-white font-bold focus:border-yellow-500 outline-none w-40 text-xs"
+                >
+                  <option value="" disabled>Rodada</option>
+                  <option value="all">Geral (Todas)</option>
+                  {availableRds.map(rd => (
+                    <option key={rd} value={rd}>Rodada {rd}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleDownload}
+              disabled={
+                isGenerating || 
+                ((activeTab !== 'map_kings' && activeTab !== 'drop_kings' && activeTab !== 'map_kings_stories' && activeTab !== 'drop_kings_stories') && !selectedRd) || 
+                (activeTab === 'team_perf' && !selectedTeam) || 
+                ((activeTab === 'map_kings' || activeTab === 'drop_kings' || activeTab === 'map_kings_stories' || activeTab === 'drop_kings_stories') && !selectedMapOrDrop)
+              }
+              className="flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-400 hover:to-amber-500 text-black font-black uppercase rounded-xl transition-all shadow-[0_0_20px_rgba(234,179,8,0.3)] disabled:opacity-50 shrink-0 text-xs h-[38px] md:h-auto"
+            >
+              <Download size={14} />
+              {isGenerating ? 'Gerando...' : 'Baixar'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -758,6 +877,229 @@ const handleDownload = async () => {
                 )}
               </div>
 
+            ) : (activeTab === 'map_kings_stories' || activeTab === 'drop_kings_stories') && kingsData.length > 0 && selectedMapOrDrop ? (
+              (() => {
+                const group = kingsData.find(g => g.name === selectedMapOrDrop);
+                if (!group) return null;
+                const type = activeTab === 'map_kings_stories' ? 'map' : 'drop';
+                
+                let title = "";
+                let playersList = [...group.players];
+                let valueLabel = "";
+                let valueExtractor = (p: any): string => "";
+                let subValueExtractor = (p: any): string => "";
+
+                switch (storiesSubtype) {
+                  case 'matches':
+                    title = `REIS DE ${group.name}\nPARTIDAS E MÉDIAS`;
+                    playersList.sort((a, b) => b.matches - a.matches || b.kills - a.kills);
+                    valueLabel = "Partidas";
+                    valueExtractor = (p) => `${p.matches}`;
+                    subValueExtractor = (p) => `Média Kills: ${p.avgKills.toFixed(2)}`;
+                    break;
+                  case 'damage':
+                    title = `REIS DE ${group.name}\nMAIORES DANOS`;
+                    playersList.sort((a, b) => b.damage - a.damage);
+                    valueLabel = "Dano";
+                    valueExtractor = (p) => `${p.damage}`;
+                    subValueExtractor = (p) => `Média: ${p.avgDamage.toFixed(0)}`;
+                    break;
+                  case 'avg_kills':
+                    title = `REIS DE ${group.name}\nMÉDIA DE KILLS`;
+                    playersList.sort((a, b) => b.avgKills - a.avgKills || b.kills - a.kills);
+                    valueLabel = "Média";
+                    valueExtractor = (p) => `${p.avgKills.toFixed(2)}`;
+                    subValueExtractor = (p) => `Total Kills: ${p.kills}`;
+                    break;
+                  case 'knocks':
+                    title = `REIS DE ${group.name}\nMAIS DERRUBA`;
+                    playersList.sort((a, b) => b.knocks - a.knocks);
+                    valueLabel = "Deitados";
+                    valueExtractor = (p) => `${p.knocks}`;
+                    subValueExtractor = (p) => `Média: ${p.avgKnocks.toFixed(2)}`;
+                    break;
+                  case 'hs':
+                    title = `REIS DE ${group.name}\nMAIS HEADSHOTS`;
+                    playersList.sort((a, b) => b.hs - a.hs);
+                    valueLabel = "HS";
+                    valueExtractor = (p) => `${p.hs}`;
+                    subValueExtractor = (p) => `Média: ${p.avgHs.toFixed(2)}`;
+                    break;
+                  case 'zero_kills':
+                    title = `REIS DE ${group.name}\nMAIS ZERA`;
+                    playersList.sort((a, b) => b.zeroKills - a.zeroKills);
+                    valueLabel = "Zeradão";
+                    valueExtractor = (p) => `${p.zeroKills}`;
+                    subValueExtractor = (p) => `Taxa: ${p.zeroRate.toFixed(1)}%`;
+                    break;
+                  case 'revives':
+                    title = `REIS DE ${group.name}\nMAIS REVIVEU`;
+                    playersList.sort((a, b) => b.reviveu - a.reviveu);
+                    valueLabel = "Revives";
+                    valueExtractor = (p) => `${p.reviveu}`;
+                    subValueExtractor = (p) => `Média: ${(p.reviveu / p.matches).toFixed(2)}`;
+                    break;
+                  case 'allies_revived':
+                    title = `REIS DE ${group.name}\nALIADOS REVIVIDOS`;
+                    playersList.sort((a, b) => b.aliadosRevividos - a.aliadosRevividos);
+                    valueLabel = "Aliados";
+                    valueExtractor = (p) => `${p.aliadosRevividos}`;
+                    subValueExtractor = (p) => `Média: ${(p.aliadosRevividos / p.matches).toFixed(2)}`;
+                    break;
+                  case 'mvp':
+                    title = `REIS DE ${group.name}\nMAIS MVPs`;
+                    playersList.sort((a, b) => b.mvp - a.mvp);
+                    valueLabel = "MVPs";
+                    valueExtractor = (p) => `${p.mvp}`;
+                    subValueExtractor = (p) => `Partidas: ${p.matches}`;
+                    break;
+                  case 'deaths':
+                    title = `REIS DE ${group.name}\nMAIS MORREU`;
+                    playersList.sort((a, b) => b.deaths - a.deaths);
+                    valueLabel = "Mortes";
+                    valueExtractor = (p) => `${p.deaths}`;
+                    subValueExtractor = (p) => `Média: ${(p.deaths / p.matches).toFixed(2)}`;
+                    break;
+                  case 'highlights':
+                  default:
+                    title = `TOP 5 REIS DO ${type === 'map' ? 'MAPA' : 'QUEDA'}`;
+                    playersList.sort((a, b) => b.kills - a.kills || b.avgKills - a.avgKills);
+                    break;
+                }
+
+                const top5 = playersList.slice(0, 5);
+
+                if (storiesSubtype === 'highlights') {
+                  return (
+                    <div className="absolute inset-0 z-10 flex flex-col bg-[#0a0a0a] px-10 pt-16 pb-8 justify-between">
+                      {/* Header */}
+                      <div className="flex flex-col items-center">
+                        <h1 className="text-[52px] font-black text-white uppercase italic tracking-tighter leading-none text-center">
+                          TOP 5 REIS DO {type === 'map' ? 'MAPA' : 'QUEDA'}
+                        </h1>
+                        <div className="mt-2 px-6 py-1.5 bg-yellow-500 rounded-xl">
+                          <span className="text-[32px] font-black text-black uppercase tracking-wider">{group.name}</span>
+                        </div>
+                      </div>
+
+                      {/* Top 5 list */}
+                      <div className="flex flex-col gap-3 mt-6">
+                        <h2 className="text-[26px] font-black text-yellow-500 uppercase tracking-widest border-b-2 border-yellow-500/30 pb-2 mb-1">Ranking de Abates</h2>
+                        {top5.map((p, idx) => (
+                          <div key={idx} className="flex items-center gap-3 bg-white/5 rounded-xl py-2 px-3 border border-white/10">
+                            <div className="w-[45px] h-[45px] flex-shrink-0 bg-black/50 rounded-lg flex items-center justify-center font-black text-[22px] text-gray-500 border border-white/5">
+                              {idx === 0 ? <Crown size={24} className="text-yellow-500" /> : idx + 1}
+                            </div>
+                            {p.playerImg ? (
+                              <img src={p.playerImg} alt="" crossOrigin="anonymous" className={`${idx === 0 ? 'w-[65px] h-[65px] border-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.4)]' : 'w-[55px] h-[55px] border-gray-800'} flex-shrink-0 rounded-full border-2 object-cover`} />
+                            ) : (
+                              <div className="w-[55px] h-[55px] flex-shrink-0 rounded-full bg-gray-900 border-2 border-gray-800 flex items-center justify-center">
+                                <span className="text-gray-600 text-xs">N/A</span>
+                              </div>
+                            )}
+                            <div className="flex-1 flex flex-col justify-center min-w-0">
+                              <span className={`font-black uppercase italic leading-none truncate ${idx === 0 ? 'text-yellow-500 text-[28px]' : 'text-white text-[24px]'}`}>{p.name}</span>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                {p.teamImg && <img src={p.teamImg} alt="" crossOrigin="anonymous" className="w-5 h-5 object-contain opacity-75" />}
+                                <span className="text-[14px] font-bold text-gray-400 uppercase tracking-wider">{p.team}</span>
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-center justify-center w-[80px]">
+                              <span className="text-[28px] font-black text-yellow-500 leading-none">{p.kills}</span>
+                              <span className="text-[12px] font-bold text-gray-500 uppercase">Kills</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* 3x3 Highlights Grid */}
+                      <div className="flex flex-col gap-2 mt-4">
+                        <h2 className="text-[26px] font-black text-yellow-500 uppercase tracking-widest border-b-2 border-yellow-500/30 pb-2 mb-1">Destaques</h2>
+                        <div className="grid grid-cols-3 gap-2">
+                          {[
+                            { title: "Maior Dano", player: group.topDamage, value: group.topDamage?.damage, icon: <Flame className="text-red-500" size={18} />, color: "bg-red-500/10 border-red-500/20 text-red-500" },
+                            { title: "Média Kills", player: group.topAvgKills, value: group.topAvgKills?.avgKills.toFixed(2), icon: <Crosshair className="text-green-500" size={18} />, color: "bg-green-500/10 border-green-500/20 text-green-500" },
+                            { title: "Mais Derruba", player: group.topKnocks, value: group.topKnocks?.knocks, icon: <AlertTriangle className="text-orange-500" size={18} />, color: "bg-orange-500/10 border-orange-500/20 text-orange-500" },
+                            { title: "Mais HS", player: group.topHs, value: group.topHs?.hs, icon: <TargetIcon className="text-yellow-500" size={18} />, color: "bg-yellow-500/10 border-yellow-500/20 text-yellow-500" },
+                            { title: "Mais Zera", player: group.topZero, value: `${group.topZero?.zeroKills}`, icon: <Skull className="text-gray-400" size={18} />, color: "bg-gray-500/10 border-gray-500/20 text-gray-400" },
+                            { title: "Mais Revive", player: group.topRevives, value: group.topRevives?.reviveu, icon: <Activity className="text-cyan-500" size={18} />, color: "bg-cyan-500/10 border-cyan-500/20 text-cyan-500" },
+                            { title: "Aliados Rev", player: group.topAlliesRevived, value: group.topAlliesRevived?.aliadosRevividos, icon: <Shield className="text-emerald-500" size={18} />, color: "bg-emerald-500/10 border-emerald-500/20 text-emerald-500" },
+                            { title: "Mais MVP", player: group.topMvp, value: group.topMvp?.mvp, icon: <Star className="text-purple-500" size={18} />, color: "bg-purple-500/10 border-purple-500/20 text-purple-500" },
+                            { title: "Mais Morre", player: group.topDeaths, value: group.topDeaths?.deaths, icon: <Skull className="text-rose-500" size={18} />, color: "bg-rose-500/10 border-rose-500/20 text-rose-500" },
+                          ].map((h, i) => (
+                            <div key={i} className="flex flex-col p-2.5 rounded-xl border border-white/5 bg-black/40 min-w-0 justify-between h-[120px]">
+                              <div className="flex items-center gap-1.5 border-b border-white/5 pb-1">
+                                <div className={`p-1.5 rounded-lg ${h.color} border flex-shrink-0`}>
+                                  {h.icon}
+                                </div>
+                                <span className="text-[11px] font-black text-gray-400 uppercase tracking-wider truncate flex-1 leading-none">{h.title}</span>
+                              </div>
+                              <div className="flex flex-col mt-1.5 justify-center">
+                                <span className="text-[18px] font-black text-white italic uppercase truncate leading-none mb-0.5">{h.player?.name || "-"}</span>
+                                <span className={`text-[20px] font-black italic leading-none ${h.color.split(' ')[2]}`}>
+                                  {h.value || 0}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Footer */}
+                      <div className="mt-4 text-center text-gray-500 text-lg font-bold uppercase tracking-widest border-t border-white/5 pt-3">
+                        FFWS BR 2026 - SPLIT 2
+                      </div>
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div className="absolute inset-0 z-10 flex flex-col bg-[#0a0a0a] px-12 pt-20 pb-12 justify-between">
+                      {/* Header */}
+                      <div className="flex flex-col items-center">
+                        <span className="text-[26px] font-black text-yellow-500 uppercase tracking-[0.3em] leading-none mb-2">TOP 5</span>
+                        <h1 className="text-[55px] font-black text-white uppercase italic tracking-tighter leading-none text-center whitespace-pre-line">
+                          {title}
+                        </h1>
+                        <div className="h-1.5 w-32 bg-yellow-500 mt-4 rounded-full"></div>
+                      </div>
+
+                      {/* Top 5 list */}
+                      <div className="flex-1 flex flex-col justify-center gap-6 my-10">
+                        {top5.map((p, idx) => (
+                          <div key={idx} className="flex items-center gap-6 bg-white/5 rounded-3xl p-5 border border-white/10 hover:bg-white/10 transition-all">
+                            <div className="w-[70px] h-[70px] flex-shrink-0 bg-black/60 rounded-2xl flex items-center justify-center font-black text-[35px] text-gray-500 border border-white/5 shadow-inner">
+                              {idx === 0 ? <Crown size={38} className="text-yellow-500" /> : idx + 1}
+                            </div>
+                            {p.playerImg ? (
+                              <img src={p.playerImg} alt="" crossOrigin="anonymous" className={`${idx === 0 ? 'w-[110px] h-[110px] border-yellow-500 shadow-[0_0_20px_rgba(234,179,8,0.5)]' : 'w-[90px] h-[90px] border-gray-800'} flex-shrink-0 rounded-full border-4 object-cover`} />
+                            ) : (
+                              <div className="w-[90px] h-[90px] flex-shrink-0 rounded-full bg-gray-900 border-4 border-gray-800 flex items-center justify-center">
+                                <span className="text-gray-600 font-bold">N/A</span>
+                              </div>
+                            )}
+                            <div className="flex-1 flex flex-col justify-center min-w-0">
+                              <span className={`font-black uppercase italic leading-none truncate ${idx === 0 ? 'text-yellow-500 text-[42px] drop-shadow-[0_0_10px_rgba(234,179,8,0.3)]' : 'text-white text-[34px]'}`}>{p.name}</span>
+                              <div className="flex items-center gap-3 mt-2">
+                                {p.teamImg && <img src={p.teamImg} alt="" crossOrigin="anonymous" className="w-6 h-6 object-contain opacity-75" />}
+                                <span className="text-[18px] font-bold text-gray-400 uppercase tracking-widest">{p.team}</span>
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end justify-center pr-2">
+                              <span className="text-[52px] font-black text-yellow-500 leading-none">{valueExtractor(p)}</span>
+                              <span className="text-[15px] font-bold text-gray-500 uppercase mt-1 tracking-wider whitespace-nowrap">{subValueExtractor(p)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Footer */}
+                      <div className="text-center text-gray-500 text-2xl font-bold uppercase tracking-widest border-t border-white/5 pt-6">
+                        FFWS BR 2026 - SPLIT 2
+                      </div>
+                    </div>
+                  );
+                }
+              })()
             ) : (activeTab === 'map_kings' || activeTab === 'drop_kings') && kingsData.length > 0 && selectedMapOrDrop ? (
               (() => {
                 const group = kingsData.find(g => g.name === selectedMapOrDrop);
@@ -776,7 +1118,7 @@ const handleDownload = async () => {
                     </div>
 
                     <div className="flex-1 flex justify-between px-10 pt-16 pb-10 z-10">
-                        {/* Left Side: Top 10 Ranking */}
+                        {/* Left Side: Top 5 Ranking */}
                         <div className="w-[540px] flex flex-col gap-8 justify-center pb-0">
                             <h2 className="text-[35px] font-black text-yellow-500 uppercase tracking-widest border-b-4 border-yellow-500/30 pb-4 mb-2">Ranking de Abates</h2>
                             {top5.map((p, idx) => (
@@ -820,6 +1162,7 @@ const handleDownload = async () => {
                                     { title: "Mais Revive", player: group.topRevives, value: group.topRevives?.reviveu, icon: <Activity className="text-cyan-500" size={32} />, color: "bg-cyan-500/10 border-cyan-500/20 text-cyan-500" },
                                     { title: "Aliados Rev", player: group.topAlliesRevived, value: group.topAlliesRevived?.aliadosRevividos, icon: <Shield className="text-emerald-500" size={32} />, color: "bg-emerald-500/10 border-emerald-500/20 text-emerald-500" },
                                     { title: "Mais MVP", player: group.topMvp, value: group.topMvp?.mvp, icon: <Star className="text-purple-500" size={32} />, color: "bg-purple-500/10 border-purple-500/20 text-purple-500" },
+                                    { title: "Mais Morre", player: group.topDeaths, value: group.topDeaths?.deaths, icon: <Skull className="text-rose-500" size={32} />, color: "bg-rose-500/10 border-rose-500/20 text-rose-500" },
                                 ].map((h, i) => (
                                     <div key={i} className={`flex items-center gap-4 py-3 px-5 rounded-3xl border border-white/5 bg-black/40`}>
                                         <div className={`p-4 rounded-2xl ${h.color} border`}>
@@ -844,7 +1187,7 @@ const handleDownload = async () => {
 
 
             {/* Footer */}
-            {activeTab !== 'map_kings' && activeTab !== 'drop_kings' && (
+            {activeTab !== 'map_kings' && activeTab !== 'drop_kings' && activeTab !== 'map_kings_stories' && activeTab !== 'drop_kings_stories' && (
               <div className="mt-16 text-center text-gray-500 text-2xl font-bold uppercase tracking-widest border-t border-white/5 pt-8 relative z-10">
                 FFWS BR 2026 - SPLIT 2
               </div>
