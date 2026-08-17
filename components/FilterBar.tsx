@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Filter, X, Search, Check, ChevronDown } from 'lucide-react';
+import { Filter, X, Search, Check, ChevronDown, ChevronUp, Eye, EyeOff, SlidersHorizontal, RotateCcw } from 'lucide-react';
 
 interface FilterState {
   team: string[];
@@ -27,10 +27,11 @@ interface FilterBarProps {
     confrontations: string[];
     grupos: string[];
   };
+  defaultOpen?: boolean;
 }
 
-const FilterBar: React.FC<FilterBarProps> = ({ filters, setFilters, options }) => {
-  const [isOpen, setIsOpen] = useState(false);
+const FilterBar: React.FC<FilterBarProps> = ({ filters, setFilters, options, defaultOpen = true }) => {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
 
   const clearFilters = () => {
     setFilters({
@@ -46,33 +47,130 @@ const FilterBar: React.FC<FilterBarProps> = ({ filters, setFilters, options }) =
     });
   };
 
-  // Fix: Explicitly cast Object.values to string[][] to avoid the "property 'length' does not exist on type 'unknown'" error.
-  const hasActiveFilters = (Object.values(filters) as string[][]).some(f => f.length > 0);
+  const removeFilterItem = (key: keyof FilterState, value: string) => {
+    setFilters(prev => ({
+      ...prev,
+      [key]: prev[key].filter(item => item !== value)
+    }));
+  };
+
+  // Explicitly cast Object.values to string[][] to avoid typing issues
+  const activeFiltersCount = (Object.values(filters) as string[][]).reduce((acc, curr) => acc + curr.length, 0);
+  const hasActiveFilters = activeFiltersCount > 0;
+
+  const filterCategoryLabels: Record<keyof FilterState, string> = {
+    players: 'Jogador',
+    team: 'Equipe',
+    grupo: 'Grupo',
+    confrontation: 'Confronto',
+    map: 'Mapa',
+    rodada: 'Rodada',
+    queda: 'Queda',
+    weapon: 'Arma',
+    safe: 'Safe'
+  };
 
   return (
-    <div className="bg-[#1a1a1a] rounded-xl p-4 mb-6 border border-gray-800 shadow-md relative z-40">
-      <div className="flex justify-between items-center md:hidden mb-4" onClick={() => setIsOpen(!isOpen)}>
-        <span className="text-white font-bold flex items-center gap-2 uppercase tracking-wide"><Filter size={18}/> Filtros Avançados</span>
-        <span className="text-yellow-500 text-sm font-bold">{isOpen ? 'FECHAR' : 'ABRIR'}</span>
-      </div>
+    <div className="bg-[#1a1a1a] rounded-2xl p-4 md:p-5 mb-6 border border-gray-800 shadow-xl relative z-40 transition-all">
+      {/* Barra de Título com Botão de Ocultar/Mostrar e Limpar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-white/5">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-yellow-500/10 border border-yellow-500/30 rounded-xl text-yellow-500 flex items-center justify-center shadow-inner">
+            <SlidersHorizontal size={18} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-white font-black text-sm uppercase tracking-wider">
+                Filtros Avançados
+              </span>
+              {activeFiltersCount > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 text-[10px] font-black uppercase tracking-wider">
+                  {activeFiltersCount} {activeFiltersCount === 1 ? 'filtro ativo' : 'filtros ativos'}
+                </span>
+              )}
+            </div>
+            <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block mt-0.5">
+              Refine os dados por atletas, equipes, mapas, rodadas e quedas
+            </span>
+          </div>
+        </div>
 
-      <div className={`${isOpen ? 'block' : 'hidden'} md:grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-6`}>
-        <MultiSelect label="Jogadores" selected={filters.players} options={options.players} onChange={(v) => setFilters(p => ({...p, players: v}))} highlight />
-        <MultiSelect label="Equipes" selected={filters.team} options={options.teams} onChange={(v) => setFilters(p => ({...p, team: v}))} />
-        <MultiSelect label="Grupo" selected={filters.grupo} options={options.grupos} onChange={(v) => setFilters(p => ({...p, grupo: v}))} />
-        <MultiSelect label="Confrontos" selected={filters.confrontation} options={options.confrontations} onChange={(v) => setFilters(p => ({...p, confrontation: v}))} />
-        <MultiSelect label="Mapas" selected={filters.map} options={options.maps} onChange={(v) => setFilters(p => ({...p, map: v}))} />
-        <MultiSelect label="Rodadas (RD)" selected={filters.rodada} options={options.rounds} onChange={(v) => setFilters(p => ({...p, rodada: v}))} />
-        <MultiSelect label="Quedas (Q)" selected={filters.queda} options={options.quedas} onChange={(v) => setFilters(p => ({...p, queda: v}))} />
-        {options.weapons.length > 0 && <MultiSelect label="Armas" selected={filters.weapon} options={options.weapons} onChange={(v) => setFilters(p => ({...p, weapon: v}))} />}
-        {options.safes.length > 0 && <MultiSelect label="Safes" selected={filters.safe} options={options.safes} onChange={(v) => setFilters(p => ({...p, safe: v}))} />}
-      </div>
+        <div className="flex items-center gap-2">
+          {hasActiveFilters && (
+            <button 
+              onClick={clearFilters} 
+              className="px-3 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+              title="Remover todos os filtros aplicados"
+            >
+              <RotateCcw size={13} />
+              <span className="hidden sm:inline">Limpar Tudo</span>
+            </button>
+          )}
 
-      {hasActiveFilters && (
-        <div className="mt-6 flex justify-end border-t border-white/5 pt-4">
-          <button onClick={clearFilters} className="text-red-500 text-[10px] flex items-center gap-1 hover:text-red-400 font-black uppercase tracking-widest transition-colors">
-            <X size={14} /> Resetar Filtros
+          <button
+            onClick={() => setIsOpen(!isOpen)}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer active:scale-95 border ${
+              isOpen
+                ? 'bg-white/10 hover:bg-white/15 text-gray-200 border-white/10 shadow-sm'
+                : 'bg-yellow-500 hover:bg-yellow-400 text-black border-yellow-500 shadow-lg shadow-yellow-500/20'
+            }`}
+          >
+            {isOpen ? (
+              <>
+                <EyeOff size={14} />
+                <span>Ocultar Filtros</span>
+                <ChevronUp size={14} />
+              </>
+            ) : (
+              <>
+                <Eye size={14} />
+                <span>Mostrar Filtros</span>
+                <ChevronDown size={14} />
+              </>
+            )}
           </button>
+        </div>
+      </div>
+
+      {/* Resumo de Tags dos Filtros Ativos (especialmente útil quando o painel está recolhido) */}
+      {hasActiveFilters && (
+        <div className={`flex flex-wrap items-center gap-1.5 ${isOpen ? 'mt-3 pt-2 border-t border-white/5' : 'mt-3'}`}>
+          <span className="text-[9px] text-gray-500 font-black uppercase tracking-widest mr-1 flex items-center gap-1">
+            <Filter size={11} className="text-yellow-500" /> ATIVOS:
+          </span>
+          {(Object.entries(filters) as [keyof FilterState, string[]][]).map(([key, values]) =>
+            values.map(val => (
+              <span
+                key={`${key}-${val}`}
+                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-[10px] font-black uppercase tracking-wider"
+              >
+                <span className="text-gray-400 font-bold text-[9px]">{filterCategoryLabels[key]}:</span>
+                <span>{val}</span>
+                <button
+                  onClick={() => removeFilterItem(key, val)}
+                  className="hover:text-red-400 transition-colors ml-0.5 cursor-pointer"
+                  title={`Remover ${val}`}
+                >
+                  <X size={12} />
+                </button>
+              </span>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Grid de Seleção dos Filtros */}
+      {isOpen && (
+        <div className="mt-4 pt-2 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-5 animate-in fade-in duration-200">
+          <MultiSelect label="Jogadores" selected={filters.players} options={options.players} onChange={(v) => setFilters(p => ({...p, players: v}))} highlight />
+          <MultiSelect label="Equipes" selected={filters.team} options={options.teams} onChange={(v) => setFilters(p => ({...p, team: v}))} />
+          <MultiSelect label="Grupo" selected={filters.grupo} options={options.grupos} onChange={(v) => setFilters(p => ({...p, grupo: v}))} />
+          <MultiSelect label="Confrontos" selected={filters.confrontation} options={options.confrontations} onChange={(v) => setFilters(p => ({...p, confrontation: v}))} />
+          <MultiSelect label="Mapas" selected={filters.map} options={options.maps} onChange={(v) => setFilters(p => ({...p, map: v}))} />
+          <MultiSelect label="Rodadas (RD)" selected={filters.rodada} options={options.rounds} onChange={(v) => setFilters(p => ({...p, rodada: v}))} />
+          <MultiSelect label="Quedas (Q)" selected={filters.queda} options={options.quedas} onChange={(v) => setFilters(p => ({...p, queda: v}))} />
+          {options.weapons.length > 0 && <MultiSelect label="Armas" selected={filters.weapon} options={options.weapons} onChange={(v) => setFilters(p => ({...p, weapon: v}))} />}
+          {options.safes.length > 0 && <MultiSelect label="Safes" selected={filters.safe} options={options.safes} onChange={(v) => setFilters(p => ({...p, safe: v}))} />}
         </div>
       )}
     </div>

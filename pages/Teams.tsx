@@ -8,7 +8,7 @@ import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, LabelList, PieChart
 import FilterBar from '../components/FilterBar';
 import { formatTeamName, findTeamLogo } from '../utils/teamUtils';
 import { DropCompositionViewer } from '../components/DropComposition';
-import { getTeamDropComposition, getTeamCharacterSummary, getTeamCharacters, getTeamMapSummaryDetail } from '../utils/characterUtils';
+import { getTeamDropComposition, getTeamCharacterSummary, getTeamCharacters, getTeamMapSummaryDetail, isSameTeam } from '../utils/characterUtils';
 import { findDimImg } from '../utils/skillImages';
 
 interface TeamsProps {
@@ -68,12 +68,14 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
   const [showAllTeamsMap, setShowAllTeamsMap] = useState<boolean>(false);
   const [mapStatsSort, setMapStatsSort] = useState<{ field: 'totalKills' | 'avgKillsPerMatch' | 'totalMatches' | 'mapName'; direction: 'asc' | 'desc' }>({ field: 'totalKills', direction: 'desc' });
   const [mapRoundViewMode, setMapRoundViewMode] = useState<'matrix' | 'cards'>('matrix');
-  const [teamProfileSubTab, setTeamProfileSubTab] = useState<'all' | 'zeradas' | 'rounds' | 'mapKills' | 'safes'>('all');
+  const [teamProfileSubTab, setTeamProfileSubTab] = useState<'all' | 'zeradas' | 'rounds' | 'mapKills' | 'safes' | 'lineups'>('all');
   const [compareSubTab, setCompareSubTab] = useState<'overview' | 'zeradas' | 'mapKills' | 'safes'>('overview');
   const [showTeamDetails, setShowTeamDetails] = useState<boolean>(true);
   const [matrixViewMode, setMatrixViewMode] = useState<'both' | 'points' | 'kills'>('both');
   const [expandedMatrixCell, setExpandedMatrixCell] = useState<{ rd: string; q: string } | null>(null);
   const [expandedSafesMap, setExpandedSafesMap] = useState<Record<string, boolean>>({});
+  const [lineupSortBy, setLineupSortBy] = useState<'matches' | 'points' | 'kills' | 'booyahs' | 'avgPts' | 'avgKills'>('matches');
+  const [expandedLineupKey, setExpandedLineupKey] = useState<string | null>(null);
 
   const normalize = (val: string | undefined) => (val || '').trim().toUpperCase();
 
@@ -871,6 +873,176 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
       }
     };
   }, [filteredData.details, selectedTeamName]);
+
+  // LINEUPS (FORMAÇÕES) DA EQUIPE
+  const teamLineupsData = useMemo(() => {
+    const targetTeam = activeTeamName || selectedTeamName || (filters.team.length === 1 ? filters.team[0] : null);
+    if (!targetTeam) return null;
+
+    const parseNumber = (v: string | number | undefined) => {
+      if (typeof v === 'number') return isNaN(v) ? 0 : v;
+      if (!v) return 0;
+      const p = parseFloat(String(v).replace(',', '.'));
+      return isNaN(p) ? 0 : p;
+    };
+
+    // Pegamos todas as partidas (quedas) válidas que o time jogou
+    const teamMatches = filteredData.details.filter(d => {
+      if (!isSameTeam(d.TIME, targetTeam, data.teamsReference)) return false;
+      const hasMap = d.MAPA && d.MAPA.trim() !== "";
+      const hasPts = d.PTS !== "" && d.PTS !== undefined && d.PTS !== null;
+      const hasAbts = d.ABTS !== "" && d.ABTS !== undefined && d.ABTS !== null;
+      return hasMap && (hasPts || hasAbts);
+    });
+
+    const lineupsMap = new Map<string, {
+      id: string;
+      players: string[];
+      matches: number;
+      kills: number;
+      points: number;
+      ptsc: number;
+      booyahs: number;
+      zeroPts: number;
+      matchesList: {
+        rd: string;
+        q: string;
+        mapa: string;
+        confronto?: string;
+        pts: number;
+        kills: number;
+        ptsc: number;
+        pos: number;
+        booyah: boolean;
+      }[];
+    }>();
+
+    teamMatches.forEach(match => {
+      const rdClean = (match.RD || '').toString().replace(/\D/g, '');
+      const qClean = (match.Q || match.S || '').toString().replace(/\D/g, '');
+
+      const playerNamesSet = new Set<string>();
+
+      // 1. Prioridade: dados de Personagens/Loadout (que possui os 4 jogadores exatos por queda)
+      if (data.characters && data.characters.length > 0) {
+        data.characters.forEach(c => {
+          if (!c || !c.Player) return;
+          if (!isSameTeam(c.Time, targetTeam, data.teamsReference)) return;
+          const cRd = (c.Rd || c.RD || '').toString().replace(/\D/g, '');
+          const cQ = (c.Q || c.S || '').toString().replace(/\D/g, '');
+          if (cRd === rdClean && cQ === qClean) {
+            playerNamesSet.add(c.Player.trim());
+          }
+        });
+      }
+
+      // 2. Se não encontrou em characters, busca em players
+      if (playerNamesSet.size === 0 && data.players && data.players.length > 0) {
+        data.players.forEach(p => {
+          if (!p || !p.PLAYER) return;
+          if (!isSameTeam(p.TIME, targetTeam, data.teamsReference)) return;
+          const pRd = (p.RD || '').toString().replace(/\D/g, '');
+          const pQ = (p.Q || p.S || '').toString().replace(/\D/g, '');
+          if (pRd === rdClean && pQ === qClean) {
+            playerNamesSet.add(p.PLAYER.trim());
+          }
+        });
+      }
+
+      // 3. Fallback killFeed
+      if (playerNamesSet.size === 0 && data.killFeed && data.killFeed.length > 0) {
+        data.killFeed.forEach(k => {
+          const kRd = (k.RD || '').toString().replace(/\D/g, '');
+          const kQ = (k.Q || '').toString().replace(/\D/g, '');
+          if (kRd === rdClean && kQ === qClean) {
+            if (isSameTeam(k.TIME_ASSASSINO, targetTeam, data.teamsReference) && k.ASSASSINO) {
+              playerNamesSet.add(k.ASSASSINO.trim());
+            }
+            if (isSameTeam(k.TIME_VITIMA, targetTeam, data.teamsReference) && k.VITIMA) {
+              playerNamesSet.add(k.VITIMA.trim());
+            }
+          }
+        });
+      }
+
+      const playerNames = Array.from(playerNamesSet).sort((a, b) => a.localeCompare(b));
+      if (playerNames.length === 0) return;
+
+      const lineupKey = playerNames.join(' • ');
+
+      const pts = parseNumber(match.PTS);
+      const kills = parseNumber(match.ABTS);
+      const ptsc = parseNumber(match.PTSC);
+      const pos = parseInt(String(match.POS)) || 0;
+      const booyah = pos === 1 || parseNumber(match.B) === 1;
+
+      const matchRec = {
+        rd: match.RD || '1',
+        q: match.Q || '1',
+        mapa: match.MAPA || 'N/A',
+        confronto: match.CONFRONTO,
+        pts,
+        kills,
+        ptsc,
+        pos,
+        booyah
+      };
+
+      if (lineupsMap.has(lineupKey)) {
+        const existing = lineupsMap.get(lineupKey)!;
+        existing.matches += 1;
+        existing.kills += kills;
+        existing.points += pts;
+        existing.ptsc += ptsc;
+        if (booyah) existing.booyahs += 1;
+        if (pts === 0) existing.zeroPts += 1;
+        existing.matchesList.push(matchRec);
+      } else {
+        lineupsMap.set(lineupKey, {
+          id: lineupKey,
+          players: playerNames,
+          matches: 1,
+          kills,
+          points: pts,
+          ptsc,
+          booyahs: booyah ? 1 : 0,
+          zeroPts: pts === 0 ? 1 : 0,
+          matchesList: [matchRec]
+        });
+      }
+    });
+
+    const lineupsList = Array.from(lineupsMap.values()).map(l => {
+      const avgPts = l.matches > 0 ? parseFloat((l.points / l.matches).toFixed(2)) : 0;
+      const avgKills = l.matches > 0 ? parseFloat((l.kills / l.matches).toFixed(2)) : 0;
+      const winRate = l.matches > 0 ? parseFloat(((l.booyahs / l.matches) * 100).toFixed(1)) : 0;
+      return {
+        ...l,
+        avgPts,
+        avgKills,
+        winRate
+      };
+    });
+
+    if (lineupsList.length === 0) return null;
+
+    // Destaques
+    const mostMatches = [...lineupsList].sort((a, b) => b.matches - a.matches || b.points - a.points)[0];
+    const mostPoints = [...lineupsList].sort((a, b) => b.points - a.points || b.avgPts - a.avgPts)[0];
+    const mostKills = [...lineupsList].sort((a, b) => b.kills - a.kills || b.avgKills - a.avgKills)[0];
+    const mostBooyahs = [...lineupsList].sort((a, b) => b.booyahs - a.booyahs || b.winRate - a.winRate)[0];
+
+    return {
+      lineups: lineupsList,
+      totalLineupsCount: lineupsList.length,
+      highlights: {
+        mostMatches,
+        mostPoints,
+        mostKills,
+        mostBooyahs
+      }
+    };
+  }, [filteredData, data, activeTeamName, selectedTeamName, filters.team]);
 
   // Análise de Melhores e Piores Desempenhos por Onde a Safe Fechou por Mapa
   const safePerformanceByMapTeam = useMemo(() => {
@@ -2121,6 +2293,17 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                         >
                             <MapPin size={15} /> Melhores & Piores Safes por Mapa
                         </button>
+
+                        <button
+                            onClick={() => setTeamProfileSubTab('lineups')}
+                            className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                                teamProfileSubTab === 'lineups' 
+                                    ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 font-black' 
+                                    : 'bg-black/40 text-gray-400 hover:text-white hover:bg-white/5 border border-white/5'
+                            }`}
+                        >
+                            <Users size={15} /> Formações (Lineups)
+                        </button>
                     </div>
 
                     <div className="flex items-center gap-3">
@@ -3023,6 +3206,348 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                 );
                             })}
                         </div>
+                    </div>
+                )}
+
+                {showTeamDetails && (teamProfileSubTab === 'all' || teamProfileSubTab === 'lineups') && (
+                    <div className="bg-[#1a1a1a] p-8 rounded-3xl border border-indigo-900/40 shadow-2xl space-y-8">
+                        {/* Header da Seção */}
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-white/5 pb-6">
+                            <div>
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/30 rounded-2xl text-indigo-400 shadow-inner">
+                                        <Users size={24} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-2xl font-black text-white italic uppercase tracking-wider flex items-center gap-3">
+                                            FORMAÇÕES (LINEUPS) DA EQUIPE • <span className="text-indigo-400">{selectedTeamStats?.name || activeTeamName}</span>
+                                        </h3>
+                                        <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">
+                                            Análise dos quartetos de jogadores: quem jogou mais vezes, fez mais abates, conquistou mais booyahs e mais pontos
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {teamLineupsData && (
+                                <div className="flex items-center gap-2 self-stretch md:self-auto justify-end">
+                                    <span className="px-3.5 py-1.5 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 font-black text-xs uppercase tracking-wider">
+                                        {teamLineupsData.totalLineupsCount} {teamLineupsData.totalLineupsCount === 1 ? 'Formação Utilizada' : 'Formações Utilizadas'}
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+
+                        {teamLineupsData && teamLineupsData.lineups.length > 0 ? (
+                            <>
+                                {/* 4 CARDS DE DESTAQUES (OS MELHORES EM CADA CRITÉRIO) */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                    {/* 1. Mais Frequente */}
+                                    {teamLineupsData.highlights.mostMatches && (
+                                        <div className="bg-black/60 p-5 rounded-2xl border border-indigo-500/30 flex flex-col justify-between relative overflow-hidden shadow-lg group">
+                                            <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none"></div>
+                                            <div>
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-1.5">
+                                                        <Crown size={14} className="text-indigo-400" /> MAIS FREQUENTE (MAIS JOGOS)
+                                                    </span>
+                                                    <span className="px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 font-black text-[10px]">
+                                                        {teamLineupsData.highlights.mostMatches.matches} Quedas
+                                                    </span>
+                                                </div>
+                                                <div className="flex flex-wrap gap-1.5 my-2">
+                                                    {teamLineupsData.highlights.mostMatches.players.map((p, idx) => (
+                                                        <span key={idx} className="text-[11px] font-black text-white bg-white/5 border border-white/10 px-2 py-0.5 rounded-md uppercase">
+                                                            {p}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between text-[11px]">
+                                                <span className="text-gray-400 font-bold uppercase">{teamLineupsData.highlights.mostMatches.points} PTS</span>
+                                                <span className="text-red-400 font-black italic">{teamLineupsData.highlights.mostMatches.kills} KILLS</span>
+                                                <span className="text-yellow-400 font-black italic">{teamLineupsData.highlights.mostMatches.booyahs} BOOYAH(S)</span>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* 2. Mais Pontos */}
+                                    {teamLineupsData.highlights.mostPoints && (
+                                        <div className="bg-black/60 p-5 rounded-2xl border border-blue-500/30 flex flex-col justify-between relative overflow-hidden shadow-lg group">
+                                            <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl pointer-events-none"></div>
+                                            <div>
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest flex items-center gap-1.5">
+                                                        <Zap size={14} className="text-blue-400" /> MAIOR PONTUAÇÃO
+                                                    </span>
+                                                    <span className="px-2 py-0.5 rounded-md bg-blue-500/20 text-blue-300 font-black text-[10px]">
+                                                        {teamLineupsData.highlights.mostPoints.points} Pts
+                                                    </span>
+                                                </div>
+                                                <div className="flex flex-wrap gap-1.5 my-2">
+                                                    {teamLineupsData.highlights.mostPoints.players.map((p, idx) => (
+                                                        <span key={idx} className="text-[11px] font-black text-white bg-white/5 border border-white/10 px-2 py-0.5 rounded-md uppercase">
+                                                            {p}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between text-[11px]">
+                                                <span className="text-gray-400 font-bold uppercase">{teamLineupsData.highlights.mostPoints.matches} JOGOS</span>
+                                                <span className="text-blue-400 font-black italic">MÉD: {teamLineupsData.highlights.mostPoints.avgPts} PTS/Q</span>
+                                                <span className="text-yellow-400 font-black italic">{teamLineupsData.highlights.mostPoints.booyahs} BOOYAH</span>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* 3. Mais Abates */}
+                                    {teamLineupsData.highlights.mostKills && (
+                                        <div className="bg-black/60 p-5 rounded-2xl border border-red-500/30 flex flex-col justify-between relative overflow-hidden shadow-lg group">
+                                            <div className="absolute top-0 right-0 w-24 h-24 bg-red-500/10 rounded-full blur-2xl pointer-events-none"></div>
+                                            <div>
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <span className="text-[10px] font-black text-red-400 uppercase tracking-widest flex items-center gap-1.5">
+                                                        <Target size={14} className="text-red-400" /> MAIS LETAL (KILLS)
+                                                    </span>
+                                                    <span className="px-2 py-0.5 rounded-md bg-red-500/20 text-red-300 font-black text-[10px]">
+                                                        {teamLineupsData.highlights.mostKills.kills} Kills
+                                                    </span>
+                                                </div>
+                                                <div className="flex flex-wrap gap-1.5 my-2">
+                                                    {teamLineupsData.highlights.mostKills.players.map((p, idx) => (
+                                                        <span key={idx} className="text-[11px] font-black text-white bg-white/5 border border-white/10 px-2 py-0.5 rounded-md uppercase">
+                                                            {p}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between text-[11px]">
+                                                <span className="text-gray-400 font-bold uppercase">{teamLineupsData.highlights.mostKills.matches} JOGOS</span>
+                                                <span className="text-red-400 font-black italic">MÉD: {teamLineupsData.highlights.mostKills.avgKills} KILLS/Q</span>
+                                                <span className="text-blue-400 font-black italic">{teamLineupsData.highlights.mostKills.points} PTS</span>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* 4. Mais Booyahs */}
+                                    {teamLineupsData.highlights.mostBooyahs && (
+                                        <div className="bg-black/60 p-5 rounded-2xl border border-yellow-500/30 flex flex-col justify-between relative overflow-hidden shadow-lg group">
+                                            <div className="absolute top-0 right-0 w-24 h-24 bg-yellow-500/10 rounded-full blur-2xl pointer-events-none"></div>
+                                            <div>
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <span className="text-[10px] font-black text-yellow-400 uppercase tracking-widest flex items-center gap-1.5">
+                                                        <Trophy size={14} className="text-yellow-400" /> MAIS VITORIOSA (BOOYAHS)
+                                                    </span>
+                                                    <span className="px-2 py-0.5 rounded-md bg-yellow-500/20 text-yellow-300 font-black text-[10px]">
+                                                        {teamLineupsData.highlights.mostBooyahs.booyahs} Booyahs
+                                                    </span>
+                                                </div>
+                                                <div className="flex flex-wrap gap-1.5 my-2">
+                                                    {teamLineupsData.highlights.mostBooyahs.players.map((p, idx) => (
+                                                        <span key={idx} className="text-[11px] font-black text-white bg-white/5 border border-white/10 px-2 py-0.5 rounded-md uppercase">
+                                                            {p}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between text-[11px]">
+                                                <span className="text-gray-400 font-bold uppercase">{teamLineupsData.highlights.mostBooyahs.matches} JOGOS</span>
+                                                <span className="text-yellow-400 font-black italic">WIN RATE: {teamLineupsData.highlights.mostBooyahs.winRate}%</span>
+                                                <span className="text-blue-400 font-black italic">{teamLineupsData.highlights.mostBooyahs.points} PTS</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* BARRA DE ORDENAÇÃO */}
+                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-black/40 p-4 rounded-2xl border border-white/5">
+                                    <div className="flex items-center gap-2 text-xs text-gray-400 font-black uppercase tracking-wider">
+                                        <ArrowUpDown size={14} className="text-indigo-400" /> Ordenar Formações Por:
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        {[
+                                            { key: 'matches', label: 'Mais Quedas' },
+                                            { key: 'points', label: 'Mais Pontos' },
+                                            { key: 'kills', label: 'Mais Abates' },
+                                            { key: 'booyahs', label: 'Mais Booyahs' },
+                                            { key: 'avgPts', label: 'Média de Pts' },
+                                            { key: 'avgKills', label: 'Média de Kills' }
+                                        ].map(sortOpt => (
+                                            <button
+                                                key={sortOpt.key}
+                                                onClick={() => setLineupSortBy(sortOpt.key as any)}
+                                                className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                                                    lineupSortBy === sortOpt.key
+                                                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
+                                                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 border border-white/5'
+                                                }`}
+                                            >
+                                                {sortOpt.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* LISTA DE FORMAÇÕES */}
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                                    {[...teamLineupsData.lineups]
+                                        .sort((a, b) => {
+                                            if (lineupSortBy === 'matches') return b.matches - a.matches || b.points - a.points;
+                                            if (lineupSortBy === 'points') return b.points - a.points || b.avgPts - a.avgPts;
+                                            if (lineupSortBy === 'kills') return b.kills - a.kills || b.avgKills - a.avgKills;
+                                            if (lineupSortBy === 'booyahs') return b.booyahs - a.booyahs || b.winRate - a.winRate;
+                                            if (lineupSortBy === 'avgPts') return b.avgPts - a.avgPts || b.points - a.points;
+                                            if (lineupSortBy === 'avgKills') return b.avgKills - a.avgKills || b.kills - a.kills;
+                                            return 0;
+                                        })
+                                        .map((lineup, idx) => {
+                                            const isExpanded = expandedLineupKey === lineup.id;
+                                            return (
+                                                <div 
+                                                    key={lineup.id} 
+                                                    className="bg-black/50 p-6 rounded-2xl border border-white/10 hover:border-indigo-500/40 transition-all flex flex-col justify-between gap-5 shadow-xl group"
+                                                >
+                                                    {/* Header do Card com Rank e Jogadores */}
+                                                    <div>
+                                                        <div className="flex justify-between items-center mb-4">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className={`w-7 h-7 rounded-lg flex items-center justify-center font-black italic text-xs ${
+                                                                    idx === 0 
+                                                                        ? 'bg-yellow-500 text-black shadow-md shadow-yellow-500/20' 
+                                                                        : idx === 1 
+                                                                        ? 'bg-gray-300 text-black' 
+                                                                        : idx === 2 
+                                                                        ? 'bg-amber-700 text-white' 
+                                                                        : 'bg-white/10 text-gray-400'
+                                                                }`}>
+                                                                    #{idx + 1}
+                                                                </span>
+                                                                <span className="text-xs font-black uppercase text-indigo-400 tracking-wider">
+                                                                    Formação com {lineup.players.length} Atletas
+                                                                </span>
+                                                            </div>
+
+                                                            <span className="px-3 py-1 bg-indigo-500/10 border border-indigo-500/30 rounded-xl text-xs font-black text-indigo-300 uppercase">
+                                                                {lineup.matches} {lineup.matches === 1 ? 'Queda' : 'Quedas'}
+                                                            </span>
+                                                        </div>
+
+                                                        {/* Avatares e Nomes dos 4 Atletas */}
+                                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                                                            {lineup.players.map((pName, pIdx) => {
+                                                                const pImg = findDimImg(data.playersDimension, pName);
+                                                                return (
+                                                                    <div 
+                                                                        key={pIdx} 
+                                                                        onClick={() => handlePlayerClick(pName)}
+                                                                        className="bg-black/70 p-2.5 rounded-xl border border-white/5 hover:border-indigo-500/40 transition-all flex flex-col items-center text-center cursor-pointer group/player"
+                                                                    >
+                                                                        {pImg ? (
+                                                                            <img src={pImg} alt={pName} className="w-10 h-10 object-cover rounded-xl border border-white/10 bg-gray-900 mb-1.5 shadow-sm group-hover/player:scale-105 transition-transform" />
+                                                                        ) : (
+                                                                            <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-gray-400 mb-1.5 group-hover/player:text-indigo-400 transition-colors">
+                                                                                <User size={18} />
+                                                                            </div>
+                                                                        )}
+                                                                        <span className="text-[11px] font-black text-white group-hover/player:text-indigo-400 uppercase italic truncate max-w-full">
+                                                                            {pName}
+                                                                        </span>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Painel de Métricas Combinadas */}
+                                                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 bg-black/80 p-3.5 rounded-xl border border-white/5 text-center">
+                                                        <div className="flex flex-col items-center">
+                                                            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Pontos</span>
+                                                            <span className="text-base font-black text-blue-400 italic mt-0.5">{lineup.points}</span>
+                                                        </div>
+                                                        <div className="flex flex-col items-center border-l border-white/5">
+                                                            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Abates</span>
+                                                            <span className="text-base font-black text-red-400 italic mt-0.5">{lineup.kills}</span>
+                                                        </div>
+                                                        <div className="flex flex-col items-center border-l border-white/5">
+                                                            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Booyahs</span>
+                                                            <span className="text-base font-black text-yellow-400 italic mt-0.5">{lineup.booyahs}</span>
+                                                        </div>
+                                                        <div className="flex flex-col items-center border-l border-white/5">
+                                                            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Média Pts</span>
+                                                            <span className="text-base font-black text-white italic mt-0.5">{lineup.avgPts}</span>
+                                                        </div>
+                                                        <div className="flex flex-col items-center border-l border-white/5">
+                                                            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Média Kills</span>
+                                                            <span className="text-base font-black text-white italic mt-0.5">{lineup.avgKills}</span>
+                                                        </div>
+                                                        <div className="flex flex-col items-center border-l border-white/5">
+                                                            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Win Rate</span>
+                                                            <span className="text-base font-black text-yellow-500 italic mt-0.5">{lineup.winRate}%</span>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Toggle Detalhes das Quedas */}
+                                                    <div>
+                                                        <button
+                                                            onClick={() => setExpandedLineupKey(isExpanded ? null : lineup.id)}
+                                                            className="w-full py-2 bg-white/5 hover:bg-white/10 rounded-xl text-xs font-black uppercase text-gray-300 hover:text-white flex items-center justify-center gap-2 transition-colors cursor-pointer border border-white/5"
+                                                        >
+                                                            {isExpanded ? (
+                                                                <>
+                                                                    <ChevronDown size={14} className="rotate-180 transition-transform" /> Ocultar Quedas Desta Formação
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <ChevronDown size={14} /> Ver Histórico de Quedas ({lineup.matchesList.length})
+                                                                </>
+                                                            )}
+                                                        </button>
+
+                                                        {/* Lista detalhada de quedas expandida */}
+                                                        {isExpanded && (
+                                                            <div className="mt-3 bg-black/90 p-3 rounded-xl border border-white/5 space-y-2">
+                                                                <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest pb-1 border-b border-white/5 flex justify-between">
+                                                                    <span>Queda & Mapa</span>
+                                                                    <span>Posição • Pts • Kills</span>
+                                                                </div>
+                                                                <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+                                                                    {lineup.matchesList.map((m, mIdx) => (
+                                                                        <div key={mIdx} className="flex justify-between items-center p-2 rounded-lg bg-white/5 text-xs">
+                                                                            <div className="flex items-center gap-2">
+                                                                                <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold text-[10px]">
+                                                                                    RD {m.rd} • Q{m.q}
+                                                                                </span>
+                                                                                <span className="text-gray-300 font-black italic">{m.mapa}</span>
+                                                                            </div>
+                                                                            <div className="flex items-center gap-3">
+                                                                                <span className={`font-black ${m.booyah ? 'text-yellow-400 flex items-center gap-1' : 'text-gray-400'}`}>
+                                                                                    {m.booyah && <Crown size={12} />} #{m.pos}º
+                                                                                </span>
+                                                                                <span className="text-blue-400 font-bold">{m.pts} pts</span>
+                                                                                <span className="text-red-400 font-bold">{m.kills} kills</span>
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                </div>
+                            </>
+                        ) : (
+                            <div className="py-12 px-4 text-center bg-black/40 rounded-2xl border border-white/5 flex flex-col items-center justify-center space-y-3">
+                                <Users size={36} className="text-gray-600" />
+                                <div className="text-sm font-black text-gray-400 uppercase tracking-wider">
+                                    Nenhuma formação registrada para os filtros selecionados
+                                </div>
+                                <p className="text-xs text-gray-600 max-w-md">
+                                    Verifique se há filtros de Rodada, Queda ou Mapa ativos que restrinjam as partidas deste time.
+                                </p>
+                            </div>
+                        )}
                     </div>
                 )}
 
