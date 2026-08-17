@@ -5,6 +5,8 @@ import { DashboardData, PlayerData, CharacterData } from '../types';
 import { Trophy, Crown, User, Swords, Zap, BarChart2, Scale, Map as MapIcon, Skull, ChevronRight, ChevronDown, ChevronUp, Sparkles, X, Activity, Info, Crosshair, Shield, ArrowLeft, Disc, Flame, Target, AlertCircle, LayoutGrid, MapPin, Hash, Target as TargetIcon, CheckCircle2, AlertTriangle, Search, Star, ListOrdered, Eye, EyeOff } from 'lucide-react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, LabelList, Cell, YAxis, CartesianGrid, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts';
 import FilterBar from '../components/FilterBar';
+import InstagramPostModal from '../components/InstagramPostModal';
+import { Camera } from 'lucide-react';
 import { findTeamLogo } from '../utils/teamUtils';
 import { findDimImg } from '../utils/skillImages';
 import { getPlayerCharacterHistory } from '../utils/characterUtils';
@@ -26,7 +28,9 @@ const parseNumber = (val: string | undefined | null): number => {
 
 const Players: React.FC<PlayersProps> = ({ data }) => {
   const location = useLocation();
-  const [activeTab, setActiveTab] = useState<'ranking' | 'playerRounds' | 'playerDrops' | 'chars' | 'report' | 'auditoria' | 'stats' | 'roles' | 'compare'>('ranking');
+  const [activeTab, setActiveTab] = useState<'ranking' | 'playerRounds' | 'playerDrops' | 'chars' | 'report' | 'auditoria' | 'stats' | 'roles' | 'compare' | 'mapKings'>('ranking');
+  const [mapKingsSubTab, setMapKingsSubTab] = useState<"maps" | "drops">("maps");
+  const [instagramPost, setInstagramPost] = useState<{ group: any; type: "map" | "drop" } | null>(null);
   const [rankingSubTab, setRankingSubTab] = useState<'general' | 'maps' | 'safes'>('general');
   const [activeRole, setActiveRole] = useState<string>('');
   const [roleSort, setRoleSort] = useState<{ field: string, direction: 'asc' | 'desc' }>({ field: 'kills', direction: 'desc' });
@@ -1185,11 +1189,111 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
     });
   }, [playerDropsData.playersList, playerDropsSearch, playerDropsSort]);
 
+  // Dados para Reis do Mapa (Mapas e Quedas)
+  const mapKingsData = useMemo(() => {
+    if (activeTab !== "mapKings") return { byMap: [], byDrop: [] };
+
+    const filtered = data.players.filter(p => {
+        if (filters.team.length > 0 && !filters.team.includes(p.TIME)) return false;
+        if (filters.players.length > 0 && !filters.players.some(fp => normalize(fp) === normalize(p.PLAYER))) return false;
+        if (filters.map.length > 0 && !filters.map.some(m => normalize(m) === normalize(p.MAPA))) return false;
+        const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => normalize(r) === normalize(p.RD));
+        const matchQ = filters.queda.length === 0 || filters.queda.some(q => normalize(q) === normalize(p.Q));
+        return matchRD && matchQ;
+    });
+
+    const processGroup = (keyExtractor: (p: PlayerData) => string) => {
+        const groupMap = new Map<string, Map<string, any>>();
+        
+        filtered.forEach(p => {
+            const key = keyExtractor(p);
+            if (!key) return;
+
+            if (!groupMap.has(key)) {
+                groupMap.set(key, new Map());
+            }
+            const playerMap = groupMap.get(key)!;
+            
+            const pName = normalize(p.PLAYER);
+            if (!pName) return;
+
+            if (!playerMap.has(pName)) {
+                playerMap.set(pName, {
+                    name: p.PLAYER,
+                    team: p.TIME,
+                    playerImg: findDimImg(data.playersDimension, p.PLAYER) || '',
+                    teamImg: findTeamLogo(p.TIME, data.teamsReference),
+                    kills: 0,
+                    damage: 0,
+                    hs: 0,
+                    knocks: 0,
+                    reviveu: 0,
+                    aliadosRevividos: 0,
+                    mvp: 0,
+                    matches: 0,
+                    zeroKills: 0,
+                    withKills: 0
+                });
+            }
+            
+            const stats = playerMap.get(pName);
+            const kills = parseNumber(p.Abates);
+            
+            stats.kills += kills;
+            stats.damage += parseNumber(p.Dano);
+            stats.hs += parseNumber(p.HS);
+            stats.knocks += parseNumber(p.Deitados);
+            stats.reviveu += parseNumber(p.Reviveu);
+            stats.aliadosRevividos += parseNumber(p.AliadosRevividos);
+            stats.mvp += parseNumber(p.MVP);
+            stats.matches += 1;
+            
+            if (kills === 0) stats.zeroKills += 1;
+            else stats.withKills += 1;
+        });
+
+        return Array.from(groupMap.entries()).map(([groupName, playersMap]) => {
+            const players = Array.from(playersMap.values()).map(p => ({
+                ...p,
+                avgKills: p.matches > 0 ? (p.kills / p.matches) : 0,
+                avgDamage: p.matches > 0 ? (p.damage / p.matches) : 0,
+                zeroRate: p.matches > 0 ? (p.zeroKills / p.matches) * 100 : 0
+            })).sort((a, b) => b.kills - a.kills || b.avgKills - a.avgKills);
+
+            const getTop = (sortFn: (a: any, b: any) => number) => [...players].sort(sortFn)[0] || null;
+
+            return {
+                name: groupName,
+                players,
+                topDamage: getTop((a, b) => b.damage - a.damage),
+                topAvgKills: getTop((a, b) => b.avgKills - a.avgKills),
+                topKnocks: getTop((a, b) => b.knocks - a.knocks),
+                topHs: getTop((a, b) => b.hs - a.hs),
+                topZero: getTop((a, b) => b.zeroKills - a.zeroKills),
+                topRevives: getTop((a, b) => b.reviveu - a.reviveu),
+                topAlliesRevived: getTop((a, b) => b.aliadosRevividos - a.aliadosRevividos),
+                topMvp: getTop((a, b) => b.mvp - a.mvp)
+            };
+        }).sort((a, b) => {
+           const numA = parseInt(a.name.replace(/\D/g, ""));
+           const numB = parseInt(b.name.replace(/\D/g, ""));
+           if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+           return a.name.localeCompare(b.name);
+        });
+    };
+
+    const byMap = processGroup(p => (p.MAPA || "").trim().toUpperCase());
+    const byDrop = processGroup(p => (p.Q || "").trim().toUpperCase());
+
+    return { byMap, byDrop };
+  }, [data.players, filters, activeTab]);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap gap-2 border-b border-gray-700 pb-2 no-print">
         {[
-            { id: 'ranking', label: 'Ranking Geral', icon: <Trophy size={18} /> },
+            { id: "ranking", label: "Ranking Geral", icon: <Trophy size={18} /> },
+            { id: "mapKings", label: "Reis do Mapa", icon: <Crown size={18} /> },
             { id: 'playerRounds', label: 'Kills por Rodada', icon: <ListOrdered size={18} /> },
             { id: 'playerDrops', label: 'Kills por Queda', icon: <Target size={18} /> },
             { id: 'stats', label: 'Estatísticas', icon: <BarChart2 size={18} /> },
@@ -2684,6 +2788,129 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                       </div>
                   </div>
               </div>
+          )}
+
+          {activeTab === 'mapKings' && (
+            <div className="space-y-6 animate-in fade-in duration-300">
+                <div className="flex flex-wrap gap-2 p-1 bg-black/20 rounded-xl border border-white/5 w-fit">
+                    <button 
+                        onClick={() => setMapKingsSubTab('maps')}
+                        className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${mapKingsSubTab === 'maps' ? 'bg-yellow-500 text-black shadow-[0_0_15px_rgba(234,179,8,0.3)]' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                    >
+                        Ranking por Mapa
+                    </button>
+                    <button 
+                        onClick={() => setMapKingsSubTab('drops')}
+                        className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${mapKingsSubTab === 'drops' ? 'bg-blue-500 text-black shadow-[0_0_15px_rgba(59,130,246,0.3)]' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                    >
+                        Ranking por Queda
+                    </button>
+                </div>
+
+                <div className="space-y-12">
+                    {(mapKingsSubTab === 'maps' ? mapKingsData.byMap : mapKingsData.byDrop).map(group => (
+                        <div key={group.name} className="bg-[#1a1a1a] rounded-3xl border border-gray-800 overflow-hidden shadow-2xl">
+                            <div className="bg-gradient-to-r from-black/80 to-black/40 px-8 py-6 border-b border-white/5 flex items-center justify-between">
+                                <h3 className="text-2xl font-black text-white uppercase tracking-tighter flex items-center gap-3">
+                                    {mapKingsSubTab === 'maps' ? <MapIcon className="text-yellow-500" size={28} /> : <Target className="text-blue-500" size={28} />}
+                                    {mapKingsSubTab === 'maps' ? `Mapa: ${group.name}` : `Queda: ${group.name}`}
+                                </h3>
+                                <span className="px-3 py-1 rounded-full bg-white/5 text-gray-400 text-xs font-bold uppercase tracking-widest border border-white/10">
+                                    {group.players.length} Jogadores
+                                </span>
+                            </div>
+
+                            <div className="p-8 space-y-8">
+                                {/* Highlights Grid */}
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    {[
+                                        { title: "Maior Dano", player: group.topDamage, value: group.topDamage?.damage, icon: <Flame className="text-red-500" size={20} />, color: "red" },
+                                        { title: "Média Kills", player: group.topAvgKills, value: group.topAvgKills?.avgKills.toFixed(2), icon: <Crosshair className="text-green-500" size={20} />, color: "green" },
+                                        { title: "Mais Derruba", player: group.topKnocks, value: group.topKnocks?.knocks, icon: <AlertTriangle className="text-orange-500" size={20} />, color: "orange" },
+                                        { title: "Mais HS", player: group.topHs, value: group.topHs?.hs, icon: <TargetIcon className="text-yellow-500" size={20} />, color: "yellow" },
+                                        { title: "Mais Zera", player: group.topZero, value: `${group.topZero?.zeroKills} (${group.topZero?.zeroRate.toFixed(1)}%)`, icon: <Skull className="text-gray-400" size={20} />, color: "gray" },
+                                        { title: "Mais Revive", player: group.topRevives, value: group.topRevives?.reviveu, icon: <Activity className="text-cyan-500" size={20} />, color: "cyan" },
+                                        { title: "Aliados Rev", player: group.topAlliesRevived, value: group.topAlliesRevived?.aliadosRevividos, icon: <Shield className="text-emerald-500" size={20} />, color: "emerald" },
+                                        { title: "Mais MVP", player: group.topMvp, value: group.topMvp?.mvp, icon: <Star className="text-purple-500" size={20} />, color: "purple" },
+                                    ].map((h, i) => (
+                                        <div key={i} className={`bg-black/40 rounded-2xl p-4 border border-${h.color}-500/20 flex items-center gap-4`}>
+                                            <div className={`p-3 bg-${h.color}-500/10 rounded-xl`}>{h.icon}</div>
+                                            <div className="min-w-0 flex-1">
+                                                <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block truncate">{h.title}</span>
+                                                <span className="text-sm font-black italic uppercase text-white truncate block">{h.player?.name || "-"}</span>
+                                                <span className={`text-xs font-black text-${h.color}-400 italic block`}>{h.value || 0}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Ranking Table */}
+                                <div className="overflow-x-auto rounded-xl border border-gray-800/50 bg-black/20">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-black text-gray-500 uppercase text-[10px] tracking-wider font-black">
+                                            <tr>
+                                                <th className="px-4 py-3 text-center w-16">#</th>
+                                                <th className="px-4 py-3 text-left">Jogador</th>
+                                                <th className="px-4 py-3 text-left">Equipe</th>
+                                                <th className="px-4 py-3 text-center">Partidas</th>
+                                                <th className="px-4 py-3 text-center">Kills Totais</th>
+                                                <th className="px-4 py-3 text-center">Média Kills</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-800/50">
+                                            {group.players.map((p, idx) => (
+                                                <tr key={p.name} onClick={() => { setFilters(prev => ({...prev, players: [p.name]})); setActiveTab('report'); }} className="hover:bg-white/5 transition-colors cursor-pointer group">
+                                                    <td className="px-4 py-3 text-center text-gray-600 font-black">
+                                                        <span className="flex items-center justify-center gap-1">
+                                                            {idx === 0 ? <Crown size={14} className="text-yellow-500" /> : idx + 1}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-3 font-bold uppercase italic flex items-center gap-2">
+                                                        <div className="flex items-center gap-2">
+                                                            {p.playerImg ? (
+                                                                <img src={p.playerImg} alt={p.name} className={`${idx === 0 ? 'w-10 h-10 border-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.5)]' : 'w-6 h-6 border-gray-800'} object-cover rounded-full border-2`} />
+                                                            ) : (
+                                                                <div className={`${idx === 0 ? 'w-10 h-10 border-yellow-500' : 'w-6 h-6 border-gray-800'} rounded-full bg-gray-900 border-2 flex items-center justify-center text-gray-600`}><User size={idx === 0 ? 20 : 12}/></div>
+                                                            )}
+                                                            <span className={idx === 0 ? 'text-yellow-500 font-black text-xl font-display flex items-center gap-2' : 'text-white'}>
+                                                                {p.name}
+                                                            </span>
+                                                        </div>
+                                                        <ChevronRight size={12} className="text-yellow-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                    </td>
+                                                    <td className="px-4 py-3 uppercase text-[9px] tracking-widest font-bold">
+                                                        <div className="flex items-center gap-2">
+                                                            {p.teamImg && (
+                                                                <img src={p.teamImg} alt={p.team} className="w-5 h-5 object-contain" />
+                                                            )}
+                                                            <span className="text-gray-400">
+                                                                {p.team}
+                                                            </span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-center font-black text-gray-300">{p.matches}</td>
+                                                    <td className="px-4 py-3 text-center font-black text-yellow-500 bg-yellow-500/5">{p.kills}</td>
+                                                    <td className="px-4 py-3 text-center font-mono text-cyan-400">{p.avgKills.toFixed(2)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                    {instagramPost && (
+                        <InstagramPostModal 
+                            group={instagramPost.group} 
+                            type={instagramPost.type} 
+                            onClose={() => setInstagramPost(null)} 
+                        />
+                    )}
+                    {(mapKingsSubTab === "maps" ? mapKingsData.byMap : mapKingsData.byDrop).length === 0 && (
+                        <div className="py-12 text-center text-gray-500 font-bold">Nenhum dado encontrado para os filtros atuais.</div>
+                    )}
+                </div>
+            </div>
           )}
 
           {activeTab === 'ranking' && (
