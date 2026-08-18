@@ -573,42 +573,121 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
       return map.get(normalized)!;
     };
 
+    const POSITION_POINTS: Record<number, number> = {
+      1: 12, 2: 9, 3: 8, 4: 7, 5: 6, 6: 5, 7: 4, 8: 3, 9: 2, 10: 1
+    };
+
     // First process data.details for match counts, placement, booyahs and team kills
-    data.details.forEach(d => {
-      const teamName = d.TIME;
-      if (!teamName) return;
-      const rawKey = isMapTab ? formatMapName(d.MAPA) : (d.Q || "").trim().toUpperCase();
+    if (data.details && data.details.length > 0) {
+      data.details.forEach(d => {
+        const teamName = d.TIME;
+        if (!teamName || !teamName.trim()) return;
+        const rawKey = isMapTab ? formatMapName(d.MAPA) : (d.Q || "").trim().toUpperCase();
 
-      const ptsc = parseNumber(d.PTSC);
-      const pts = parseNumber(d.PTS);
-      const abts = parseNumber(d.ABTS);
-      const booyah = parseNumber(d.B);
+        let ptsc = parseNumber(d.PTSC);
+        let pts = parseNumber(d.PTS);
+        let abts = parseNumber(d.ABTS);
+        let booyah = parseNumber(d.B);
+        let pos = parseNumber(d.POS);
+        let s = parseNumber(d.S);
 
-      // Add to ALL
-      const allStats = getOrCreateTeam(allTeamsMap, teamName);
-      allStats.matches += 1;
-      allStats.ptsc += ptsc;
-      allStats.pts += pts;
-      allStats.kills += abts;
-      allStats.booyahs += booyah;
-      if (abts === 0) allStats.zeroKills += 1;
-      else allStats.withKills += 1;
+        // Skip completely empty placeholder spreadsheet rows
+        if (s === 0 && pts === 0 && ptsc === 0 && abts === 0 && pos === 0 && booyah === 0) {
+          return;
+        }
 
-      // Add to specific group
-      if (!rawKey) return;
-      if (!groupMap.has(rawKey)) {
-        groupMap.set(rawKey, new Map());
-      }
-      const groupTeamMap = groupMap.get(rawKey)!;
-      const teamStats = getOrCreateTeam(groupTeamMap, teamName);
-      teamStats.matches += 1;
-      teamStats.ptsc += ptsc;
-      teamStats.pts += pts;
-      teamStats.kills += abts;
-      teamStats.booyahs += booyah;
-      if (abts === 0) teamStats.zeroKills += 1;
-      else teamStats.withKills += 1;
-    });
+        // Derive PTSC from POS if needed
+        if (ptsc === 0 && pos >= 1 && pos <= 10) {
+          ptsc = POSITION_POINTS[pos] || 0;
+        }
+
+        // Derive Booyah from POS
+        if (booyah === 0 && pos === 1) {
+          booyah = 1;
+        }
+
+        // Derive Total Match Points
+        let matchTotalPts = 0;
+        if (pts > 0) {
+          matchTotalPts = pts;
+          if (ptsc === 0 && abts > 0 && pts >= abts) ptsc = pts - abts;
+          if (abts === 0 && ptsc > 0 && pts >= ptsc) abts = pts - ptsc;
+        } else {
+          matchTotalPts = ptsc + abts;
+        }
+
+        // A equipe zerou a partida se fez exatamente 0 pontos totais (0 kills e 0 pontos de colocação)
+        const isZeroPointMatch = (matchTotalPts === 0) && (abts === 0);
+
+        // Add to ALL (Todas as partidas do campeonato)
+        const allStats = getOrCreateTeam(allTeamsMap, teamName);
+        allStats.matches += 1;
+        allStats.ptsc += ptsc;
+        allStats.pts += matchTotalPts;
+        allStats.kills += abts;
+        allStats.booyahs += booyah;
+        if (isZeroPointMatch) allStats.zeroKills += 1;
+        else allStats.withKills += 1;
+
+        // Add to specific group (Mapa ou Queda)
+        if (!rawKey) return;
+        if (!groupMap.has(rawKey)) {
+          groupMap.set(rawKey, new Map());
+        }
+        const groupTeamMap = groupMap.get(rawKey)!;
+        const teamStats = getOrCreateTeam(groupTeamMap, teamName);
+        teamStats.matches += 1;
+        teamStats.ptsc += ptsc;
+        teamStats.pts += matchTotalPts;
+        teamStats.kills += abts;
+        teamStats.booyahs += booyah;
+        if (isZeroPointMatch) teamStats.zeroKills += 1;
+        else teamStats.withKills += 1;
+      });
+    } else {
+      // Fallback from data.players by grouping match rounds per team
+      const teamMatchesMap = new Map<string, Map<string, { key: string, kills: number }>>();
+      data.players.forEach(p => {
+        const teamName = p.TIME;
+        if (!teamName) return;
+        const rawKey = isMapTab ? formatMapName(p.MAPA) : (p.Q || "").trim().toUpperCase();
+        const matchId = `${p.RD || ''}-${p.Q || ''}-${p.CONFRONTO || ''}-${p.MAPA || ''}`;
+        const kills = parseNumber(p.Abates);
+
+        const normTeam = teamName.toUpperCase();
+        if (!teamMatchesMap.has(normTeam)) {
+          teamMatchesMap.set(normTeam, new Map());
+        }
+        const m = teamMatchesMap.get(normTeam)!;
+        if (!m.has(matchId)) {
+          m.set(matchId, { key: rawKey, kills: 0 });
+        }
+        m.get(matchId)!.kills += kills;
+      });
+
+      teamMatchesMap.forEach((matchesMap, normalizedTeam) => {
+        const originalName = data.players.find(p => p.TIME?.toUpperCase() === normalizedTeam)?.TIME || normalizedTeam;
+        const allStats = getOrCreateTeam(allTeamsMap, originalName);
+        matchesMap.forEach(({ key: rawKey, kills }) => {
+          allStats.matches += 1;
+          allStats.kills += kills;
+          if (kills === 0) allStats.zeroKills += 1;
+          else allStats.withKills += 1;
+
+          if (rawKey) {
+            if (!groupMap.has(rawKey)) {
+              groupMap.set(rawKey, new Map());
+            }
+            const groupTeamMap = groupMap.get(rawKey)!;
+            const teamStats = getOrCreateTeam(groupTeamMap, originalName);
+            teamStats.matches += 1;
+            teamStats.kills += kills;
+            if (kills === 0) teamStats.zeroKills += 1;
+            else teamStats.withKills += 1;
+          }
+        });
+      });
+    }
 
     // Then process data.players for damage, hs, knocks, revive, aliados, mvp
     data.players.forEach(p => {
@@ -673,7 +752,7 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
         topAvgKills: getTop((a, b) => b.avgKills - a.avgKills),
         topKnocks: getTop((a, b) => b.knocks - a.knocks),
         topHs: getTop((a, b) => b.hs - a.hs),
-        topZero: getTop((a, b) => b.zeroKills - a.zeroKills),
+        topZero: getTop((a, b) => b.zeroKills - a.zeroKills || b.zeroRate - a.zeroRate || b.matches - a.matches),
         topRevives: getTop((a, b) => b.reviveu - a.reviveu),
         topAlliesRevived: getTop((a, b) => b.aliadosRevividos - a.aliadosRevividos),
         topMvp: getTop((a, b) => b.mvp - a.mvp),
@@ -709,7 +788,7 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
         topAvgKills: getTopAll((a, b) => b.avgKills - a.avgKills),
         topKnocks: getTopAll((a, b) => b.knocks - a.knocks),
         topHs: getTopAll((a, b) => b.hs - a.hs),
-        topZero: getTopAll((a, b) => b.zeroKills - a.zeroKills),
+        topZero: getTopAll((a, b) => b.zeroKills - a.zeroKills || b.zeroRate - a.zeroRate || b.matches - a.matches),
         topRevives: getTopAll((a, b) => b.reviveu - a.reviveu),
         topAlliesRevived: getTopAll((a, b) => b.aliadosRevividos - a.aliadosRevividos),
         topMvp: getTopAll((a, b) => b.mvp - a.mvp),
@@ -724,6 +803,7 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
 
   const isTeamTab = activeTab === 'team_map_kings' || activeTab === 'team_drop_kings' || activeTab === 'team_map_kings_stories' || activeTab === 'team_drop_kings_stories';
   const isKingsTab = activeTab === 'map_kings' || activeTab === 'drop_kings' || activeTab === 'role_kings' || activeTab === 'team_map_kings' || activeTab === 'team_drop_kings' || activeTab === 'map_kings_stories' || activeTab === 'drop_kings_stories' || activeTab === 'role_kings_stories' || activeTab === 'team_map_kings_stories' || activeTab === 'team_drop_kings_stories';
+  const isFeedTab = activeTab === 'map_kings' || activeTab === 'drop_kings' || activeTab === 'role_kings' || activeTab === 'team_map_kings' || activeTab === 'team_drop_kings';
   const currentKingsData = isTeamTab ? teamKingsData : kingsData;
 
   useMemo(() => {
@@ -1109,22 +1189,22 @@ const handleDownload = async () => {
               </div>
             )}
 
-            {/* Stories Subtype Model Selector */}
-            {(activeTab === 'map_kings_stories' || activeTab === 'drop_kings_stories' || activeTab === 'role_kings_stories' || activeTab === 'team_map_kings_stories' || activeTab === 'team_drop_kings_stories') && (
+            {/* Model Selector (Available for Feed and Stories) */}
+            {isKingsTab && (
               <div className="flex flex-col gap-1.5">
-                <span className="text-gray-500 font-bold uppercase tracking-widest text-[11px] leading-none">Modelo Stories</span>
+                <span className="text-gray-500 font-bold uppercase tracking-widest text-[11px] leading-none">Modelo do Banner</span>
                 <select 
                   value={storiesSubtype}
                   onChange={(e) => setStoriesSubtype(e.target.value)}
                   className="bg-black border border-white/10 text-white rounded-xl px-3 py-2.5 font-bold uppercase text-xs"
                 >
                   <option value="highlights">Destaques Completos</option>
+                  <option value="zero_kills">{isTeamTab ? 'Times que Mais Zeram (0 Pontos)' : 'Mais Zera'}</option>
                   <option value="matches">Partidas e Médias</option>
                   <option value="damage">Maiores Danos</option>
                   <option value="avg_kills">{isTeamTab ? 'Mais Média de Abates' : 'Mais Média de Kills'}</option>
                   <option value="knocks">{isTeamTab ? 'Times que Mais Derrubam' : 'Mais Derruba'}</option>
                   <option value="hs">{isTeamTab ? 'Times com Mais HS' : 'Mais HS e Médias'}</option>
-                  <option value="zero_kills">{isTeamTab ? 'Times que Mais Zeram' : 'Mais Zera'}</option>
                   <option value="revives">{isTeamTab ? 'Times que Mais Revivem' : 'Mais Revive'}</option>
                   <option value="allies_revived">{isTeamTab ? 'Times com Mais Aliados Revividos' : 'Mais Aliados Revive'}</option>
                   <option value="mvp">{isTeamTab ? 'Times com Mais MVPs' : 'Mais MVP'}</option>
@@ -1171,9 +1251,9 @@ const handleDownload = async () => {
               onClick={handleDownload}
               disabled={
                 isGenerating || 
-                ((activeTab !== 'map_kings' && activeTab !== 'drop_kings' && activeTab !== 'role_kings' && activeTab !== 'map_kings_stories' && activeTab !== 'drop_kings_stories' && activeTab !== 'role_kings_stories') && !selectedRd) || 
+                ((!isKingsTab) && !selectedRd) || 
                 (activeTab === 'team_perf' && !selectedTeam) || 
-                ((activeTab === 'map_kings' || activeTab === 'drop_kings' || activeTab === 'role_kings' || activeTab === 'map_kings_stories' || activeTab === 'drop_kings_stories' || activeTab === 'role_kings_stories') && !selectedMapOrDrop)
+                (isKingsTab && !selectedMapOrDrop)
               }
               className="flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-400 hover:to-amber-500 text-black font-black uppercase rounded-xl transition-all shadow-[0_0_20px_rgba(234,179,8,0.3)] disabled:opacity-50 shrink-0 text-xs h-[38px] md:h-auto"
             >
@@ -1188,11 +1268,11 @@ const handleDownload = async () => {
       <div className="flex md:justify-center bg-black/40 p-4 md:p-8 rounded-3xl border border-white/5 overflow-x-auto">
         
         {/* Banner Real (Scale down for preview, full size for render) */}
-        <div className={`relative origin-top transform scale-[0.4] sm:scale-[0.5] md:scale-[0.6] lg:scale-[0.7] ${(activeTab === 'map_kings' || activeTab === 'drop_kings' || activeTab === 'role_kings') ? '-mb-[810px] sm:-mb-[675px] md:-mb-[540px] lg:-mb-[405px]' : '-mb-[1152px] sm:-mb-[960px] md:-mb-[768px] lg:-mb-[576px]'}`}>
+        <div className={`relative origin-top transform scale-[0.4] sm:scale-[0.5] md:scale-[0.6] lg:scale-[0.7] ${isFeedTab ? '-mb-[810px] sm:-mb-[675px] md:-mb-[540px] lg:-mb-[405px]' : '-mb-[1152px] sm:-mb-[960px] md:-mb-[768px] lg:-mb-[576px]'}`}>
           
           <div 
             ref={bannerRef}
-            className={`bg-gradient-to-br from-[#1a1a1a] to-black w-[1080px] ${(activeTab === 'map_kings' || activeTab === 'drop_kings' || activeTab === 'role_kings') ? 'h-[1350px]' : 'h-[1920px]'} relative overflow-hidden flex flex-col font-display border border-white/5`}
+            className={`bg-gradient-to-br from-[#1a1a1a] to-black w-[1080px] ${isFeedTab ? 'h-[1350px]' : 'h-[1920px]'} relative overflow-hidden flex flex-col font-display border border-white/5`}
             style={{ padding: '80px', boxSizing: 'border-box' }}
           >
             {/* Background Effects */}
@@ -1200,7 +1280,7 @@ const handleDownload = async () => {
             <div className="absolute bottom-0 left-0 w-[800px] h-[800px] bg-purple-500/10 blur-[150px] rounded-full mix-blend-screen pointer-events-none translate-y-1/2 -translate-x-1/3"></div>
             
             {/* Header */}
-            {activeTab !== 'map_kings' && activeTab !== 'drop_kings' && activeTab !== 'role_kings' && (
+            {!isKingsTab && (
               <div className="text-center mb-12 relative z-10">
                 <h1 className="text-[60px] font-black text-white uppercase tracking-[0.2em] italic mb-4">
                   {activeTab === 'team_perf' ? 'Desempenho' : 'Rodada'} <span className="text-yellow-500">{activeTab === 'team_perf' ? (selectedRd === 'all' ? 'Geral' : 'Rodada ' + selectedRd) : selectedRd}</span>
@@ -1485,11 +1565,13 @@ const handleDownload = async () => {
                     subValueExtractor = (p) => `Média: ${p.avgHs.toFixed(2)}`;
                     break;
                   case 'zero_kills':
-                    title = isTeamTab ? `${groupPrefix}\nMAIS ZERAM` : `${groupPrefix}\nMAIS ZERA`;
-                    playersList.sort((a, b) => b.zeroKills - a.zeroKills);
-                    valueLabel = "Zeradão";
+                    title = isTeamTab ? `${groupPrefix}\nTIMES QUE MAIS ZERAM\n(0 PONTOS NA PARTIDA)` : `${groupPrefix}\nMAIS ZERA`;
+                    playersList.sort((a, b) => b.zeroKills - a.zeroKills || b.zeroRate - a.zeroRate || b.matches - a.matches);
+                    valueLabel = "Zeradas";
                     valueExtractor = (p) => `${p.zeroKills}`;
-                    subValueExtractor = (p) => `Taxa: ${p.zeroRate.toFixed(1)}%`;
+                    subValueExtractor = (p) => isTeamTab 
+                      ? `Taxa: ${p.zeroRate.toFixed(1)}% (${p.zeroKills}/${p.matches} quedas)` 
+                      : `Taxa: ${p.zeroRate.toFixed(1)}% (${p.matches} quedas)`;
                     break;
                   case 'revives':
                     title = isTeamTab ? `${groupPrefix}\nMAIS REVIVEM` : `${groupPrefix}\nMAIS REVIVEU`;
@@ -1597,14 +1679,14 @@ const handleDownload = async () => {
                         <div className="grid grid-cols-3 gap-2">
                           {[
                             { title: "Maior Dano", player: group.topDamage, value: group.topDamage?.damage, icon: <Flame className="text-red-500" size={18} />, color: "bg-red-500/10 border-red-500/20 text-red-500" },
-                            { title: "Média Kills", player: group.topAvgKills, value: group.topAvgKills?.avgKills.toFixed(2), icon: <Crosshair className="text-green-500" size={18} />, color: "bg-green-500/10 border-green-500/20 text-green-500" },
-                            { title: "Mais Derruba", player: group.topKnocks, value: group.topKnocks?.knocks, icon: <AlertTriangle className="text-orange-500" size={18} />, color: "bg-orange-500/10 border-orange-500/20 text-orange-500" },
-                            { title: "Mais HS", player: group.topHs, value: group.topHs?.hs, icon: <TargetIcon className="text-yellow-500" size={18} />, color: "bg-yellow-500/10 border-yellow-500/20 text-yellow-500" },
-                            { title: "Mais Zera", player: group.topZero, value: `${group.topZero?.zeroKills}`, icon: <Skull className="text-gray-400" size={18} />, color: "bg-gray-500/10 border-gray-500/20 text-gray-400" },
-                            { title: "Mais Revive", player: group.topRevives, value: group.topRevives?.reviveu, icon: <Activity className="text-cyan-500" size={18} />, color: "bg-cyan-500/10 border-cyan-500/20 text-cyan-500" },
-                            { title: "Aliados Rev", player: group.topAlliesRevived, value: group.topAlliesRevived?.aliadosRevividos, icon: <Shield className="text-emerald-500" size={18} />, color: "bg-emerald-500/10 border-emerald-500/20 text-emerald-500" },
-                            { title: "Mais MVP", player: group.topMvp, value: group.topMvp?.mvp, icon: <Star className="text-purple-500" size={18} />, color: "bg-purple-500/10 border-purple-500/20 text-purple-500" },
-                            { title: "Mais Morre", player: group.topDeaths, value: group.topDeaths?.deaths, icon: <Skull className="text-rose-500" size={18} />, color: "bg-rose-500/10 border-rose-500/20 text-rose-500" },
+                            { title: isTeamTab ? "Média Abates" : "Média Kills", player: group.topAvgKills, value: group.topAvgKills?.avgKills.toFixed(2), icon: <Crosshair className="text-green-500" size={18} />, color: "bg-green-500/10 border-green-500/20 text-green-500" },
+                            { title: isTeamTab ? "Mais Derrubam" : "Mais Derruba", player: group.topKnocks, value: group.topKnocks?.knocks, icon: <AlertTriangle className="text-orange-500" size={18} />, color: "bg-orange-500/10 border-orange-500/20 text-orange-500" },
+                            { title: isTeamTab ? "Mais HS" : "Mais HS", player: group.topHs, value: group.topHs?.hs, icon: <TargetIcon className="text-yellow-500" size={18} />, color: "bg-yellow-500/10 border-yellow-500/20 text-yellow-500" },
+                            { title: isTeamTab ? "Mais Zeram (0 Pts)" : "Mais Zera", player: group.topZero, value: `${group.topZero?.zeroKills ?? 0}`, icon: <Skull className="text-gray-400" size={18} />, color: "bg-gray-500/10 border-gray-500/20 text-gray-400" },
+                            { title: isTeamTab ? "Mais Revivem" : "Mais Revive", player: group.topRevives, value: group.topRevives?.reviveu, icon: <Activity className="text-cyan-500" size={18} />, color: "bg-cyan-500/10 border-cyan-500/20 text-cyan-500" },
+                            { title: isTeamTab ? "Aliados Rev." : "Aliados Rev", player: group.topAlliesRevived, value: group.topAlliesRevived?.aliadosRevividos, icon: <Shield className="text-emerald-500" size={18} />, color: "bg-emerald-500/10 border-emerald-500/20 text-emerald-500" },
+                            { title: isTeamTab ? "Mais MVPs" : "Mais MVP", player: group.topMvp, value: group.topMvp?.mvp, icon: <Star className="text-purple-500" size={18} />, color: "bg-purple-500/10 border-purple-500/20 text-purple-500" },
+                            { title: isTeamTab ? "Mais Morrem" : "Mais Morre", player: group.topDeaths, value: group.topDeaths?.deaths, icon: <Skull className="text-rose-500" size={18} />, color: "bg-rose-500/10 border-rose-500/20 text-rose-500" },
                           ].map((h, i) => (
                             <div key={i} className="flex flex-col p-2.5 rounded-xl border border-white/5 bg-black/40 min-w-0 justify-between h-[120px]">
                               <div className="flex items-center gap-1.5 border-b border-white/5 pb-1">
@@ -1614,9 +1696,14 @@ const handleDownload = async () => {
                                 <span className="text-[13px] font-black text-gray-400 uppercase tracking-wider truncate flex-1 leading-none">{h.title}</span>
                               </div>
                               <div className="flex flex-col mt-2 justify-center">
-                                <span className="text-[22px] font-black text-white italic uppercase truncate leading-none mb-1">{h.player?.name || "-"}</span>
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  {isTeamTab && h.player?.teamImg && (
+                                    <img src={h.player.teamImg} alt="" crossOrigin="anonymous" className="w-4 h-4 object-contain shrink-0" />
+                                  )}
+                                  <span className="text-[20px] font-black text-white italic uppercase truncate leading-none mb-1">{h.player?.name || "-"}</span>
+                                </div>
                                 <span className={`text-[28px] font-black italic leading-none ${h.color.split(' ')[2]}`}>
-                                  {h.value || 0}
+                                  {h.value ?? 0}
                                 </span>
                               </div>
                             </div>
@@ -1688,103 +1775,294 @@ const handleDownload = async () => {
                 const group = currentKingsData.find(g => g.name === selectedMapOrDrop);
                 if (!group) return null;
                 const type = (activeTab === 'map_kings' || activeTab === 'team_map_kings') ? 'map' : (activeTab === 'drop_kings' || activeTab === 'team_drop_kings') ? 'drop' : 'role';
-                const top5 = group.players.slice(0, 5);
-                return (
-                  <div className="absolute inset-0 z-10 flex flex-col bg-[#0a0a0a]">
-                    <div className="pt-24 px-16 z-10 flex flex-col items-center">
-                        <h1 className="text-[75px] font-black text-white uppercase italic tracking-tighter leading-none text-center">
-                            {isTeamTab 
-                              ? (type === 'map' ? 'TOP 5 TIMES REIS DO MAPA' : 'TOP 5 TIMES REIS DA QUEDA') 
-                              : (type === 'role' ? 'TOP 5 REIS POR FUNÇÃO' : `TOP 5 REIS DO ${type === 'map' ? 'MAPA' : 'QUEDA'}`)}
+
+                if (storiesSubtype === 'highlights') {
+                  const top5 = group.players.slice(0, 5);
+                  return (
+                    <div className="absolute inset-0 z-10 flex flex-col bg-[#0a0a0a]">
+                      <div className="pt-24 px-16 z-10 flex flex-col items-center">
+                          <h1 className="text-[75px] font-black text-white uppercase italic tracking-tighter leading-none text-center">
+                              {isTeamTab 
+                                ? (type === 'map' ? 'TOP 5 TIMES REIS DO MAPA' : 'TOP 5 TIMES REIS DA QUEDA') 
+                                : (type === 'role' ? 'TOP 5 REIS POR FUNÇÃO' : `TOP 5 REIS DO ${type === 'map' ? 'MAPA' : 'QUEDA'}`)}
+                          </h1>
+                          <div className="mt-4 px-10 py-3 bg-yellow-500 rounded-2xl">
+                              <span className="text-[48px] font-black text-black uppercase tracking-widest">{group.name}</span>
+                          </div>
+                      </div>
+
+                      <div className="flex-1 flex justify-center items-center gap-8 px-8 pt-4 pb-10 z-10">
+                          {/* Left Side: Top 5 Ranking */}
+                          <div className="w-[560px] flex flex-col gap-5 justify-center pb-0">
+                              <h2 className="text-[32px] font-black text-yellow-500 uppercase tracking-widest border-b-4 border-yellow-500/30 pb-3 mb-1">Ranking de Abates</h2>
+                              {top5.map((p, idx) => {
+                                const displayImg = isTeamTab ? (p.teamImg || p.playerImg) : p.playerImg;
+                                return (
+                                  <div key={idx} className="flex items-center gap-3 bg-white/5 rounded-2xl py-3 px-4 border border-white/10">
+                                      <div className="w-[55px] h-[55px] flex-shrink-0 bg-black/50 rounded-xl flex items-center justify-center font-black text-[26px] text-gray-500 border border-white/5">
+                                          {idx === 0 ? <Crown size={32} className="text-yellow-500" /> : idx + 1}
+                                      </div>
+                                      {displayImg ? (
+                                          <img src={displayImg} alt="" crossOrigin="anonymous" className={`${idx === 0 ? 'w-[85px] h-[85px] border-yellow-500 shadow-[0_0_18px_rgba(234,179,8,0.4)]' : 'w-[70px] h-[70px] border-gray-800'} flex-shrink-0 rounded-full border-4 ${isTeamTab ? 'object-contain p-1.5 bg-black/60' : 'object-cover'}`} />
+                                      ) : (
+                                          <div className="w-[70px] h-[70px] flex-shrink-0 rounded-full bg-gray-900 border-4 border-gray-800 flex items-center justify-center">
+                                              <span className="text-gray-600 font-bold">{p.name ? p.name.substring(0, 3).toUpperCase() : 'N/A'}</span>
+                                          </div>
+                                      )}
+                                      <div className="flex-1 flex flex-col justify-center min-w-0">
+                                          <span className={`font-black uppercase italic leading-none truncate ${idx === 0 ? 'text-yellow-500 text-[42px] drop-shadow-[0_0_12px_rgba(234,179,8,0.4)]' : 'text-white text-[32px]'}`}>{p.name}</span>
+                                          <div className="flex items-center gap-2 mt-1">
+                                              {!isTeamTab && p.teamImg && <img src={p.teamImg} alt="" crossOrigin="anonymous" className="w-6 h-6 object-contain opacity-70" />}
+                                              <span className="text-[16px] font-bold text-gray-400 uppercase tracking-widest truncate">{isTeamTab ? 'EQUIPE' : p.team}</span>
+                                          </div>
+                                      </div>
+                                      <div className="flex items-center gap-3 text-right shrink-0">
+                                          <div className="flex flex-col items-center min-w-[45px]">
+                                              <span className="text-[26px] font-black text-white leading-none">{p.matches}</span>
+                                              <span className="text-[12px] font-bold text-gray-500 uppercase tracking-wider leading-none mt-1">Partidas</span>
+                                          </div>
+                                          <div className="w-[1px] h-8 bg-white/10" />
+                                          <div className="flex flex-col items-center min-w-[50px]">
+                                              <span className="text-[26px] font-black text-white leading-none">{p.avgKills.toFixed(2)}</span>
+                                              <span className="text-[12px] font-bold text-gray-500 uppercase tracking-wider leading-none mt-1">Média</span>
+                                          </div>
+                                          <div className="w-[1px] h-8 bg-white/10" />
+                                          <div className="flex flex-col items-center min-w-[55px]">
+                                              <span className="text-[38px] font-black text-yellow-500 leading-none">{p.kills}</span>
+                                              <span className="text-[12px] font-bold text-yellow-500 uppercase tracking-wider leading-none mt-1">Kills</span>
+                                          </div>
+                                      </div>
+                                  </div>
+                                );
+                              })}
+                          </div>
+
+                          {/* Right Side: Highlights Grid */}
+                          <div className="w-[410px] flex flex-col gap-5">
+                              <h2 className="text-[32px] font-black text-yellow-500 uppercase tracking-widest border-b-4 border-yellow-500/30 pb-3 mb-1">Destaques</h2>
+                              
+                              <div className="grid grid-cols-1 gap-3.5">
+                                  {[
+                                      { title: "Maior Dano", player: group.topDamage, value: group.topDamage?.damage, icon: <Flame className="text-red-500" size={28} />, color: "bg-red-500/10 border-red-500/20 text-red-500" },
+                                      { title: isTeamTab ? "Média Abates" : "Média Kills", player: group.topAvgKills, value: group.topAvgKills?.avgKills.toFixed(2), icon: <Crosshair className="text-green-500" size={28} />, color: "bg-green-500/10 border-green-500/20 text-green-500" },
+                                      { title: isTeamTab ? "Mais Derrubam" : "Mais Derruba", player: group.topKnocks, value: group.topKnocks?.knocks, icon: <AlertTriangle className="text-orange-500" size={28} />, color: "bg-orange-500/10 border-orange-500/20 text-orange-500" },
+                                      { title: isTeamTab ? "Mais HS" : "Mais HS", player: group.topHs, value: group.topHs?.hs, icon: <TargetIcon className="text-yellow-500" size={28} />, color: "bg-yellow-500/10 border-yellow-500/20 text-yellow-500" },
+                                      { title: isTeamTab ? "Mais Zeram (0 Pts)" : "Mais Zera", player: group.topZero, value: `${group.topZero?.zeroKills ?? 0}`, icon: <Skull className="text-gray-400" size={28} />, color: "bg-gray-500/10 border-gray-500/20 text-gray-400" },
+                                      { title: isTeamTab ? "Mais Revivem" : "Mais Revive", player: group.topRevives, value: group.topRevives?.reviveu, icon: <Activity className="text-cyan-500" size={28} />, color: "bg-cyan-500/10 border-cyan-500/20 text-cyan-500" },
+                                      { title: isTeamTab ? "Aliados Revividos" : "Aliados Rev", player: group.topAlliesRevived, value: group.topAlliesRevived?.aliadosRevividos, icon: <Shield className="text-emerald-500" size={28} />, color: "bg-emerald-500/10 border-emerald-500/20 text-emerald-500" },
+                                      { title: isTeamTab ? "Mais MVPs" : "Mais MVP", player: group.topMvp, value: group.topMvp?.mvp, icon: <Star className="text-purple-500" size={28} />, color: "bg-purple-500/10 border-purple-500/20 text-purple-500" },
+                                      { title: isTeamTab ? "Mais Morrem" : "Mais Morre", player: group.topDeaths, value: group.topDeaths?.deaths, icon: <Skull className="text-rose-500" size={28} />, color: "bg-rose-500/10 border-rose-500/20 text-rose-500" },
+                                  ].map((h, i) => (
+                                      <div key={i} className={`flex items-center gap-3.5 py-2.5 px-4 rounded-2xl border border-white/5 bg-black/40`}>
+                                          <div className={`p-3 rounded-xl ${h.color} border`}>
+                                              {h.icon}
+                                          </div>
+                                          <div className="flex-1 flex flex-col justify-center min-w-0">
+                                              <span className="text-[16px] font-black text-gray-500 uppercase tracking-widest leading-none mb-1">{h.title}</span>
+                                              <div className="flex items-center gap-2">
+                                                  {h.player?.teamImg && <img src={h.player.teamImg} alt="" crossOrigin="anonymous" className="w-6 h-6 object-contain shrink-0" />}
+                                                  <span className="text-[28px] font-black text-white italic uppercase leading-none truncate">{h.player?.name || "-"}</span>
+                                              </div>
+                                          </div>
+                                          <span className={`text-[36px] font-black italic shrink-0 ${h.color.split(' ')[2]}`}>
+                                              {h.value ?? 0}
+                                          </span>
+                                      </div>
+                                  ))}
+                              </div>
+                          </div>
+                      </div>
+                    </div>
+                  );
+                } else {
+                  // Dedicated Feed ranking for specific stats (e.g. Times que mais zeram)
+                  const groupPrefix = isTeamTab
+                    ? (type === 'map' ? `REIS DO MAPA ${group.name}` : `REIS DA QUEDA ${group.name}`)
+                    : (type === 'role' ? `FUNÇÃO ${group.name}` : `REIS DE ${group.name}`);
+                  
+                  let title = "";
+                  let playersList = [...group.players];
+                  let valueLabel = "";
+                  let valueExtractor = (p: any): string => "";
+                  let subValueExtractor = (p: any): string => "";
+
+                  switch (storiesSubtype) {
+                    case 'matches':
+                      title = `${groupPrefix} - PARTIDAS E MÉDIAS`;
+                      playersList.sort((a, b) => b.matches - a.matches || b.kills - a.kills);
+                      valueLabel = "Partidas";
+                      valueExtractor = (p) => `${p.matches}`;
+                      subValueExtractor = (p) => `Média: ${p.avgKills.toFixed(2)}`;
+                      break;
+                    case 'damage':
+                      title = `${groupPrefix} - MAIORES DANOS`;
+                      playersList.sort((a, b) => b.damage - a.damage);
+                      valueLabel = "Dano";
+                      valueExtractor = (p) => `${p.damage}`;
+                      subValueExtractor = (p) => `Média: ${p.avgDamage.toFixed(0)}`;
+                      break;
+                    case 'avg_kills':
+                      title = isTeamTab ? `${groupPrefix} - MÉDIA DE ABATES` : `${groupPrefix} - MÉDIA DE KILLS`;
+                      playersList.sort((a, b) => b.avgKills - a.avgKills || b.kills - a.kills);
+                      valueLabel = "Média";
+                      valueExtractor = (p) => `${p.avgKills.toFixed(2)}`;
+                      subValueExtractor = (p) => `Total Abates: ${p.kills}`;
+                      break;
+                    case 'knocks':
+                      title = isTeamTab ? `${groupPrefix} - MAIS DERRUBAM` : `${groupPrefix} - MAIS DERRUBA`;
+                      playersList.sort((a, b) => b.knocks - a.knocks);
+                      valueLabel = "Deitados";
+                      valueExtractor = (p) => `${p.knocks}`;
+                      subValueExtractor = (p) => `Média: ${p.avgKnocks.toFixed(2)}`;
+                      break;
+                    case 'hs':
+                      title = `${groupPrefix} - MAIS HEADSHOTS`;
+                      playersList.sort((a, b) => b.hs - a.hs);
+                      valueLabel = "HS";
+                      valueExtractor = (p) => `${p.hs}`;
+                      subValueExtractor = (p) => `Média: ${p.avgHs.toFixed(2)}`;
+                      break;
+                    case 'zero_kills':
+                      title = isTeamTab ? `${groupPrefix} - TIMES QUE MAIS ZERAM (0 PONTOS)` : `${groupPrefix} - MAIS ZERA`;
+                      playersList.sort((a, b) => b.zeroKills - a.zeroKills || b.zeroRate - a.zeroRate || b.matches - a.matches);
+                      valueLabel = "Zeradas";
+                      valueExtractor = (p) => `${p.zeroKills}`;
+                      subValueExtractor = (p) => isTeamTab 
+                        ? `Taxa: ${p.zeroRate.toFixed(1)}% (${p.zeroKills}/${p.matches} quedas)` 
+                        : `Taxa: ${p.zeroRate.toFixed(1)}% (${p.matches} quedas)`;
+                      break;
+                    case 'revives':
+                      title = isTeamTab ? `${groupPrefix} - MAIS REVIVEM` : `${groupPrefix} - MAIS REVIVEU`;
+                      playersList.sort((a, b) => b.reviveu - a.reviveu);
+                      valueLabel = "Revives";
+                      valueExtractor = (p) => `${p.reviveu}`;
+                      subValueExtractor = (p) => `Média: ${(p.reviveu / (p.matches || 1)).toFixed(2)}`;
+                      break;
+                    case 'allies_revived':
+                      title = `${groupPrefix} - ALIADOS REVIVIDOS`;
+                      playersList.sort((a, b) => b.aliadosRevividos - a.aliadosRevividos);
+                      valueLabel = "Aliados";
+                      valueExtractor = (p) => `${p.aliadosRevividos}`;
+                      subValueExtractor = (p) => `Média: ${(p.aliadosRevividos / (p.matches || 1)).toFixed(2)}`;
+                      break;
+                    case 'mvp':
+                      title = `${groupPrefix} - MAIS MVPs`;
+                      playersList.sort((a, b) => b.mvp - a.mvp);
+                      valueLabel = "MVPs";
+                      valueExtractor = (p) => `${p.mvp}`;
+                      subValueExtractor = (p) => `Total: ${p.mvp}`;
+                      break;
+                    case 'deaths':
+                      title = isTeamTab ? `${groupPrefix} - TIMES QUE MAIS MORREM` : `${groupPrefix} - MAIS MORREU`;
+                      playersList.sort((a, b) => b.deaths - a.deaths);
+                      valueLabel = "Mortes";
+                      valueExtractor = (p) => `${p.deaths}`;
+                      subValueExtractor = (p) => `Média: ${(p.deaths / (p.matches || 1)).toFixed(2)}`;
+                      break;
+                    default:
+                      title = `${groupPrefix} - RANKING`;
+                      valueLabel = "Kills";
+                      valueExtractor = (p) => `${p.kills}`;
+                      subValueExtractor = (p) => `Média: ${p.avgKills.toFixed(2)}`;
+                  }
+
+                  const top5 = playersList.slice(0, 5);
+
+                  return (
+                    <div className="absolute inset-0 z-10 flex flex-col bg-[#0a0a0a] p-14 justify-between">
+                      {/* Header */}
+                      <div className="flex flex-col items-center text-center">
+                        <h1 className="text-[48px] font-black text-white uppercase italic tracking-tighter leading-tight max-w-[950px]">
+                          {title}
                         </h1>
-                        <div className="mt-4 px-10 py-3 bg-yellow-500 rounded-2xl">
-                            <span className="text-[48px] font-black text-black uppercase tracking-widest">{group.name}</span>
+                        <div className="mt-3 px-8 py-2 bg-yellow-500 rounded-xl">
+                          <span className="text-[26px] font-black text-black uppercase tracking-widest">{group.name}</span>
                         </div>
-                    </div>
+                      </div>
 
-                    <div className="flex-1 flex justify-center items-center gap-8 px-8 pt-4 pb-10 z-10">
-                        {/* Left Side: Top 5 Ranking */}
-                        <div className="w-[560px] flex flex-col gap-5 justify-center pb-0">
-                            <h2 className="text-[32px] font-black text-yellow-500 uppercase tracking-widest border-b-4 border-yellow-500/30 pb-3 mb-1">Ranking de Abates</h2>
-                            {top5.map((p, idx) => {
-                              const displayImg = isTeamTab ? (p.teamImg || p.playerImg) : p.playerImg;
-                              return (
-                                <div key={idx} className="flex items-center gap-3 bg-white/5 rounded-2xl py-3 px-4 border border-white/10">
-                                    <div className="w-[55px] h-[55px] flex-shrink-0 bg-black/50 rounded-xl flex items-center justify-center font-black text-[26px] text-gray-500 border border-white/5">
-                                        {idx === 0 ? <Crown size={32} className="text-yellow-500" /> : idx + 1}
-                                    </div>
-                                    {displayImg ? (
-                                        <img src={displayImg} alt="" crossOrigin="anonymous" className={`${idx === 0 ? 'w-[85px] h-[85px] border-yellow-500 shadow-[0_0_18px_rgba(234,179,8,0.4)]' : 'w-[70px] h-[70px] border-gray-800'} flex-shrink-0 rounded-full border-4 ${isTeamTab ? 'object-contain p-1.5 bg-black/60' : 'object-cover'}`} />
-                                    ) : (
-                                        <div className="w-[70px] h-[70px] flex-shrink-0 rounded-full bg-gray-900 border-4 border-gray-800 flex items-center justify-center">
-                                            <span className="text-gray-600 font-bold">{p.name ? p.name.substring(0, 3).toUpperCase() : 'N/A'}</span>
-                                        </div>
-                                    )}
-                                    <div className="flex-1 flex flex-col justify-center min-w-0">
-                                        <span className={`font-black uppercase italic leading-none truncate ${idx === 0 ? 'text-yellow-500 text-[42px] drop-shadow-[0_0_12px_rgba(234,179,8,0.4)]' : 'text-white text-[32px]'}`}>{p.name}</span>
-                                        <div className="flex items-center gap-2 mt-1">
-                                            {!isTeamTab && p.teamImg && <img src={p.teamImg} alt="" crossOrigin="anonymous" className="w-6 h-6 object-contain opacity-70" />}
-                                            <span className="text-[16px] font-bold text-gray-400 uppercase tracking-widest truncate">{isTeamTab ? 'EQUIPE' : p.team}</span>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-3 text-right shrink-0">
-                                        <div className="flex flex-col items-center min-w-[45px]">
-                                            <span className="text-[26px] font-black text-white leading-none">{p.matches}</span>
-                                            <span className="text-[12px] font-bold text-gray-500 uppercase tracking-wider leading-none mt-1">Partidas</span>
-                                        </div>
-                                        <div className="w-[1px] h-8 bg-white/10" />
-                                        <div className="flex flex-col items-center min-w-[50px]">
-                                            <span className="text-[26px] font-black text-white leading-none">{p.avgKills.toFixed(2)}</span>
-                                            <span className="text-[12px] font-bold text-gray-500 uppercase tracking-wider leading-none mt-1">Média</span>
-                                        </div>
-                                        <div className="w-[1px] h-8 bg-white/10" />
-                                        <div className="flex flex-col items-center min-w-[55px]">
-                                            <span className="text-[38px] font-black text-yellow-500 leading-none">{p.kills}</span>
-                                            <span className="text-[12px] font-bold text-yellow-500 uppercase tracking-wider leading-none mt-1">Kills</span>
-                                        </div>
-                                    </div>
+                      {/* Top 5 Cards List */}
+                      <div className="flex flex-col gap-4 my-auto">
+                        {top5.map((p, idx) => {
+                          const isLeader = idx === 0;
+                          const displayImg = isTeamTab ? (p.teamImg || p.playerImg) : p.playerImg;
+                          return (
+                            <div 
+                              key={idx} 
+                              className={`flex items-center gap-6 px-8 py-4 rounded-3xl border transition-all ${
+                                isLeader 
+                                  ? 'bg-gradient-to-r from-yellow-500/20 via-yellow-500/10 to-black border-yellow-500/50 shadow-[0_0_30px_rgba(234,179,8,0.2)]' 
+                                  : 'bg-white/5 border-white/10'
+                              }`}
+                            >
+                              {/* Position Badge */}
+                              <div className={`w-[60px] h-[60px] flex-shrink-0 rounded-2xl flex items-center justify-center font-black text-[32px] ${
+                                isLeader ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/40' : 'bg-black/50 text-gray-400 border border-white/5'
+                              }`}>
+                                {isLeader ? <Crown size={36} className="text-black" /> : idx + 1}
+                              </div>
+
+                              {/* Logo / Photo */}
+                              {displayImg ? (
+                                <img 
+                                  src={displayImg} 
+                                  alt="" 
+                                  crossOrigin="anonymous" 
+                                  className={`w-[85px] h-[85px] flex-shrink-0 rounded-full border-4 ${
+                                    isLeader ? 'border-yellow-500 shadow-[0_0_20px_rgba(234,179,8,0.5)]' : 'border-gray-700'
+                                  } ${isTeamTab ? 'object-contain p-2 bg-black/60' : 'object-cover'}`} 
+                                />
+                              ) : (
+                                <div className="w-[85px] h-[85px] flex-shrink-0 rounded-full bg-gray-900 border-4 border-gray-800 flex items-center justify-center">
+                                  <span className="text-gray-600 font-bold text-2xl">{p.name ? p.name.substring(0, 3).toUpperCase() : 'N/A'}</span>
                                 </div>
-                              );
-                            })}
-                        </div>
+                              )}
 
-                        {/* Right Side: Highlights Grid */}
-                        <div className="w-[410px] flex flex-col gap-5">
-                            <h2 className="text-[32px] font-black text-yellow-500 uppercase tracking-widest border-b-4 border-yellow-500/30 pb-3 mb-1">Destaques</h2>
-                            
-                            <div className="grid grid-cols-1 gap-3.5">
-                                {[
-                                    { title: "Maior Dano", player: group.topDamage, value: group.topDamage?.damage, icon: <Flame className="text-red-500" size={28} />, color: "bg-red-500/10 border-red-500/20 text-red-500" },
-                                    { title: "Média Kills", player: group.topAvgKills, value: group.topAvgKills?.avgKills.toFixed(2), icon: <Crosshair className="text-green-500" size={28} />, color: "bg-green-500/10 border-green-500/20 text-green-500" },
-                                    { title: "Mais Derruba", player: group.topKnocks, value: group.topKnocks?.knocks, icon: <AlertTriangle className="text-orange-500" size={28} />, color: "bg-orange-500/10 border-orange-500/20 text-orange-500" },
-                                    { title: "Mais HS", player: group.topHs, value: group.topHs?.hs, icon: <TargetIcon className="text-yellow-500" size={28} />, color: "bg-yellow-500/10 border-yellow-500/20 text-yellow-500" },
-                                    { title: "Mais Zera", player: group.topZero, value: `${group.topZero?.zeroKills}`, icon: <Skull className="text-gray-400" size={28} />, color: "bg-gray-500/10 border-gray-500/20 text-gray-400" },
-                                    { title: "Mais Revive", player: group.topRevives, value: group.topRevives?.reviveu, icon: <Activity className="text-cyan-500" size={28} />, color: "bg-cyan-500/10 border-cyan-500/20 text-cyan-500" },
-                                    { title: "Aliados Rev", player: group.topAlliesRevived, value: group.topAlliesRevived?.aliadosRevividos, icon: <Shield className="text-emerald-500" size={28} />, color: "bg-emerald-500/10 border-emerald-500/20 text-emerald-500" },
-                                    { title: "Mais MVP", player: group.topMvp, value: group.topMvp?.mvp, icon: <Star className="text-purple-500" size={28} />, color: "bg-purple-500/10 border-purple-500/20 text-purple-500" },
-                                    { title: "Mais Morre", player: group.topDeaths, value: group.topDeaths?.deaths, icon: <Skull className="text-rose-500" size={28} />, color: "bg-rose-500/10 border-rose-500/20 text-rose-500" },
-                                ].map((h, i) => (
-                                    <div key={i} className={`flex items-center gap-3.5 py-2.5 px-4 rounded-2xl border border-white/5 bg-black/40`}>
-                                        <div className={`p-3 rounded-xl ${h.color} border`}>
-                                            {h.icon}
-                                        </div>
-                                        <div className="flex-1 flex flex-col justify-center min-w-0">
-                                            <span className="text-[16px] font-black text-gray-500 uppercase tracking-widest leading-none mb-1">{h.title}</span>
-                                            <div className="flex items-center gap-2">
-                                                {h.player?.teamImg && <img src={h.player.teamImg} alt="" crossOrigin="anonymous" className="w-6 h-6 object-contain" />}
-                                                <span className="text-[28px] font-black text-white italic uppercase leading-none truncate">{h.player?.name || "-"}</span>
-                                            </div>
-                                        </div>
-                                        <span className={`text-[36px] font-black italic shrink-0 ${h.color.split(' ')[2]}`}>
-                                            {h.value || 0}
-                                        </span>
-                                    </div>
-                                ))}
+                              {/* Name & Sub-info */}
+                              <div className="flex-1 flex flex-col justify-center min-w-0">
+                                <span className={`font-black uppercase italic leading-none truncate ${
+                                  isLeader ? 'text-yellow-400 text-[40px] drop-shadow-[0_0_15px_rgba(234,179,8,0.3)]' : 'text-white text-[32px]'
+                                }`}>
+                                  {p.name}
+                                </span>
+                                <div className="flex items-center gap-3 mt-2">
+                                  {!isTeamTab && p.teamImg && <img src={p.teamImg} alt="" crossOrigin="anonymous" className="w-6 h-6 object-contain opacity-70" />}
+                                  <span className="text-[16px] font-bold text-gray-400 uppercase tracking-widest">
+                                    {isTeamTab ? 'EQUIPE' : p.team}
+                                  </span>
+                                  {subValueExtractor(p) && (
+                                    <>
+                                      <span className="text-gray-600">•</span>
+                                      <span className="text-[16px] font-bold text-yellow-500/90 uppercase tracking-wide">
+                                        {subValueExtractor(p)}
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Big Stat Value */}
+                              <div className="flex flex-col items-end shrink-0 min-w-[120px]">
+                                <span className={`text-[46px] font-black italic leading-none ${
+                                  isLeader ? 'text-yellow-400 drop-shadow-[0_0_15px_rgba(234,179,8,0.4)]' : 'text-white'
+                                }`}>
+                                  {valueExtractor(p)}
+                                </span>
+                                <span className="text-[14px] font-bold text-gray-400 uppercase tracking-widest mt-1">
+                                  {valueLabel}
+                                </span>
+                              </div>
                             </div>
-                        </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Footer */}
+                      <div className="text-center text-gray-500 text-xl font-bold uppercase tracking-widest border-t border-white/5 pt-4">
+                        FFWS BR 2026 - SPLIT 2
+                      </div>
                     </div>
-                  </div>
-                );
+                  );
+                }
               })()
             ) : null}
 
