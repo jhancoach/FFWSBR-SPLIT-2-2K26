@@ -243,17 +243,24 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
     });
 
     const playerSafes = new Map<string, Map<string, number>>();
+    const playerDeathsMap = new Map<string, number>();
     const allSafeNames = new Set<string>();
 
     filteredKillFeed.forEach(k => {
         const killer = k.PLAYER; // Fixed from k.MATADOR
-        if (!killer) return;
-        const safeVal = k.SAFE || 'OUT';
-        allSafeNames.add(safeVal);
-        
-        if (!playerSafes.has(killer)) playerSafes.set(killer, new Map());
-        const sMap = playerSafes.get(killer)!;
-        sMap.set(safeVal, (sMap.get(safeVal) || 0) + 1);
+        if (killer) {
+            const safeVal = k.SAFE || 'OUT';
+            allSafeNames.add(safeVal);
+            
+            if (!playerSafes.has(killer)) playerSafes.set(killer, new Map());
+            const sMap = playerSafes.get(killer)!;
+            sMap.set(safeVal, (sMap.get(safeVal) || 0) + 1);
+        }
+
+        const victim = k.VITIMA;
+        if (victim) {
+            playerDeathsMap.set(victim, (playerDeathsMap.get(victim) || 0) + 1);
+        }
     });
 
     const teamKillsMap = new Map<string, number>();
@@ -306,12 +313,16 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
         const teamTotalAssists = teamAssistsMap.get(stat.team) || 0;
         const killContributionPct = teamTotalKills > 0 ? ((stat.kills / teamTotalKills) * 100).toFixed(1) : '0.0';
 
+        const deaths = playerDeathsMap.get(name) || 0;
+
         return {
             name, 
             playerImg: findDimImg(data.playersDimension, name),
             teamImg: findTeamLogo(stat.team, data.teamsReference),
             team: stat.team, 
             kills: stat.kills, 
+            deaths,
+            kd: (stat.kills / (deaths || 1)).toFixed(2),
             diff: stat.kills - stat.matches,
             damage: stat.damage,
             hs: stat.hs,
@@ -696,6 +707,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             name: pName,
             team: '',
             kills: 0,
+            deaths: 0,
             damage: 0,
             hs: 0,
             knocks: 0,
@@ -711,6 +723,26 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             mapKills: {} as Record<string, number>,
             safeKills: {} as Record<string, number>,
         };
+
+        // Character breakdown map
+        const charMap = new Map<string, {
+            name: string;
+            img?: string;
+            matches: number;
+            kills: number;
+            deaths: number;
+            damage: number;
+            hs: number;
+            knocks: number;
+            assists: number;
+            zeroKills: number;
+            withKills: number;
+            hab2: Record<string, number>;
+            hab3: Record<string, number>;
+            hab4: Record<string, number>;
+            pets: Record<string, number>;
+            items: Record<string, number>;
+        }>();
         
         const filtered = data.players.filter(p => {
              if (normalize(p.PLAYER) !== normalize(pName)) return false;
@@ -741,11 +773,65 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             stats.reviveu += parseNumber(p.Reviveu);
             stats.aliadosRevividos += parseNumber(p.AliadosRevividos);
             stats.mvp += parseNumber(p.MVP);
+            if (pKills === 0) {
+                stats.zeroKills++;
+            } else {
+                stats.withKills++;
+            }
             const m = normalize(p.MAPA) || 'N/A';
             stats.mapKills[m] = (stats.mapKills[m] || 0) + pKills;
+
+            // Identificar personagem nesta queda
+            const matchChar = data.characters.find(c => 
+                normalize(c.Player) === normalize(pName) && 
+                normalize(c.Rd) === normalize(p.RD) && 
+                normalize(c.Q) === normalize(p.Q)
+            );
+            const charName = matchChar?.Hab1 || 'Padrão / Desconhecido';
+            if (!charMap.has(charName)) {
+                charMap.set(charName, {
+                    name: charName,
+                    img: findDimImg(data.hab1, charName),
+                    matches: 0,
+                    kills: 0,
+                    deaths: 0,
+                    damage: 0,
+                    hs: 0,
+                    knocks: 0,
+                    assists: 0,
+                    zeroKills: 0,
+                    withKills: 0,
+                    hab2: {},
+                    hab3: {},
+                    hab4: {},
+                    pets: {},
+                    items: {}
+                });
+            }
+            const cStat = charMap.get(charName)!;
+            cStat.matches++;
+            cStat.kills += pKills;
+            cStat.damage += parseNumber(p.Dano);
+            cStat.hs += parseNumber(p.HS);
+            cStat.knocks += parseNumber(p.Deitados);
+            cStat.assists += parseNumber(p.Assistencias);
+            if (pKills === 0) cStat.zeroKills++;
+            else cStat.withKills++;
+
+            if (matchChar) {
+                if (matchChar.Hab2) cStat.hab2[matchChar.Hab2] = (cStat.hab2[matchChar.Hab2] || 0) + 1;
+                if (matchChar.Hab3) cStat.hab3[matchChar.Hab3] = (cStat.hab3[matchChar.Hab3] || 0) + 1;
+                if (matchChar.Hab4) cStat.hab4[matchChar.Hab4] = (cStat.hab4[matchChar.Hab4] || 0) + 1;
+                if (matchChar.Pet) cStat.pets[matchChar.Pet] = (cStat.pets[matchChar.Pet] || 0) + 1;
+                if (matchChar.Item) cStat.items[matchChar.Item] = (cStat.items[matchChar.Item] || 0) + 1;
+            }
         });
         
         data.killFeed.forEach(k => {
+            const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => normalize(r) === normalize(k.RD));
+            const matchQ = filters.queda.length === 0 || filters.queda.some(q => normalize(q) === normalize(k.Q));
+            if (!matchRD || !matchQ) return;
+
             if (normalize(k.PLAYER) === normalize(pName)) {
                 if (habFilter !== 'All') {
                     const key = `${normalize(pName)}|${normalize(k.RD)}|${normalize(k.Q)}`;
@@ -754,6 +840,24 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                 const safeVal = k.SAFE || 'OUT';
                 stats.safeKills[safeVal] = (stats.safeKills[safeVal] || 0) + 1;
             }
+
+            if (normalize(k.VITIMA) === normalize(pName)) {
+                if (habFilter !== 'All') {
+                    const key = `${normalize(pName)}|${normalize(k.RD)}|${normalize(k.Q)}`;
+                    if (!validMatchKeys.has(key)) return;
+                }
+                stats.deaths++;
+
+                const matchChar = data.characters.find(c => 
+                    normalize(c.Player) === normalize(pName) && 
+                    normalize(c.Rd) === normalize(k.RD) && 
+                    normalize(c.Q) === normalize(k.Q)
+                );
+                const charName = matchChar?.Hab1 || 'Padrão / Desconhecido';
+                if (charMap.has(charName)) {
+                    charMap.get(charName)!.deaths++;
+                }
+            }
         });
         
         // Use rankingData fallback if habFilter is 'All' so we get exactly the same baseline as before for global
@@ -761,6 +865,59 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             const rankP = rankingData.find(r => normalize(r.name) === normalize(pName));
             if (rankP) return rankP;
         }
+
+        // Character Pool sorted
+        const characterPool = Array.from(charMap.values()).map(c => ({
+            ...c,
+            avgKills: c.matches > 0 ? (c.kills / c.matches).toFixed(2) : '0.00',
+            avgDamage: c.matches > 0 ? (c.damage / c.matches).toFixed(0) : '0',
+            kd: (c.kills / (c.deaths || 1)).toFixed(2),
+            zeroKillsPct: c.matches > 0 ? ((c.zeroKills / c.matches) * 100).toFixed(1) : '0.0',
+            withKillsPct: c.matches > 0 ? ((c.withKills / c.matches) * 100).toFixed(1) : '0.0',
+            pickRate: stats.matches > 0 ? ((c.matches / stats.matches) * 100).toFixed(1) : '0.0',
+        })).sort((a, b) => b.matches - a.matches || b.kills - a.kills);
+
+        const topCharacter = characterPool[0] || null;
+
+        // Imagem do personagem ativo ou mais jogado
+        let activeHabImg: string | undefined = undefined;
+        if (habFilter !== 'All') {
+            activeHabImg = findDimImg(data.hab1, habFilter);
+        } else if (topCharacter) {
+            activeHabImg = topCharacter.img;
+        }
+
+        // Agregação de passivas, pets e itens
+        const allHab2Counts: Record<string, number> = {};
+        const allHab3Counts: Record<string, number> = {};
+        const allHab4Counts: Record<string, number> = {};
+        const allPetCounts: Record<string, number> = {};
+        const allItemCounts: Record<string, number> = {};
+
+        characterPool.forEach(c => {
+            Object.entries(c.hab2).forEach(([k, v]) => allHab2Counts[k] = (allHab2Counts[k] || 0) + v);
+            Object.entries(c.hab3).forEach(([k, v]) => allHab3Counts[k] = (allHab3Counts[k] || 0) + v);
+            Object.entries(c.hab4).forEach(([k, v]) => allHab4Counts[k] = (allHab4Counts[k] || 0) + v);
+            Object.entries(c.pets).forEach(([k, v]) => allPetCounts[k] = (allPetCounts[k] || 0) + v);
+            Object.entries(c.items).forEach(([k, v]) => allItemCounts[k] = (allItemCounts[k] || 0) + v);
+        });
+
+        const getTopItem = (counts: Record<string, number>, dimData: any[]) => {
+            const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+            if (sorted.length === 0) return null;
+            return {
+                name: sorted[0][0],
+                count: sorted[0][1],
+                pct: stats.matches > 0 ? ((sorted[0][1] / stats.matches) * 100).toFixed(0) : '0',
+                img: findDimImg(dimData, sorted[0][0])
+            };
+        };
+
+        const topHab2 = getTopItem(allHab2Counts, data.hab2);
+        const topHab3 = getTopItem(allHab3Counts, data.hab3);
+        const topHab4 = getTopItem(allHab4Counts, data.hab4);
+        const topPet = getTopItem(allPetCounts, data.pets);
+        const topItem = getTopItem(allItemCounts, data.items);
 
         // Totais acumulados da equipe em todas as partidas do filtro
         const teamName = stats.team || data.players.find(p => normalize(p.PLAYER) === normalize(pName))?.TIME || '';
@@ -798,6 +955,9 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             ...stats,
             avg: stats.matches > 0 ? (stats.kills / stats.matches).toFixed(2) : '0.00',
             avgDmg: stats.matches > 0 ? (stats.damage / stats.matches).toFixed(0) : '0',
+            zeroKillsPct: stats.matches > 0 ? ((stats.zeroKills / stats.matches) * 100).toFixed(1) : '0.0',
+            withKillsPct: stats.matches > 0 ? ((stats.withKills / stats.matches) * 100).toFixed(1) : '0.0',
+            kd: (stats.kills / (stats.deaths || 1)).toFixed(2),
             teamTotalKills,
             teamTotalDamage,
             teamTotalHS,
@@ -805,7 +965,16 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             teamTotalAssists,
             killContributionPct: teamTotalKills > 0 ? ((stats.kills / teamTotalKills) * 100).toFixed(1) : '0.0',
             playerImg: playerDim?.IMG,
-            teamImg: teamDim?.IMG
+            teamImg: teamDim?.IMG,
+            characterPool,
+            topCharacter,
+            distinctCharactersCount: characterPool.length,
+            activeHabImg,
+            topHab2,
+            topHab3,
+            topHab4,
+            topPet,
+            topItem
         };
     };
 
@@ -813,7 +982,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
     const p2 = getStats(comparePlayers.p2, comparePlayers.p2Hab);
     
     return { p1, p2 };
-  }, [rankingData, data.players, data.characters, data.playersDimension, data.teamsReference, comparePlayers, activeTab, filters]);
+  }, [rankingData, data.players, data.characters, data.playersDimension, data.teamsReference, data.killFeed, data.hab1, data.hab2, data.hab3, data.hab4, data.pets, data.items, comparePlayers, activeTab, filters]);
 
   const sortedRoundsList = useMemo(() => {
     const rounds = new Set<string>();
@@ -2500,79 +2669,201 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-8">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                       {/* Seleção Jogador 1 */}
-                      <div className="bg-[#1a1a1a] rounded-3xl border border-gray-800 p-8 shadow-2xl">
-                          <label className="text-[10px] font-black text-yellow-500 uppercase tracking-widest mb-4 block">Desafiante 1</label>
-                          <select 
-                              value={comparePlayers.p1} 
-                              onChange={(e) => setComparePlayers(prev => ({...prev, p1: e.target.value}))}
-                              className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-white font-bold focus:border-yellow-500 outline-none transition-all mb-4"
-                          >
-                              <option value="">Selecione um jogador...</option>
-                              {allPlayersList.map(p => (
-                                  <option key={p.name} value={p.name}>{p.name}</option>
-                              ))}
-                          </select>
-                          <select 
-                              value={comparePlayers.p1Hab} 
-                              onChange={(e) => setComparePlayers(prev => ({...prev, p1Hab: e.target.value}))}
-                              className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-white font-bold focus:border-yellow-500 outline-none transition-all text-sm"
-                          >
-                              <option value="All">Com Qualquer Habilidade</option>
-                              {filterOptions.activeHabs.map(h => <option key={h} value={h}>Com {h}</option>)}
-                          </select>
+                      <div className="bg-[#1a1a1a] rounded-3xl border border-gray-800 p-8 shadow-2xl flex flex-col justify-between">
+                          <div>
+                              <label className="text-[10px] font-black text-yellow-500 uppercase tracking-widest mb-4 block">Desafiante 1</label>
+                              <select 
+                                  value={comparePlayers.p1} 
+                                  onChange={(e) => setComparePlayers(prev => ({...prev, p1: e.target.value}))}
+                                  className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-white font-bold focus:border-yellow-500 outline-none transition-all mb-4"
+                              >
+                                  <option value="">Selecione um jogador...</option>
+                                  {allPlayersList.map(p => (
+                                      <option key={p.name} value={p.name}>{p.name}</option>
+                                  ))}
+                              </select>
+                              <select 
+                                  value={comparePlayers.p1Hab} 
+                                  onChange={(e) => setComparePlayers(prev => ({...prev, p1Hab: e.target.value}))}
+                                  className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-white font-bold focus:border-yellow-500 outline-none transition-all text-sm"
+                              >
+                                  <option value="All">Com Qualquer Personagem / Habilidade</option>
+                                  {filterOptions.activeHabs.map(h => <option key={h} value={h}>Com {h}</option>)}
+                              </select>
+                          </div>
+
                           {compareData.p1 && (
                               <div className="mt-8 flex flex-col items-center">
-                                  <div className="w-32 h-32 rounded-full border-4 border-yellow-500/20 overflow-hidden shadow-[0_0_30px_rgba(234,179,8,0.1)] mb-4 bg-black flex-shrink-0">
-                                      {compareData.p1.playerImg ? (
-                                          <img src={compareData.p1.playerImg} className="w-full h-full object-cover" alt={compareData.p1.name} referrerPolicy="no-referrer" />
-                                      ) : compareData.p1.teamImg ? (
-                                          <img src={compareData.p1.teamImg} className="w-full h-full object-contain p-2" alt={compareData.p1.team} referrerPolicy="no-referrer" />
-                                      ) : (
-                                          <div className="w-full h-full flex items-center justify-center text-gray-700 bg-black"><User size={48} /></div>
+                                  <div className="relative">
+                                      <div className="w-32 h-32 rounded-full border-4 border-yellow-500/30 overflow-hidden shadow-[0_0_30px_rgba(234,179,8,0.15)] mb-4 bg-black flex-shrink-0">
+                                          {compareData.p1.playerImg ? (
+                                              <img src={compareData.p1.playerImg} className="w-full h-full object-cover" alt={compareData.p1.name} referrerPolicy="no-referrer" />
+                                          ) : compareData.p1.teamImg ? (
+                                              <img src={compareData.p1.teamImg} className="w-full h-full object-contain p-2" alt={compareData.p1.team} referrerPolicy="no-referrer" />
+                                          ) : (
+                                              <div className="w-full h-full flex items-center justify-center text-gray-700 bg-black"><User size={48} /></div>
+                                          )}
+                                      </div>
+                                      {compareData.p1.teamImg && (
+                                          <div className="absolute -bottom-1 -right-1 w-10 h-10 rounded-full bg-black/90 border-2 border-yellow-500/40 p-1 shadow-lg flex items-center justify-center overflow-hidden">
+                                              <img src={compareData.p1.teamImg} alt={compareData.p1.team} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                                          </div>
                                       )}
                                   </div>
-                                  <h4 className="text-xl font-black text-white uppercase italic tracking-tighter">{compareData.p1.name}</h4>
-                                  {comparePlayers.p1Hab !== 'All' && <span className="text-[10px] bg-yellow-500/20 text-yellow-500 px-3 py-1 rounded-full font-black uppercase tracking-widest mt-1 border border-yellow-500/30">Com {comparePlayers.p1Hab}</span>}
-                                  <span className="text-xs font-black text-gray-500 uppercase tracking-widest mt-2">{compareData.p1.team}</span>
+
+                                  <h4 className="text-xl font-black text-white uppercase italic tracking-tighter text-center">{compareData.p1.name}</h4>
+                                  <span className="text-xs font-black text-gray-500 uppercase tracking-widest mt-1">{compareData.p1.team}</span>
+
+                                  {/* Badge de Personagem do Jogador 1 */}
+                                  <div className="w-full mt-4 bg-black/50 p-3 rounded-2xl border border-yellow-500/20 flex items-center gap-3">
+                                      <div className="w-12 h-12 rounded-xl bg-yellow-500/10 border border-yellow-500/30 p-1 flex-shrink-0 overflow-hidden flex items-center justify-center">
+                                          {compareData.p1.activeHabImg ? (
+                                              <img src={compareData.p1.activeHabImg} alt="Personagem" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                                          ) : (
+                                              <Zap size={22} className="text-yellow-500" />
+                                          )}
+                                      </div>
+                                      <div className="flex flex-col min-w-0 flex-1">
+                                          <div className="flex items-center gap-2">
+                                              <span className="text-[9px] font-black uppercase tracking-wider text-yellow-500">
+                                                  {comparePlayers.p1Hab !== 'All' ? 'Personagem Filtrado' : 'Personagem Principal (Main)'}
+                                              </span>
+                                              {comparePlayers.p1Hab === 'All' && compareData.p1.topCharacter && (
+                                                  <span className="text-[8px] px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400 font-black">
+                                                      {compareData.p1.topCharacter.pickRate}% uso
+                                                  </span>
+                                              )}
+                                          </div>
+                                          <span className="text-sm font-black text-white uppercase italic truncate">
+                                              {comparePlayers.p1Hab !== 'All' ? comparePlayers.p1Hab : (compareData.p1.topCharacter?.name || 'Nenhum')}
+                                          </span>
+                                          {comparePlayers.p1Hab === 'All' && compareData.p1.characterPool.length > 1 && (
+                                              <span className="text-[9px] text-gray-400 truncate">
+                                                  Pool: {compareData.p1.characterPool.map(c => `${c.name} (${c.matches}Q)`).join(', ')}
+                                              </span>
+                                          )}
+                                      </div>
+                                  </div>
+
+                                  {/* Quick stats badges */}
+                                  <div className="grid grid-cols-4 gap-2 w-full mt-4 bg-black/40 p-3 rounded-2xl border border-white/5 text-center">
+                                      <div className="flex flex-col">
+                                          <span className="text-[9px] font-black text-gray-500 uppercase tracking-wider">Abates</span>
+                                          <span className="text-base font-black text-white">{compareData.p1.kills}</span>
+                                      </div>
+                                      <div className="flex flex-col">
+                                          <span className="text-[9px] font-black text-gray-500 uppercase tracking-wider">Mortes</span>
+                                          <span className="text-base font-black text-red-400">{compareData.p1.deaths ?? 0}</span>
+                                      </div>
+                                      <div className="flex flex-col">
+                                          <span className="text-[9px] font-black text-gray-500 uppercase tracking-wider">K/D</span>
+                                          <span className="text-base font-black text-yellow-400">{compareData.p1.kd ?? '0.00'}</span>
+                                      </div>
+                                      <div className="flex flex-col">
+                                          <span className="text-[9px] font-black text-gray-500 uppercase tracking-wider">Zeradas</span>
+                                          <span className="text-base font-black text-orange-400">{compareData.p1.zeroKills ?? 0}</span>
+                                      </div>
+                                  </div>
                               </div>
                           )}
                       </div>
 
                       {/* Seleção Jogador 2 */}
-                      <div className="bg-[#1a1a1a] rounded-3xl border border-gray-800 p-8 shadow-2xl">
-                          <label className="text-[10px] font-black text-yellow-500 uppercase tracking-widest mb-4 block">Desafiante 2</label>
-                          <select 
-                              value={comparePlayers.p2} 
-                              onChange={(e) => setComparePlayers(prev => ({...prev, p2: e.target.value}))}
-                              className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-white font-bold focus:border-yellow-500 outline-none transition-all mb-4"
-                          >
-                              <option value="">Selecione um jogador...</option>
-                              {allPlayersList.map(p => (
-                                  <option key={p.name} value={p.name}>{p.name}</option>
-                              ))}
-                          </select>
-                          <select 
-                              value={comparePlayers.p2Hab} 
-                              onChange={(e) => setComparePlayers(prev => ({...prev, p2Hab: e.target.value}))}
-                              className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-white font-bold focus:border-blue-500 outline-none transition-all text-sm"
-                          >
-                              <option value="All">Com Qualquer Habilidade</option>
-                              {filterOptions.activeHabs.map(h => <option key={h} value={h}>Com {h}</option>)}
-                          </select>
+                      <div className="bg-[#1a1a1a] rounded-3xl border border-gray-800 p-8 shadow-2xl flex flex-col justify-between">
+                          <div>
+                              <label className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-4 block">Desafiante 2</label>
+                              <select 
+                                  value={comparePlayers.p2} 
+                                  onChange={(e) => setComparePlayers(prev => ({...prev, p2: e.target.value}))}
+                                  className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-white font-bold focus:border-yellow-500 outline-none transition-all mb-4"
+                              >
+                                  <option value="">Selecione um jogador...</option>
+                                  {allPlayersList.map(p => (
+                                      <option key={p.name} value={p.name}>{p.name}</option>
+                                  ))}
+                              </select>
+                              <select 
+                                  value={comparePlayers.p2Hab} 
+                                  onChange={(e) => setComparePlayers(prev => ({...prev, p2Hab: e.target.value}))}
+                                  className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-white font-bold focus:border-blue-500 outline-none transition-all text-sm"
+                              >
+                                  <option value="All">Com Qualquer Personagem / Habilidade</option>
+                                  {filterOptions.activeHabs.map(h => <option key={h} value={h}>Com {h}</option>)}
+                              </select>
+                          </div>
+
                           {compareData.p2 && (
                               <div className="mt-8 flex flex-col items-center">
-                                  <div className="w-32 h-32 rounded-full border-4 border-blue-500/20 overflow-hidden shadow-[0_0_30px_rgba(59,130,246,0.1)] mb-4 bg-black flex-shrink-0">
-                                      {compareData.p2.playerImg ? (
-                                          <img src={compareData.p2.playerImg} className="w-full h-full object-cover" alt={compareData.p2.name} referrerPolicy="no-referrer" />
-                                      ) : compareData.p2.teamImg ? (
-                                          <img src={compareData.p2.teamImg} className="w-full h-full object-contain p-2" alt={compareData.p2.team} referrerPolicy="no-referrer" />
-                                      ) : (
-                                          <div className="w-full h-full flex items-center justify-center text-gray-700 bg-black"><User size={48} /></div>
+                                  <div className="relative">
+                                      <div className="w-32 h-32 rounded-full border-4 border-blue-500/30 overflow-hidden shadow-[0_0_30px_rgba(59,130,246,0.15)] mb-4 bg-black flex-shrink-0">
+                                          {compareData.p2.playerImg ? (
+                                              <img src={compareData.p2.playerImg} className="w-full h-full object-cover" alt={compareData.p2.name} referrerPolicy="no-referrer" />
+                                          ) : compareData.p2.teamImg ? (
+                                              <img src={compareData.p2.teamImg} className="w-full h-full object-contain p-2" alt={compareData.p2.team} referrerPolicy="no-referrer" />
+                                          ) : (
+                                              <div className="w-full h-full flex items-center justify-center text-gray-700 bg-black"><User size={48} /></div>
+                                          )}
+                                      </div>
+                                      {compareData.p2.teamImg && (
+                                          <div className="absolute -bottom-1 -right-1 w-10 h-10 rounded-full bg-black/90 border-2 border-blue-500/40 p-1 shadow-lg flex items-center justify-center overflow-hidden">
+                                              <img src={compareData.p2.teamImg} alt={compareData.p2.team} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                                          </div>
                                       )}
                                   </div>
-                                  <h4 className="text-xl font-black text-white uppercase italic tracking-tighter">{compareData.p2.name}</h4>
-                                  {comparePlayers.p2Hab !== 'All' && <span className="text-[10px] bg-blue-500/20 text-blue-500 px-3 py-1 rounded-full font-black uppercase tracking-widest mt-1 border border-blue-500/30">Com {comparePlayers.p2Hab}</span>}
-                                  <span className="text-xs font-black text-gray-500 uppercase tracking-widest mt-2">{compareData.p2.team}</span>
+
+                                  <h4 className="text-xl font-black text-white uppercase italic tracking-tighter text-center">{compareData.p2.name}</h4>
+                                  <span className="text-xs font-black text-gray-500 uppercase tracking-widest mt-1">{compareData.p2.team}</span>
+
+                                  {/* Badge de Personagem do Jogador 2 */}
+                                  <div className="w-full mt-4 bg-black/50 p-3 rounded-2xl border border-blue-500/20 flex items-center gap-3">
+                                      <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/30 p-1 flex-shrink-0 overflow-hidden flex items-center justify-center">
+                                          {compareData.p2.activeHabImg ? (
+                                              <img src={compareData.p2.activeHabImg} alt="Personagem" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                                          ) : (
+                                              <Zap size={22} className="text-blue-500" />
+                                          )}
+                                      </div>
+                                      <div className="flex flex-col min-w-0 flex-1">
+                                          <div className="flex items-center gap-2">
+                                              <span className="text-[9px] font-black uppercase tracking-wider text-blue-400">
+                                                  {comparePlayers.p2Hab !== 'All' ? 'Personagem Filtrado' : 'Personagem Principal (Main)'}
+                                              </span>
+                                              {comparePlayers.p2Hab === 'All' && compareData.p2.topCharacter && (
+                                                  <span className="text-[8px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-black">
+                                                      {compareData.p2.topCharacter.pickRate}% uso
+                                                  </span>
+                                              )}
+                                          </div>
+                                          <span className="text-sm font-black text-white uppercase italic truncate">
+                                              {comparePlayers.p2Hab !== 'All' ? comparePlayers.p2Hab : (compareData.p2.topCharacter?.name || 'Nenhum')}
+                                          </span>
+                                          {comparePlayers.p2Hab === 'All' && compareData.p2.characterPool.length > 1 && (
+                                              <span className="text-[9px] text-gray-400 truncate">
+                                                  Pool: {compareData.p2.characterPool.map(c => `${c.name} (${c.matches}Q)`).join(', ')}
+                                              </span>
+                                          )}
+                                      </div>
+                                  </div>
+
+                                  {/* Quick stats badges */}
+                                  <div className="grid grid-cols-4 gap-2 w-full mt-4 bg-black/40 p-3 rounded-2xl border border-white/5 text-center">
+                                      <div className="flex flex-col">
+                                          <span className="text-[9px] font-black text-gray-500 uppercase tracking-wider">Abates</span>
+                                          <span className="text-base font-black text-white">{compareData.p2.kills}</span>
+                                      </div>
+                                      <div className="flex flex-col">
+                                          <span className="text-[9px] font-black text-gray-500 uppercase tracking-wider">Mortes</span>
+                                          <span className="text-base font-black text-red-400">{compareData.p2.deaths ?? 0}</span>
+                                      </div>
+                                      <div className="flex flex-col">
+                                          <span className="text-[9px] font-black text-gray-500 uppercase tracking-wider">K/D</span>
+                                          <span className="text-base font-black text-blue-400">{compareData.p2.kd ?? '0.00'}</span>
+                                      </div>
+                                      <div className="flex flex-col">
+                                          <span className="text-[9px] font-black text-gray-500 uppercase tracking-wider">Zeradas</span>
+                                          <span className="text-base font-black text-orange-400">{compareData.p2.zeroKills ?? 0}</span>
+                                      </div>
+                                  </div>
                               </div>
                           )}
                       </div>
@@ -2587,38 +2878,308 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                             p1Name={compareData.p1.name} 
                             p2Name={compareData.p2.name} 
                           />
+
+                          {/* SEÇÃO 1: DUELO DE PERSONAGENS & HABILIDADES ATIVAS (HAB 1) */}
+                          <div className="bg-[#1a1a1a] rounded-3xl border border-gray-800 overflow-hidden shadow-2xl">
+                              <div className="bg-gradient-to-r from-yellow-500/10 via-black/40 to-blue-500/10 px-8 py-6 border-b border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4">
+                                  <div className="flex items-center gap-3">
+                                      <div className="p-2.5 bg-yellow-500/10 border border-yellow-500/20 rounded-xl">
+                                          <Sparkles className="text-yellow-500" size={20} />
+                                      </div>
+                                      <div>
+                                          <h3 className="text-sm font-black text-white uppercase tracking-[0.2em] italic">Duelo de Personagens & Habilidades Ativas (Hab 1)</h3>
+                                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Comparativo detalhado de eficiência, média e taxa de uso por personagem</p>
+                                      </div>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-[10px] font-black uppercase">
+                                      <span className="text-yellow-500">{compareData.p1.name}: {compareData.p1.distinctCharactersCount} Personagens</span>
+                                      <span className="text-gray-600">vs</span>
+                                      <span className="text-blue-400">{compareData.p2.name}: {compareData.p2.distinctCharactersCount} Personagens</span>
+                                  </div>
+                              </div>
+
+                              <div className="p-6 md:p-8 space-y-8">
+                                  {/* Resumo Lado a Lado dos Personagens Mais Usados */}
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                      {/* Desafiante 1 Main Card */}
+                                      <div className="bg-black/40 rounded-2xl border border-yellow-500/20 p-5 relative overflow-hidden">
+                                          <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-500/5 rounded-full blur-2xl pointer-events-none"></div>
+                                          <span className="text-[9px] font-black text-yellow-500 uppercase tracking-widest block mb-3">Main de {compareData.p1.name}</span>
+                                          {compareData.p1.topCharacter ? (
+                                              <div className="flex items-center gap-4">
+                                                  <div className="w-16 h-16 rounded-2xl bg-black border-2 border-yellow-500/40 p-1.5 flex-shrink-0 shadow-lg overflow-hidden flex items-center justify-center">
+                                                      {compareData.p1.topCharacter.img ? (
+                                                          <img src={compareData.p1.topCharacter.img} alt={compareData.p1.topCharacter.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                                                      ) : (
+                                                          <Zap size={28} className="text-yellow-500" />
+                                                      )}
+                                                  </div>
+                                                  <div className="flex-1 min-w-0">
+                                                      <h4 className="text-base font-black text-white uppercase italic truncate">{compareData.p1.topCharacter.name}</h4>
+                                                      <div className="grid grid-cols-4 gap-2 mt-2">
+                                                          <div className="flex flex-col">
+                                                              <span className="text-[8px] font-bold text-gray-500 uppercase">Quedas</span>
+                                                              <span className="text-xs font-black text-white">{compareData.p1.topCharacter.matches} ({compareData.p1.topCharacter.pickRate}%)</span>
+                                                          </div>
+                                                          <div className="flex flex-col">
+                                                              <span className="text-[8px] font-bold text-gray-500 uppercase">Abates</span>
+                                                              <span className="text-xs font-black text-yellow-500">{compareData.p1.topCharacter.kills}</span>
+                                                          </div>
+                                                          <div className="flex flex-col">
+                                                              <span className="text-[8px] font-bold text-gray-500 uppercase">Média K/Q</span>
+                                                              <span className="text-xs font-black text-yellow-400">{compareData.p1.topCharacter.avgKills}</span>
+                                                          </div>
+                                                          <div className="flex flex-col">
+                                                              <span className="text-[8px] font-bold text-gray-500 uppercase">K/D</span>
+                                                              <span className="text-xs font-black text-white">{compareData.p1.topCharacter.kd}</span>
+                                                          </div>
+                                                      </div>
+                                                  </div>
+                                              </div>
+                                          ) : (
+                                              <p className="text-xs text-gray-500 font-bold">Nenhum personagem registrado</p>
+                                          )}
+                                      </div>
+
+                                      {/* Desafiante 2 Main Card */}
+                                      <div className="bg-black/40 rounded-2xl border border-blue-500/20 p-5 relative overflow-hidden">
+                                          <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full blur-2xl pointer-events-none"></div>
+                                          <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest block mb-3">Main de {compareData.p2.name}</span>
+                                          {compareData.p2.topCharacter ? (
+                                              <div className="flex items-center gap-4">
+                                                  <div className="w-16 h-16 rounded-2xl bg-black border-2 border-blue-500/40 p-1.5 flex-shrink-0 shadow-lg overflow-hidden flex items-center justify-center">
+                                                      {compareData.p2.topCharacter.img ? (
+                                                          <img src={compareData.p2.topCharacter.img} alt={compareData.p2.topCharacter.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                                                      ) : (
+                                                          <Zap size={28} className="text-blue-500" />
+                                                      )}
+                                                  </div>
+                                                  <div className="flex-1 min-w-0">
+                                                      <h4 className="text-base font-black text-white uppercase italic truncate">{compareData.p2.topCharacter.name}</h4>
+                                                      <div className="grid grid-cols-4 gap-2 mt-2">
+                                                          <div className="flex flex-col">
+                                                              <span className="text-[8px] font-bold text-gray-500 uppercase">Quedas</span>
+                                                              <span className="text-xs font-black text-white">{compareData.p2.topCharacter.matches} ({compareData.p2.topCharacter.pickRate}%)</span>
+                                                          </div>
+                                                          <div className="flex flex-col">
+                                                              <span className="text-[8px] font-bold text-gray-500 uppercase">Abates</span>
+                                                              <span className="text-xs font-black text-blue-400">{compareData.p2.topCharacter.kills}</span>
+                                                          </div>
+                                                          <div className="flex flex-col">
+                                                              <span className="text-[8px] font-bold text-gray-500 uppercase">Média K/Q</span>
+                                                              <span className="text-xs font-black text-blue-300">{compareData.p2.topCharacter.avgKills}</span>
+                                                          </div>
+                                                          <div className="flex flex-col">
+                                                              <span className="text-[8px] font-bold text-gray-500 uppercase">K/D</span>
+                                                              <span className="text-xs font-black text-white">{compareData.p2.topCharacter.kd}</span>
+                                                          </div>
+                                                      </div>
+                                                  </div>
+                                              </div>
+                                          ) : (
+                                              <p className="text-xs text-gray-500 font-bold">Nenhum personagem registrado</p>
+                                          )}
+                                      </div>
+                                  </div>
+
+                                  {/* Tabela de Comparação Personagem por Personagem */}
+                                  <div>
+                                      <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest block mb-4">
+                                          Tabela Comparativa Direta por Personagem (Hab 1):
+                                      </span>
+
+                                      <div className="space-y-4">
+                                          {Array.from(new Set([
+                                              ...(compareData.p1.characterPool || []).map(c => c.name),
+                                              ...(compareData.p2.characterPool || []).map(c => c.name)
+                                          ])).filter(Boolean).sort().map(charName => {
+                                              const c1 = (compareData.p1.characterPool || []).find(c => c.name === charName);
+                                              const c2 = (compareData.p2.characterPool || []).find(c => c.name === charName);
+                                              const charImg = c1?.img || c2?.img || findDimImg(data.hab1, charName);
+                                              
+                                              const k1 = c1?.kills || 0;
+                                              const k2 = c2?.kills || 0;
+                                              const avg1 = parseFloat(c1?.avgKills || '0');
+                                              const avg2 = parseFloat(c2?.avgKills || '0');
+                                              const kd1 = parseFloat(c1?.kd || '0');
+                                              const kd2 = parseFloat(c2?.kd || '0');
+
+                                              const isP1Better = (k1 > k2) || (k1 === k2 && avg1 > avg2);
+                                              const isP2Better = (k2 > k1) || (k1 === k2 && avg2 > avg1);
+
+                                              return (
+                                                  <div key={charName} className="bg-black/50 rounded-2xl border border-white/5 p-4 hover:border-white/15 transition-all">
+                                                      <div className="flex items-center justify-between mb-3">
+                                                          {/* Jogador 1 Resumo */}
+                                                          <div className="flex items-center gap-2">
+                                                              <span className={`text-xs font-black italic ${c1 ? 'text-yellow-500' : 'text-gray-600'}`}>
+                                                                  {c1 ? `${c1.kills} Kills` : 'Não jogou'}
+                                                              </span>
+                                                              {c1 && (
+                                                                  <span className="text-[9px] text-gray-400 font-bold bg-white/5 px-2 py-0.5 rounded">
+                                                                      {c1.matches}Q | Méd: {c1.avgKills} | K/D: {c1.kd}
+                                                                  </span>
+                                                              )}
+                                                          </div>
+
+                                                          {/* Identificação do Personagem */}
+                                                          <div className="flex items-center gap-2 bg-white/5 px-3 py-1 rounded-xl border border-white/10">
+                                                              <div className="w-6 h-6 rounded-lg bg-black border border-white/10 overflow-hidden flex items-center justify-center p-0.5">
+                                                                  {charImg ? (
+                                                                      <img src={charImg} alt={charName} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                                                                  ) : (
+                                                                      <Zap size={14} className="text-yellow-500" />
+                                                                  )}
+                                                              </div>
+                                                              <span className="text-xs font-black text-white uppercase italic tracking-wider">{charName}</span>
+                                                          </div>
+
+                                                          {/* Jogador 2 Resumo */}
+                                                          <div className="flex items-center gap-2">
+                                                              {c2 && (
+                                                                  <span className="text-[9px] text-gray-400 font-bold bg-white/5 px-2 py-0.5 rounded">
+                                                                      {c2.matches}Q | Méd: {c2.avgKills} | K/D: {c2.kd}
+                                                                  </span>
+                                                              )}
+                                                              <span className={`text-xs font-black italic ${c2 ? 'text-blue-400' : 'text-gray-600'}`}>
+                                                                  {c2 ? `${c2.kills} Kills` : 'Não jogou'}
+                                                              </span>
+                                                          </div>
+                                                      </div>
+
+                                                      {/* Barra de Proporção de Abates */}
+                                                      <div className="h-2 bg-black rounded-full overflow-hidden flex">
+                                                          <div 
+                                                              className={`h-full transition-all duration-1000 ${isP1Better ? 'bg-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.5)]' : 'bg-gray-800'}`} 
+                                                              style={{ width: `${((k1 + 0.1) / ((k1 + k2) || 1)) * 100}%` }}
+                                                          ></div>
+                                                          <div 
+                                                              className={`h-full transition-all duration-1000 ${isP2Better ? 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]' : 'bg-gray-800'}`} 
+                                                              style={{ width: `${((k2 + 0.1) / ((k1 + k2) || 1)) * 100}%` }}
+                                                          ></div>
+                                                      </div>
+                                                  </div>
+                                              );
+                                          })}
+                                      </div>
+                                  </div>
+                              </div>
+                          </div>
+
+                          {/* SEÇÃO 2: LOADOUT FAVORITO & HABILIDADES PASSIVAS */}
+                          <div className="bg-[#1a1a1a] rounded-3xl border border-gray-800 overflow-hidden shadow-2xl">
+                              <div className="bg-black/40 px-8 py-6 border-b border-white/5 text-center">
+                                  <h3 className="text-sm font-black text-yellow-500 uppercase tracking-[0.3em] italic">Loadout Favorito & Habilidades Passivas</h3>
+                              </div>
+                              <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+                                  {/* Loadout Favorito Desafiante 1 */}
+                                  <div className="bg-black/30 rounded-2xl border border-yellow-500/20 p-6 space-y-4">
+                                      <div className="flex items-center justify-between pb-3 border-b border-white/5">
+                                          <span className="text-xs font-black text-yellow-500 uppercase italic tracking-wider">{compareData.p1.name}</span>
+                                          <span className="text-[9px] font-bold text-gray-500 uppercase">Loadout Mais Frequente</span>
+                                      </div>
+
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                          {[
+                                              { label: 'Passiva 1 (Hab 2)', item: compareData.p1.topHab2 },
+                                              { label: 'Passiva 2 (Hab 3)', item: compareData.p1.topHab3 },
+                                              { label: 'Passiva 3 (Hab 4)', item: compareData.p1.topHab4 },
+                                              { label: 'Pet Favorito', item: compareData.p1.topPet },
+                                              { label: 'Item Favorito', item: compareData.p1.topItem },
+                                          ].filter(l => l.item).map((load, idx) => (
+                                              <div key={idx} className="bg-black/60 p-3 rounded-xl border border-white/5 flex items-center gap-3">
+                                                  <div className="w-10 h-10 rounded-lg bg-yellow-500/10 border border-yellow-500/20 p-1 flex-shrink-0 overflow-hidden flex items-center justify-center">
+                                                      {load.item?.img ? (
+                                                          <img src={load.item.img} alt={load.item.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                                                      ) : (
+                                                          <Shield size={18} className="text-yellow-500" />
+                                                      )}
+                                                  </div>
+                                                  <div className="min-w-0 flex-1">
+                                                      <span className="text-[8px] font-bold text-gray-500 uppercase tracking-widest block">{load.label}</span>
+                                                      <span className="text-xs font-black text-white uppercase italic truncate block">{load.item?.name}</span>
+                                                      <span className="text-[8px] text-yellow-500 font-bold">{load.item?.count}x ({load.item?.pct}% das quedas)</span>
+                                                  </div>
+                                              </div>
+                                          ))}
+                                      </div>
+                                  </div>
+
+                                  {/* Loadout Favorito Desafiante 2 */}
+                                  <div className="bg-black/30 rounded-2xl border border-blue-500/20 p-6 space-y-4">
+                                      <div className="flex items-center justify-between pb-3 border-b border-white/5">
+                                          <span className="text-xs font-black text-blue-400 uppercase italic tracking-wider">{compareData.p2.name}</span>
+                                          <span className="text-[9px] font-bold text-gray-500 uppercase">Loadout Mais Frequente</span>
+                                      </div>
+
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                          {[
+                                              { label: 'Passiva 1 (Hab 2)', item: compareData.p2.topHab2 },
+                                              { label: 'Passiva 2 (Hab 3)', item: compareData.p2.topHab3 },
+                                              { label: 'Passiva 3 (Hab 4)', item: compareData.p2.topHab4 },
+                                              { label: 'Pet Favorito', item: compareData.p2.topPet },
+                                              { label: 'Item Favorito', item: compareData.p2.topItem },
+                                          ].filter(l => l.item).map((load, idx) => (
+                                              <div key={idx} className="bg-black/60 p-3 rounded-xl border border-white/5 flex items-center gap-3">
+                                                  <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 p-1 flex-shrink-0 overflow-hidden flex items-center justify-center">
+                                                      {load.item?.img ? (
+                                                          <img src={load.item.img} alt={load.item.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                                                      ) : (
+                                                          <Shield size={18} className="text-blue-500" />
+                                                      )}
+                                                  </div>
+                                                  <div className="min-w-0 flex-1">
+                                                      <span className="text-[8px] font-bold text-gray-500 uppercase tracking-widest block">{load.label}</span>
+                                                      <span className="text-xs font-black text-white uppercase italic truncate block">{load.item?.name}</span>
+                                                      <span className="text-[8px] text-blue-400 font-bold">{load.item?.count}x ({load.item?.pct}% das quedas)</span>
+                                                  </div>
+                                              </div>
+                                          ))}
+                                      </div>
+                                  </div>
+                              </div>
+                          </div>
+
                           {/* Estatísticas Gerais */}
                           <div className="bg-[#1a1a1a] rounded-3xl border border-gray-800 overflow-hidden shadow-2xl">
                               <div className="bg-black/40 px-8 py-6 border-b border-white/5 text-center">
-                                  <h3 className="text-sm font-black text-yellow-500 uppercase tracking-[0.3em] italic">Comparativo de Performance</h3>
+                                  <h3 className="text-sm font-black text-yellow-500 uppercase tracking-[0.3em] italic">Comparativo Geral de Performance</h3>
                               </div>
                               <div className="p-8 space-y-6">
                                   {[
                                       { label: 'Abates Totais', key: 'kills' },
-                                      { label: 'Abates por Queda', key: 'avg' },
+                                      { label: 'Abates por Queda (Média)', key: 'avg' },
+                                      { label: 'Mortes Totais', key: 'deaths', lowerIsBetter: true },
+                                      { label: 'K/D Ratio (Abates / Morte)', key: 'kd' },
+                                      { label: 'Quedas Zeradas (0 Abates)', key: 'zeroKills', lowerIsBetter: true, format: (p: any) => `${p.zeroKills ?? 0} (${p.zeroKillsPct || '0.0'}%)` },
+                                      { label: 'Quedas com Abate', key: 'withKills', format: (p: any) => `${p.withKills ?? 0} (${p.withKillsPct || '0.0'}%)` },
                                       { label: 'Partidas Jogadas', key: 'matches' },
                                       { label: 'Dano Total', key: 'damage' },
                                       { label: 'Média Dano', key: 'avgDmg' },
                                       { label: 'Assistências', key: 'assists' },
                                       { label: 'Headshots', key: 'hs' },
-                                      { label: 'Deitados', key: 'knocks' },
+                                      { label: 'Deitados (Knocks)', key: 'knocks' },
                                       { label: 'Gelos', key: 'gelos' },
                                       { label: 'Gelos Destruídos', key: 'gelosDestruidos' },
                                       { label: 'Reviveu', key: 'reviveu' },
                                       { label: 'Aliados Revividos', key: 'aliadosRevividos' },
                                       { label: 'MVP', key: 'mvp' },
                                   ].map((stat) => {
-                                      const val1 = parseFloat(compareData.p1![stat.key as keyof typeof compareData.p1] as any);
-                                      const val2 = parseFloat(compareData.p2![stat.key as keyof typeof compareData.p2] as any);
-                                      const isP1Better = val1 > val2;
-                                      const isP2Better = val2 > val1;
+                                      const rawVal1 = compareData.p1![stat.key as keyof typeof compareData.p1] as any;
+                                      const rawVal2 = compareData.p2![stat.key as keyof typeof compareData.p2] as any;
+                                      const val1 = parseFloat(rawVal1) || 0;
+                                      const val2 = parseFloat(rawVal2) || 0;
+                                      const isP1Better = stat.lowerIsBetter ? (val1 < val2) : (val1 > val2);
+                                      const isP2Better = stat.lowerIsBetter ? (val2 < val1) : (val2 > val1);
+                                      const display1 = (stat as any).format ? (stat as any).format(compareData.p1) : (rawVal1 ?? 0);
+                                      const display2 = (stat as any).format ? (stat as any).format(compareData.p2) : (rawVal2 ?? 0);
 
                                       return (
                                           <div key={stat.key} className="space-y-2">
                                               <div className="flex justify-between text-[10px] font-black text-gray-500 uppercase tracking-widest">
-                                                  <span className={isP1Better ? 'text-yellow-500' : ''}>{compareData.p1![stat.key as keyof typeof compareData.p1] as any}</span>
+                                                  <span className={isP1Better ? 'text-yellow-500 font-black' : ''}>{display1}</span>
                                                   <span className="text-white">{stat.label}</span>
-                                                  <span className={isP2Better ? 'text-blue-500' : ''}>{compareData.p2![stat.key as keyof typeof compareData.p2] as any}</span>
+                                                  <span className={isP2Better ? 'text-blue-500 font-black' : ''}>{display2}</span>
                                               </div>
                                               <div className="h-2 bg-black rounded-full overflow-hidden flex">
                                                   <div 
@@ -2677,7 +3238,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                                   <h3 className="text-sm font-black text-yellow-500 uppercase tracking-[0.3em] italic">Abates por Safe</h3>
                               </div>
                               <div className="p-8 space-y-6">
-                                  {allSafeNames.map(safeName => {
+                                  {Array.from(new Set([...Object.keys(compareData.p1.safeKills), ...Object.keys(compareData.p2.safeKills)])).sort().map(safeName => {
                                       const val1 = compareData.p1!.safeKills[safeName] || 0;
                                       const val2 = compareData.p2!.safeKills[safeName] || 0;
                                       const isP1Better = val1 > val2;
