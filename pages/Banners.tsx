@@ -10,6 +10,35 @@ interface BannersProps {
   data: DashboardData;
 }
 
+export const formatMapName = (rawMap: string | undefined | null): string => {
+  if (!rawMap) return '';
+  const trimmed = rawMap.trim();
+  const upper = trimmed.toUpperCase();
+
+  const MAP_NAMES: Record<string, string> = {
+    'BER': 'BERMUDA',
+    'BERMUDA': 'BERMUDA',
+    'KAL': 'KALAHARI',
+    'KALAHARI': 'KALAHARI',
+    'NT': 'NOVA TERRA',
+    'NOV': 'NOVA TERRA',
+    'NOVATERRA': 'NOVA TERRA',
+    'NOVA TERRA': 'NOVA TERRA',
+    'PUR': 'PURGATÓRIO',
+    'PURG': 'PURGATÓRIO',
+    'PURGATORIO': 'PURGATÓRIO',
+    'PURGATÓRIO': 'PURGATÓRIO',
+    'SOL': 'SOLARA',
+    'SOLARA': 'SOLARA',
+    'ALP': 'ALPINE',
+    'ALPINE': 'ALPINE',
+    'NEX': 'NOVA TERRA',
+    'NEXTERRA': 'NOVA TERRA'
+  };
+
+  return MAP_NAMES[upper] || upper;
+};
+
 const parseNumber = (val: string | number | undefined | null): number => {
   if (val === undefined || val === null) return 0;
   if (typeof val === 'number') return isNaN(val) ? 0 : Math.round(val);
@@ -197,7 +226,7 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
         if (role2 && role2 !== role1) addPlayerToRole(role2);
       });
 
-      return Array.from(roleGroupsMap.entries()).map(([roleName, playersMap]) => {
+      const roleGroups = Array.from(roleGroupsMap.entries()).map(([roleName, playersMap]) => {
         const players = Array.from(playersMap.values()).map(p => ({
           ...p,
           avgKills: p.matches > 0 ? (p.kills / p.matches) : 0,
@@ -223,18 +252,49 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
           topDeaths: getTop((a, b) => b.deaths - a.deaths)
         };
       }).sort((a, b) => a.name.localeCompare(b.name));
+
+      const allRolePlayers = Array.from(playerStatsMap.values()).map(p => ({
+        ...p,
+        avgKills: p.matches > 0 ? (p.kills / p.matches) : 0,
+        avgDamage: p.matches > 0 ? (p.damage / p.matches) : 0,
+        avgHs: p.matches > 0 ? (p.hs / p.matches) : 0,
+        avgKnocks: p.matches > 0 ? (p.knocks / p.matches) : 0,
+        zeroRate: p.matches > 0 ? (p.zeroKills / p.matches) * 100 : 0
+      })).sort((a, b) => b.kills - a.kills || b.avgKills - a.avgKills);
+
+      const getTopAllRole = (sortFn: (a: any, b: any) => number) => [...allRolePlayers].sort(sortFn)[0] || null;
+
+      const allRoleObj = {
+        name: "TODAS AS FUNÇÕES",
+        players: allRolePlayers,
+        topDamage: getTopAllRole((a, b) => b.damage - a.damage),
+        topAvgKills: getTopAllRole((a, b) => b.avgKills - a.avgKills),
+        topKnocks: getTopAllRole((a, b) => b.knocks - a.knocks),
+        topHs: getTopAllRole((a, b) => b.hs - a.hs),
+        topZero: getTopAllRole((a, b) => b.zeroKills - a.zeroKills),
+        topRevives: getTopAllRole((a, b) => b.reviveu - a.reviveu),
+        topAlliesRevived: getTopAllRole((a, b) => b.aliadosRevividos - a.aliadosRevividos),
+        topMvp: getTopAllRole((a, b) => b.mvp - a.mvp),
+        topDeaths: getTopAllRole((a, b) => b.deaths - a.deaths)
+      };
+
+      return [allRoleObj, ...roleGroups];
     }
 
-    const processGroup = (keyExtractor: (p: any) => string) => {
+    const processGroup = (keyExtractor: (p: any) => string, allGroupName?: string) => {
         // Pre-calculate deaths from killFeed for this grouping
         const groupDeathsMap = new Map<string, Map<string, number>>();
+        const allDeathsMap = new Map<string, number>();
+
         data.killFeed.forEach(f => {
             const key = keyExtractor(f);
-            if (!key) return;
-            
             const victim = f.VITIMA;
             if (!victim) return;
             const normalizedVictim = victim.trim().toUpperCase();
+
+            allDeathsMap.set(normalizedVictim, (allDeathsMap.get(normalizedVictim) || 0) + 1);
+
+            if (!key) return;
             
             if (!groupDeathsMap.has(key)) {
                 groupDeathsMap.set(key, new Map());
@@ -244,19 +304,61 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
         });
 
         const groupMap = new Map<string, Map<string, any>>();
+        const allPlayerMap = new Map<string, any>();
         
         data.players.forEach(p => {
             const key = keyExtractor(p);
+            const pName = p.PLAYER;
+            if (!pName) return;
+            const normalizedPName = pName.trim().toUpperCase();
+
+            const kills = parseNumber(p.Abates);
+            const damage = parseNumber(p.Dano);
+            const hs = parseNumber(p.HS);
+            const knocks = parseNumber(p.Deitados);
+            const reviveu = parseNumber(p.Reviveu);
+            const aliadosRevividos = parseNumber(p.AliadosRevividos);
+            const mvp = parseNumber(p.MVP);
+
+            if (allGroupName) {
+              if (!allPlayerMap.has(normalizedPName)) {
+                allPlayerMap.set(normalizedPName, {
+                  name: p.PLAYER,
+                  team: p.TIME,
+                  playerImg: findDimImg(data.playersDimension, p.PLAYER) || "",
+                  teamImg: findTeamLogo(p.TIME, data.teamsReference),
+                  kills: 0,
+                  damage: 0,
+                  hs: 0,
+                  knocks: 0,
+                  reviveu: 0,
+                  aliadosRevividos: 0,
+                  mvp: 0,
+                  matches: 0,
+                  zeroKills: 0,
+                  withKills: 0,
+                  deaths: 0
+                });
+              }
+              const allStats = allPlayerMap.get(normalizedPName);
+              allStats.kills += kills;
+              allStats.damage += damage;
+              allStats.hs += hs;
+              allStats.knocks += knocks;
+              allStats.reviveu += reviveu;
+              allStats.aliadosRevividos += aliadosRevividos;
+              allStats.mvp += mvp;
+              allStats.matches += 1;
+              if (kills === 0) allStats.zeroKills += 1;
+              else allStats.withKills += 1;
+            }
+
             if (!key) return;
 
             if (!groupMap.has(key)) {
                 groupMap.set(key, new Map());
             }
             const playerMap = groupMap.get(key)!;
-            
-            const pName = p.PLAYER;
-            if (!pName) return;
-            const normalizedPName = pName.trim().toUpperCase();
 
             if (!playerMap.has(normalizedPName)) {
                 playerMap.set(normalizedPName, {
@@ -279,15 +381,14 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
             }
             
             const stats = playerMap.get(normalizedPName);
-            const kills = parseNumber(p.Abates);
             
             stats.kills += kills;
-            stats.damage += parseNumber(p.Dano);
-            stats.hs += parseNumber(p.HS);
-            stats.knocks += parseNumber(p.Deitados);
-            stats.reviveu += parseNumber(p.Reviveu);
-            stats.aliadosRevividos += parseNumber(p.AliadosRevividos);
-            stats.mvp += parseNumber(p.MVP);
+            stats.damage += damage;
+            stats.hs += hs;
+            stats.knocks += knocks;
+            stats.reviveu += reviveu;
+            stats.aliadosRevividos += aliadosRevividos;
+            stats.mvp += mvp;
             stats.matches += 1;
             
             if (kills === 0) stats.zeroKills += 1;
@@ -302,7 +403,7 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
             });
         });
 
-        return Array.from(groupMap.entries()).map(([groupName, playersMap]) => {
+        const groups = Array.from(groupMap.entries()).map(([groupName, playersMap]) => {
             const players = Array.from(playersMap.values()).map(p => ({
                 ...p,
                 avgKills: p.matches > 0 ? (p.kills / p.matches) : 0,
@@ -333,12 +434,47 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
            if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
            return a.name.localeCompare(b.name);
         });
+
+        if (allGroupName) {
+          allPlayerMap.forEach((stats, normalizedPName) => {
+            stats.deaths = allDeathsMap.get(normalizedPName) || 0;
+          });
+
+          const allPlayers = Array.from(allPlayerMap.values()).map(p => ({
+            ...p,
+            avgKills: p.matches > 0 ? (p.kills / p.matches) : 0,
+            avgDamage: p.matches > 0 ? (p.damage / p.matches) : 0,
+            avgHs: p.matches > 0 ? (p.hs / p.matches) : 0,
+            avgKnocks: p.matches > 0 ? (p.knocks / p.matches) : 0,
+            zeroRate: p.matches > 0 ? (p.zeroKills / p.matches) * 100 : 0
+          })).sort((a, b) => b.kills - a.kills || b.avgKills - a.avgKills);
+
+          const getTopAll = (sortFn: (a: any, b: any) => number) => [...allPlayers].sort(sortFn)[0] || null;
+
+          const allGroupObj = {
+            name: allGroupName,
+            players: allPlayers,
+            topDamage: getTopAll((a, b) => b.damage - a.damage),
+            topAvgKills: getTopAll((a, b) => b.avgKills - a.avgKills),
+            topKnocks: getTopAll((a, b) => b.knocks - a.knocks),
+            topHs: getTopAll((a, b) => b.hs - a.hs),
+            topZero: getTopAll((a, b) => b.zeroKills - a.zeroKills),
+            topRevives: getTopAll((a, b) => b.reviveu - a.reviveu),
+            topAlliesRevived: getTopAll((a, b) => b.aliadosRevividos - a.aliadosRevividos),
+            topMvp: getTopAll((a, b) => b.mvp - a.mvp),
+            topDeaths: getTopAll((a, b) => b.deaths - a.deaths)
+          };
+
+          return [allGroupObj, ...groups];
+        }
+
+        return groups;
     };
 
     if (activeTab === "map_kings" || activeTab === "map_kings_stories") {
-        return processGroup(p => (p.MAPA || "").trim().toUpperCase());
+        return processGroup(p => formatMapName(p.MAPA), "TODOS OS MAPAS");
     } else {
-        return processGroup(p => (p.Q || "").trim().toUpperCase());
+        return processGroup(p => (p.Q || "").trim().toUpperCase(), "TODAS AS QUEDAS");
     }
   }, [data.players, data.killFeed, activeTab, data.playersDimension, data.teamsReference]);
 
@@ -372,7 +508,7 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
       totalBooyahs += booyahs;
       matches++;
       
-      const mapName = d.MAPA || 'Desconhecido';
+      const mapName = formatMapName(d.MAPA) || 'Desconhecido';
       if (!mapStatsMap.has(mapName)) {
         mapStatsMap.set(mapName, { mapName, matches: 0, ptsc: 0, abts: 0, pts: 0, booyahs: 0 });
       }
@@ -1015,7 +1151,11 @@ const handleDownload = async () => {
                 const group = kingsData.find(g => g.name === selectedMapOrDrop);
                 if (!group) return null;
                 const type = activeTab === 'map_kings_stories' ? 'map' : activeTab === 'drop_kings_stories' ? 'drop' : 'role';
-                const groupPrefix = type === 'role' ? `FUNÇÃO ${group.name}` : `REIS DE ${group.name}`;
+                const groupPrefix = group.name.startsWith("TOD") 
+                  ? group.name 
+                  : type === 'role' 
+                    ? `FUNÇÃO ${group.name}` 
+                    : `REIS DE ${group.name}`;
                 
                 let title = "";
                 let playersList = [...group.players];
