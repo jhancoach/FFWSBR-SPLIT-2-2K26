@@ -22,6 +22,8 @@ const App: React.FC = () => {
     details: [],
     characters: [],
     teamsReference: [],
+    playersDimension: [],
+    victimsDimension: [],
     weapons: [],
     safes: [],
     hab1: [],
@@ -30,6 +32,7 @@ const App: React.FC = () => {
     hab4: [],
     pets: [],
     items: [],
+    confrontationsDimension: [],
     loading: true,
     lastUpdated: null
   });

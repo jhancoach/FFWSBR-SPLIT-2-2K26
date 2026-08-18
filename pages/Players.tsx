@@ -2,10 +2,11 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { DashboardData, PlayerData, CharacterData } from '../types';
-import { Trophy, Crown, User, Swords, Zap, BarChart2, Scale, Map as MapIcon, Skull, ChevronRight, ChevronDown, ChevronUp, Sparkles, X, Activity, Info, Crosshair, Shield, ArrowLeft, Disc, Flame, Target, AlertCircle, LayoutGrid, MapPin, Hash, Target as TargetIcon, CheckCircle2, AlertTriangle, Search, Star, ListOrdered, Eye, EyeOff } from 'lucide-react';
+import { Trophy, Crown, User, Users, Swords, Zap, BarChart2, Scale, Map as MapIcon, Skull, ChevronRight, ChevronDown, ChevronUp, Sparkles, X, Activity, Info, Crosshair, Shield, ShieldAlert, ArrowLeft, Disc, Flame, Target, AlertCircle, LayoutGrid, MapPin, Hash, Target as TargetIcon, CheckCircle2, AlertTriangle, Search, Star, ListOrdered, Eye, EyeOff } from 'lucide-react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, LabelList, Cell, YAxis, CartesianGrid, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts';
 import FilterBar from '../components/FilterBar';
 import InstagramPostModal from '../components/InstagramPostModal';
+import { PlayerVsTeamCompare } from '../components/PlayerVsTeamCompare';
 import { Camera } from 'lucide-react';
 import { findTeamLogo } from '../utils/teamUtils';
 import { findDimImg } from '../utils/skillImages';
@@ -36,6 +37,8 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
   const [roleSort, setRoleSort] = useState<{ field: string, direction: 'asc' | 'desc' }>({ field: 'kills', direction: 'desc' });
   const [rankingSort, setRankingSort] = useState<{ field: string, direction: 'asc' | 'desc' }>({ field: 'kills', direction: 'desc' });
   const [comparePlayers, setComparePlayers] = useState<{p1: string, p1Hab: string, p2: string, p2Hab: string}>({p1: '', p1Hab: 'All', p2: '', p2Hab: 'All'});
+  const [compareMode, setCompareMode] = useState<'pvp' | 'pvt'>('pvp');
+  const [comparePvt, setComparePvt] = useState<{ player: string; playerHab: string; team: string; teamMetric: 'total' | 'average' }>({ player: '', playerHab: 'All', team: '', teamMetric: 'total' });
   const [activeHabFilter, setActiveHabFilter] = useState<string>('All');
   const [activeHabSort, setActiveHabSort] = useState<{field: string, direction: 'asc'|'desc'}>({ field: 'kills', direction: 'desc' });
 
@@ -983,6 +986,470 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
     
     return { p1, p2 };
   }, [rankingData, data.players, data.characters, data.playersDimension, data.teamsReference, data.killFeed, data.hab1, data.hab2, data.hab3, data.hab4, data.pets, data.items, comparePlayers, activeTab, filters]);
+
+  const allTeamsList = useMemo(() => {
+    const teamNames = Array.from(new Set([
+      ...(data.teamsReference || []).map(t => t.TIME),
+      ...(data.players || []).map(p => p.TIME),
+      ...(data.details || []).map(d => d.TIME)
+    ])).filter(Boolean).sort();
+
+    return teamNames.map(name => {
+      const ref = (data.teamsReference || []).find(t => normalize(t.TIME) === normalize(name));
+      return {
+        name,
+        img: ref?.IMG || '',
+        grupo: ref?.GRUPO || 'N/A'
+      };
+    });
+  }, [data.teamsReference, data.players, data.details]);
+
+  const comparePvtData = useMemo(() => {
+    if (activeTab !== 'compare' || compareMode !== 'pvt') return { player: null, team: null, headToHead: null, share: null };
+    if (!comparePvt.player || !comparePvt.team) return { player: null, team: null, headToHead: null, share: null };
+
+    const pName = comparePvt.player;
+    const habFilter = comparePvt.playerHab;
+    const tName = comparePvt.team;
+
+    // 1. Processar dados do Jogador
+    let validMatchKeys = new Set<string>();
+    if (habFilter !== 'All') {
+      data.characters.forEach(c => {
+        if (normalize(c.Player) === normalize(pName) && normalize(c.Hab1) === normalize(habFilter)) {
+          validMatchKeys.add(`${normalize(pName)}|${normalize(c.Rd)}|${normalize(c.Q)}`);
+        }
+      });
+    }
+
+    const pStats = {
+      name: pName,
+      team: '',
+      kills: 0,
+      deaths: 0,
+      damage: 0,
+      hs: 0,
+      knocks: 0,
+      assists: 0,
+      gelos: 0,
+      gelosDestruidos: 0,
+      reviveu: 0,
+      aliadosRevividos: 0,
+      mvp: 0,
+      matches: 0,
+      zeroKills: 0,
+      withKills: 0,
+      mapKills: {} as Record<string, number>,
+      safeKills: {} as Record<string, number>,
+    };
+
+    const charMap = new Map<string, any>();
+
+    data.players.forEach(p => {
+      if (normalize(p.PLAYER) !== normalize(pName)) return;
+      if (filters.team.length > 0 && !filters.team.includes(p.TIME)) return;
+      if (filters.map.length > 0 && !filters.map.some(m => normalize(m) === normalize(p.MAPA))) return;
+      const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => normalize(r) === normalize(p.RD));
+      const matchQ = filters.queda.length === 0 || filters.queda.some(q => normalize(q) === normalize(p.Q));
+      if (!matchRD || !matchQ) return;
+
+      if (habFilter !== 'All') {
+        const key = `${normalize(pName)}|${normalize(p.RD)}|${normalize(p.Q)}`;
+        if (!validMatchKeys.has(key)) return;
+      }
+
+      pStats.team = p.TIME || pStats.team;
+      const pKills = parseNumber(p.Abates);
+      pStats.kills += pKills;
+      pStats.damage += parseNumber(p.Dano);
+      pStats.hs += parseNumber(p.HS);
+      pStats.knocks += parseNumber(p.Deitados);
+      pStats.assists += parseNumber(p.Assistencias);
+      pStats.gelos += parseNumber(p.Gelos);
+      pStats.gelosDestruidos += parseNumber(p.GelosDestruidos);
+      pStats.reviveu += parseNumber(p.Reviveu);
+      pStats.aliadosRevividos += parseNumber(p.AliadosRevividos);
+      pStats.mvp += parseNumber(p.MVP);
+      pStats.matches++;
+
+      if (pKills === 0) pStats.zeroKills++;
+      else pStats.withKills++;
+
+      const mapName = normalize(p.MAPA) || 'N/A';
+      pStats.mapKills[mapName] = (pStats.mapKills[mapName] || 0) + pKills;
+
+      const matchChar = data.characters.find(c =>
+        normalize(c.Player) === normalize(pName) &&
+        normalize(c.Rd) === normalize(p.RD) &&
+        normalize(c.Q) === normalize(p.Q)
+      );
+      const charName = matchChar?.Hab1 || 'Padrão / Desconhecido';
+      if (!charMap.has(charName)) {
+        charMap.set(charName, {
+          name: charName,
+          img: findDimImg(data.hab1, charName),
+          matches: 0,
+          kills: 0,
+          deaths: 0,
+          damage: 0,
+          hs: 0,
+          knocks: 0,
+          assists: 0,
+          zeroKills: 0,
+          withKills: 0
+        });
+      }
+      const cStat = charMap.get(charName)!;
+      cStat.matches++;
+      cStat.kills += pKills;
+      cStat.damage += parseNumber(p.Dano);
+      cStat.hs += parseNumber(p.HS);
+      cStat.knocks += parseNumber(p.Deitados);
+      cStat.assists += parseNumber(p.Assistencias);
+      if (pKills === 0) cStat.zeroKills++;
+      else cStat.withKills++;
+    });
+
+    data.killFeed.forEach(k => {
+      const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => normalize(r) === normalize(k.RD));
+      const matchQ = filters.queda.length === 0 || filters.queda.some(q => normalize(q) === normalize(k.Q));
+      if (!matchRD || !matchQ) return;
+
+      if (normalize(k.PLAYER) === normalize(pName)) {
+        if (habFilter !== 'All') {
+          const key = `${normalize(pName)}|${normalize(k.RD)}|${normalize(k.Q)}`;
+          if (!validMatchKeys.has(key)) return;
+        }
+        const safeVal = k.SAFE || 'OUT';
+        pStats.safeKills[safeVal] = (pStats.safeKills[safeVal] || 0) + 1;
+      }
+
+      if (normalize(k.VITIMA) === normalize(pName)) {
+        if (habFilter !== 'All') {
+          const key = `${normalize(pName)}|${normalize(k.RD)}|${normalize(k.Q)}`;
+          if (!validMatchKeys.has(key)) return;
+        }
+        pStats.deaths++;
+      }
+    });
+
+    const characterPool = Array.from(charMap.values()).map(c => ({
+      ...c,
+      avgKills: c.matches > 0 ? (c.kills / c.matches).toFixed(2) : '0.00',
+      avgDamage: c.matches > 0 ? (c.damage / c.matches).toFixed(0) : '0',
+      kd: (c.kills / (c.deaths || 1)).toFixed(2),
+      zeroKillsPct: c.matches > 0 ? ((c.zeroKills / c.matches) * 100).toFixed(1) : '0.0',
+      pickRate: pStats.matches > 0 ? ((c.matches / pStats.matches) * 100).toFixed(1) : '0.0',
+    })).sort((a, b) => b.matches - a.matches || b.kills - a.kills);
+
+    const topCharacter = characterPool[0] || null;
+    let activeHabImg: string | undefined = undefined;
+    if (habFilter !== 'All') {
+      activeHabImg = findDimImg(data.hab1, habFilter);
+    } else if (topCharacter) {
+      activeHabImg = topCharacter.img;
+    }
+
+    const playerDim = data.playersDimension.find(d => normalize(d.Name) === normalize(pName));
+    const playerTeamDim = data.teamsReference.find(t => normalize(t.TIME) === normalize(pStats.team));
+
+    const finalPlayer = {
+      ...pStats,
+      avg: pStats.matches > 0 ? (pStats.kills / pStats.matches).toFixed(2) : '0.00',
+      avgDmg: pStats.matches > 0 ? (pStats.damage / pStats.matches).toFixed(0) : '0',
+      zeroKillsPct: pStats.matches > 0 ? ((pStats.zeroKills / pStats.matches) * 100).toFixed(1) : '0.0',
+      withKillsPct: pStats.matches > 0 ? ((pStats.withKills / pStats.matches) * 100).toFixed(1) : '0.0',
+      kd: (pStats.kills / (pStats.deaths || 1)).toFixed(2),
+      playerImg: playerDim?.IMG,
+      teamImg: playerTeamDim?.IMG,
+      characterPool,
+      topCharacter,
+      activeHabImg
+    };
+
+    // 2. Processar dados do Time
+    const teamDim = data.teamsReference.find(t => normalize(t.TIME) === normalize(tName));
+    const teamGroup = teamDim?.GRUPO || 'N/A';
+
+    const teamRosterMap = new Map<string, {
+      name: string;
+      playerImg?: string;
+      kills: number;
+      deaths: number;
+      damage: number;
+      matches: number;
+      hs: number;
+      knocks: number;
+      assists: number;
+      gelos: number;
+      gelosDestruidos: number;
+      reviveu: number;
+      aliadosRevividos: number;
+      mvp: number;
+      zeroKills: number;
+    }>();
+
+    const teamMatchesMap = new Map<string, { kills: number; damage: number; map: string }>();
+    const teamMapKills: Record<string, number> = {};
+    const teamSafeKills: Record<string, number> = {};
+
+    let teamTotalKills = 0;
+    let teamTotalDamage = 0;
+    let teamTotalHs = 0;
+    let teamTotalKnocks = 0;
+    let teamTotalAssists = 0;
+    let teamTotalGelos = 0;
+    let teamTotalGelosDestruidos = 0;
+    let teamTotalReviveu = 0;
+    let teamTotalAliadosRevividos = 0;
+    let teamTotalMvp = 0;
+
+    data.players.forEach(p => {
+      if (normalize(p.TIME) !== normalize(tName)) return;
+      if (filters.map.length > 0 && !filters.map.some(m => normalize(m) === normalize(p.MAPA))) return;
+      const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => normalize(r) === normalize(p.RD));
+      const matchQ = filters.queda.length === 0 || filters.queda.some(q => normalize(q) === normalize(p.Q));
+      if (!matchRD || !matchQ) return;
+
+      const pKills = parseNumber(p.Abates);
+      const pDmg = parseNumber(p.Dano);
+      const pHs = parseNumber(p.HS);
+      const pKnocks = parseNumber(p.Deitados);
+      const pAssists = parseNumber(p.Assistencias);
+      const pGelos = parseNumber(p.Gelos);
+      const pGelosDest = parseNumber(p.GelosDestruidos);
+      const pReviveu = parseNumber(p.Reviveu);
+      const pAliados = parseNumber(p.AliadosRevividos);
+      const pMvp = parseNumber(p.MVP);
+
+      teamTotalKills += pKills;
+      teamTotalDamage += pDmg;
+      teamTotalHs += pHs;
+      teamTotalKnocks += pKnocks;
+      teamTotalAssists += pAssists;
+      teamTotalGelos += pGelos;
+      teamTotalGelosDestruidos += pGelosDest;
+      teamTotalReviveu += pReviveu;
+      teamTotalAliadosRevividos += pAliados;
+      teamTotalMvp += pMvp;
+
+      const mapName = normalize(p.MAPA) || 'N/A';
+      teamMapKills[mapName] = (teamMapKills[mapName] || 0) + pKills;
+
+      const matchKey = `${normalize(p.RD)}|${normalize(p.Q)}`;
+      if (!teamMatchesMap.has(matchKey)) {
+        teamMatchesMap.set(matchKey, { kills: 0, damage: 0, map: mapName });
+      }
+      const tMatch = teamMatchesMap.get(matchKey)!;
+      tMatch.kills += pKills;
+      tMatch.damage += pDmg;
+
+      const plName = p.PLAYER;
+      if (!teamRosterMap.has(plName)) {
+        const plDim = data.playersDimension.find(d => normalize(d.Name) === normalize(plName));
+        teamRosterMap.set(plName, {
+          name: plName,
+          playerImg: plDim?.IMG,
+          kills: 0,
+          deaths: 0,
+          damage: 0,
+          matches: 0,
+          hs: 0,
+          knocks: 0,
+          assists: 0,
+          gelos: 0,
+          gelosDestruidos: 0,
+          reviveu: 0,
+          aliadosRevividos: 0,
+          mvp: 0,
+          zeroKills: 0
+        });
+      }
+      const rPlayer = teamRosterMap.get(plName)!;
+      rPlayer.kills += pKills;
+      rPlayer.damage += pDmg;
+      rPlayer.matches++;
+      rPlayer.hs += pHs;
+      rPlayer.knocks += pKnocks;
+      rPlayer.assists += pAssists;
+      rPlayer.gelos += pGelos;
+      rPlayer.gelosDestruidos += pGelosDest;
+      rPlayer.reviveu += pReviveu;
+      rPlayer.aliadosRevividos += pAliados;
+      rPlayer.mvp += pMvp;
+      if (pKills === 0) rPlayer.zeroKills++;
+    });
+
+    const teamRosterNames = Array.from(teamRosterMap.keys()).map(n => normalize(n));
+
+    let teamTotalDeaths = 0;
+    data.killFeed.forEach(k => {
+      const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => normalize(r) === normalize(k.RD));
+      const matchQ = filters.queda.length === 0 || filters.queda.some(q => normalize(q) === normalize(k.Q));
+      if (!matchRD || !matchQ) return;
+
+      if (teamRosterNames.includes(normalize(k.PLAYER))) {
+        const safeVal = k.SAFE || 'OUT';
+        teamSafeKills[safeVal] = (teamSafeKills[safeVal] || 0) + 1;
+      }
+
+      if (teamRosterNames.includes(normalize(k.VITIMA))) {
+        teamTotalDeaths++;
+        const vic = Array.from(teamRosterMap.keys()).find(n => normalize(n) === normalize(k.VITIMA));
+        if (vic && teamRosterMap.has(vic)) {
+          teamRosterMap.get(vic)!.deaths++;
+        }
+      }
+    });
+
+    const teamMatchesCount = teamMatchesMap.size;
+    let teamZeroKillMatches = 0;
+    teamMatchesMap.forEach(m => {
+      if (m.kills === 0) teamZeroKillMatches++;
+    });
+
+    const rosterList = Array.from(teamRosterMap.values()).map(r => ({
+      ...r,
+      avg: r.matches > 0 ? (r.kills / r.matches).toFixed(2) : '0.00',
+      kd: (r.kills / (r.deaths || 1)).toFixed(2),
+      zeroKillsPct: r.matches > 0 ? ((r.zeroKills / r.matches) * 100).toFixed(1) : '0.0',
+    })).sort((a, b) => b.kills - a.kills);
+
+    const activeRosterCount = Math.max(rosterList.length, 1);
+
+    let teamPoints = 0;
+    let teamBooyahs = 0;
+    (data.details || []).forEach(t => {
+      if (normalize(t.TIME) !== normalize(tName)) return;
+      const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => normalize(r) === normalize(t.RD));
+      const matchQ = filters.queda.length === 0 || filters.queda.some(q => normalize(q) === normalize(t.Q));
+      if (!matchRD || !matchQ) return;
+
+      teamPoints += parseNumber(t.PTS);
+      if (parseNumber(t.POS) === 1 || parseNumber(t.B) === 1) {
+        teamBooyahs++;
+      }
+    });
+
+    const finalTeam = {
+      name: tName,
+      img: teamDim?.IMG || findTeamLogo(tName, data.teamsReference),
+      grupo: teamGroup,
+      totalKills: teamTotalKills,
+      totalDeaths: teamTotalDeaths,
+      kd: (teamTotalKills / (teamTotalDeaths || 1)).toFixed(2),
+      totalDamage: teamTotalDamage,
+      avgDmg: teamMatchesCount > 0 ? (teamTotalDamage / teamMatchesCount).toFixed(0) : '0',
+      avg: teamMatchesCount > 0 ? (teamTotalKills / teamMatchesCount).toFixed(2) : '0.00',
+      totalHs: teamTotalHs,
+      totalKnocks: teamTotalKnocks,
+      totalAssists: teamTotalAssists,
+      totalGelos: teamTotalGelos,
+      totalGelosDestruidos: teamTotalGelosDestruidos,
+      totalReviveu: teamTotalReviveu,
+      totalAliadosRevividos: teamTotalAliadosRevividos,
+      totalMvp: teamTotalMvp,
+      matches: teamMatchesCount,
+      zeroKills: teamZeroKillMatches,
+      zeroKillsPct: teamMatchesCount > 0 ? ((teamZeroKillMatches / teamMatchesCount) * 100).toFixed(1) : '0.0',
+      withKills: teamMatchesCount - teamZeroKillMatches,
+      withKillsPct: teamMatchesCount > 0 ? (((teamMatchesCount - teamZeroKillMatches) / teamMatchesCount) * 100).toFixed(1) : '0.0',
+      points: teamPoints,
+      booyahs: teamBooyahs,
+      roster: rosterList,
+      rosterCount: rosterList.length,
+      mapKills: teamMapKills,
+      safeKills: teamSafeKills,
+      avgPerPlayer: {
+        kills: (teamTotalKills / activeRosterCount).toFixed(1),
+        damage: (teamTotalDamage / activeRosterCount).toFixed(0),
+        hs: (teamTotalHs / activeRosterCount).toFixed(1),
+        knocks: (teamTotalKnocks / activeRosterCount).toFixed(1),
+        assists: (teamTotalAssists / activeRosterCount).toFixed(1),
+        gelos: (teamTotalGelos / activeRosterCount).toFixed(1),
+        gelosDestruidos: (teamTotalGelosDestruidos / activeRosterCount).toFixed(1),
+        reviveu: (teamTotalReviveu / activeRosterCount).toFixed(1),
+        aliadosRevividos: (teamTotalAliadosRevividos / activeRosterCount).toFixed(1),
+        mvp: (teamTotalMvp / activeRosterCount).toFixed(1),
+        matches: (rosterList.reduce((acc, r) => acc + r.matches, 0) / activeRosterCount).toFixed(1),
+        deaths: (teamTotalDeaths / activeRosterCount).toFixed(1),
+        kd: (teamTotalKills / (teamTotalDeaths || 1)).toFixed(2),
+        avg: teamMatchesCount > 0 ? ((teamTotalKills / activeRosterCount) / teamMatchesCount).toFixed(2) : '0.00',
+        avgDmg: teamMatchesCount > 0 ? ((teamTotalDamage / activeRosterCount) / teamMatchesCount).toFixed(0) : '0',
+        zeroKills: (rosterList.reduce((acc, r) => acc + r.zeroKills, 0) / activeRosterCount).toFixed(1),
+        zeroKillsPct: ((rosterList.reduce((acc, r) => acc + r.zeroKills, 0) / Math.max(rosterList.reduce((acc, r) => acc + r.matches, 0), 1)) * 100).toFixed(1),
+        withKills: (rosterList.reduce((acc, r) => acc + (r.matches - r.zeroKills), 0) / activeRosterCount).toFixed(1),
+        withKillsPct: ((rosterList.reduce((acc, r) => acc + (r.matches - r.zeroKills), 0) / Math.max(rosterList.reduce((acc, r) => acc + r.matches, 0), 1)) * 100).toFixed(1),
+      }
+    };
+
+    // 3. Confrontos Diretos (Head-to-Head Killfeed Events)
+    const playerKillsOnTeamEvents: any[] = [];
+    const teamKillsOnPlayerEvents: any[] = [];
+    const victimCounts: Record<string, number> = {};
+    const killerCounts: Record<string, number> = {};
+
+    data.killFeed.forEach(k => {
+      const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => normalize(r) === normalize(k.RD));
+      const matchQ = filters.queda.length === 0 || filters.queda.some(q => normalize(q) === normalize(k.Q));
+      if (!matchRD || !matchQ) return;
+
+      const killerNorm = normalize(k.PLAYER);
+      const victimNorm = normalize(k.VITIMA);
+
+      if (killerNorm === normalize(pName) && teamRosterNames.includes(victimNorm)) {
+        playerKillsOnTeamEvents.push(k);
+        const origVicName = Array.from(teamRosterMap.keys()).find(n => normalize(n) === victimNorm) || k.VITIMA;
+        victimCounts[origVicName] = (victimCounts[origVicName] || 0) + 1;
+      }
+
+      if (teamRosterNames.includes(killerNorm) && victimNorm === normalize(pName)) {
+        teamKillsOnPlayerEvents.push(k);
+        const origKillerName = Array.from(teamRosterMap.keys()).find(n => normalize(n) === killerNorm) || k.PLAYER;
+        killerCounts[origKillerName] = (killerCounts[origKillerName] || 0) + 1;
+      }
+    });
+
+    const victimsList = Object.entries(victimCounts).map(([name, count]) => {
+      const pDim = data.playersDimension.find(d => normalize(d.Name) === normalize(name));
+      return { name, count, img: pDim?.IMG };
+    }).sort((a, b) => b.count - a.count);
+
+    const killersList = Object.entries(killerCounts).map(([name, count]) => {
+      const pDim = data.playersDimension.find(d => normalize(d.Name) === normalize(name));
+      return { name, count, img: pDim?.IMG };
+    }).sort((a, b) => b.count - a.count);
+
+    const totalHeadToHead = playerKillsOnTeamEvents.length + teamKillsOnPlayerEvents.length;
+    const playerWinRate = totalHeadToHead > 0 ? ((playerKillsOnTeamEvents.length / totalHeadToHead) * 100).toFixed(1) : '0.0';
+
+    // 4. Share do Jogador vs Equipe Rival
+    const killsShare = teamTotalKills > 0 ? ((finalPlayer.kills / teamTotalKills) * 100).toFixed(1) : '0.0';
+    const damageShare = teamTotalDamage > 0 ? ((finalPlayer.damage / teamTotalDamage) * 100).toFixed(1) : '0.0';
+    const knocksShare = teamTotalKnocks > 0 ? ((finalPlayer.knocks / teamTotalKnocks) * 100).toFixed(1) : '0.0';
+
+    return {
+      player: finalPlayer,
+      team: finalTeam,
+      headToHead: {
+        playerKills: playerKillsOnTeamEvents.length,
+        teamKills: teamKillsOnPlayerEvents.length,
+        totalDuels: totalHeadToHead,
+        playerWinRate,
+        victims: victimsList,
+        killers: killersList,
+        recentEvents: [
+          ...playerKillsOnTeamEvents.map(e => ({ ...e, type: 'player_kill' })),
+          ...teamKillsOnPlayerEvents.map(e => ({ ...e, type: 'team_kill' }))
+        ]
+      },
+      share: {
+        killsShare,
+        damageShare,
+        knocksShare
+      }
+    };
+  }, [data.players, data.killFeed, data.characters, data.details, data.teamsReference, data.playersDimension, data.hab1, comparePvt, compareMode, activeTab, filters]);
 
   const sortedRoundsList = useMemo(() => {
     const rounds = new Set<string>();
@@ -2667,9 +3134,39 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
 
           {activeTab === 'compare' && (
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-8">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                      {/* Seleção Jogador 1 */}
-                      <div className="bg-[#1a1a1a] rounded-3xl border border-gray-800 p-8 shadow-2xl flex flex-col justify-between">
+                  {/* Switch entre Modos: Jogador vs Jogador / Jogador vs Time */}
+                  <div className="flex justify-center">
+                      <div className="bg-black/60 p-1.5 rounded-2xl border border-white/10 flex items-center gap-2 shadow-2xl backdrop-blur-md">
+                          <button
+                              onClick={() => setCompareMode('pvp')}
+                              className={`flex items-center gap-2.5 px-6 py-3 rounded-xl font-black text-xs uppercase tracking-wider transition-all ${
+                                  compareMode === 'pvp'
+                                      ? 'bg-gradient-to-r from-yellow-500 to-amber-500 text-black shadow-lg shadow-yellow-500/20'
+                                      : 'text-gray-400 hover:text-white hover:bg-white/5'
+                              }`}
+                          >
+                              <Swords size={16} />
+                              <span>Duelo Jogador vs Jogador</span>
+                          </button>
+                          <button
+                              onClick={() => setCompareMode('pvt')}
+                              className={`flex items-center gap-2.5 px-6 py-3 rounded-xl font-black text-xs uppercase tracking-wider transition-all ${
+                                  compareMode === 'pvt'
+                                      ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/20'
+                                      : 'text-gray-400 hover:text-white hover:bg-white/5'
+                              }`}
+                          >
+                              <ShieldAlert size={16} />
+                              <span>Duelo Jogador vs Time</span>
+                          </button>
+                      </div>
+                  </div>
+
+                  {compareMode === 'pvp' && (
+                      <div className="space-y-8">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                              {/* Seleção Jogador 1 */}
+                              <div className="bg-[#1a1a1a] rounded-3xl border border-gray-800 p-8 shadow-2xl flex flex-col justify-between">
                           <div>
                               <label className="text-[10px] font-black text-yellow-500 uppercase tracking-widest mb-4 block">Desafiante 1</label>
                               <select 
@@ -3267,6 +3764,19 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                               </div>
                           </div>
                       </div>
+                  )}
+                  </div>
+                  )}
+
+                  {compareMode === 'pvt' && (
+                      <PlayerVsTeamCompare
+                          comparePvt={comparePvt}
+                          setComparePvt={setComparePvt}
+                          comparePvtData={comparePvtData}
+                          allPlayersList={allPlayersList}
+                          allTeamsList={allTeamsList}
+                          activeHabs={filterOptions.activeHabs}
+                      />
                   )}
               </div>
           )}
