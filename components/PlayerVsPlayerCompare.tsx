@@ -1005,7 +1005,7 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
                 </button>
               </div>
 
-              <div className="p-6 md:p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="p-6 md:p-8 grid grid-cols-1 gap-8">
                 {/* P1 Killer Weapons */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between pb-3 border-b border-white/5">
@@ -1020,26 +1020,26 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
                         const max = p1.killerWeapons[0]?.count || 1;
                         const pct = Math.min(100, Math.round((w.count / max) * 100));
                         return (
-                          <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
-                              <div className="w-10 h-8 rounded-lg bg-black/80 border border-yellow-500/20 overflow-hidden flex-shrink-0 flex items-center justify-center p-1">
+                          <div key={idx} className="bg-black/50 p-3.5 rounded-2xl border border-white/5 flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <span className="text-xs font-black text-gray-600 w-5 text-center">#{idx + 1}</span>
+                              <div className="w-12 h-9 rounded-lg bg-black/80 border border-yellow-500/20 overflow-hidden flex-shrink-0 flex items-center justify-center p-1">
                                 {w.img ? (
                                   <img src={w.img} alt={w.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
                                 ) : (
-                                  <Crosshair size={14} className="text-yellow-500" />
+                                  <Crosshair size={16} className="text-yellow-500" />
                                 )}
                               </div>
-                              <div className="min-w-0">
-                                <span className="text-xs font-black text-white uppercase italic truncate block">{w.name}</span>
-                                <span className="text-[8px] text-gray-500 font-bold uppercase">Arma Principal</span>
+                              <div className="min-w-0 flex-1">
+                                <span className="text-xs font-black text-white uppercase italic tracking-wide">{w.name}</span>
+                                <span className="text-[8px] text-gray-500 font-bold uppercase block">Arma Principal</span>
                               </div>
                             </div>
-                            <div className="flex items-center gap-3 flex-shrink-0">
-                              <div className="w-14 hidden sm:block bg-white/5 h-1.5 rounded-full overflow-hidden">
+                            <div className="flex items-center gap-4 flex-shrink-0">
+                              <div className="w-24 sm:w-32 bg-white/5 h-2 rounded-full overflow-hidden hidden sm:block">
                                 <div className="bg-yellow-500 h-full rounded-full" style={{ width: `${pct}%` }} />
                               </div>
-                              <div className="text-right min-w-[42px]">
+                              <div className="text-right min-w-[48px]">
                                 <span className="text-sm font-black text-yellow-500 italic block leading-none">{w.count}</span>
                                 <span className="text-[8px] text-gray-500 font-bold uppercase">abates</span>
                               </div>
@@ -1067,26 +1067,26 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
                         const max = p2.killerWeapons[0]?.count || 1;
                         const pct = Math.min(100, Math.round((w.count / max) * 100));
                         return (
-                          <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
-                              <div className="w-10 h-8 rounded-lg bg-black/80 border border-blue-500/20 overflow-hidden flex-shrink-0 flex items-center justify-center p-1">
+                          <div key={idx} className="bg-black/50 p-3.5 rounded-2xl border border-white/5 flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <span className="text-xs font-black text-gray-600 w-5 text-center">#{idx + 1}</span>
+                              <div className="w-12 h-9 rounded-lg bg-black/80 border border-blue-500/20 overflow-hidden flex-shrink-0 flex items-center justify-center p-1">
                                 {w.img ? (
                                   <img src={w.img} alt={w.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
                                 ) : (
-                                  <Crosshair size={14} className="text-blue-400" />
+                                  <Crosshair size={16} className="text-blue-400" />
                                 )}
                               </div>
-                              <div className="min-w-0">
-                                <span className="text-xs font-black text-white uppercase italic truncate block">{w.name}</span>
-                                <span className="text-[8px] text-gray-500 font-bold uppercase">Arma Principal</span>
+                              <div className="min-w-0 flex-1">
+                                <span className="text-xs font-black text-white uppercase italic tracking-wide">{w.name}</span>
+                                <span className="text-[8px] text-gray-500 font-bold uppercase block">Arma Principal</span>
                               </div>
                             </div>
-                            <div className="flex items-center gap-3 flex-shrink-0">
-                              <div className="w-14 hidden sm:block bg-white/5 h-1.5 rounded-full overflow-hidden">
+                            <div className="flex items-center gap-4 flex-shrink-0">
+                              <div className="w-24 sm:w-32 bg-white/5 h-2 rounded-full overflow-hidden hidden sm:block">
                                 <div className="bg-blue-400 h-full rounded-full" style={{ width: `${pct}%` }} />
                               </div>
-                              <div className="text-right min-w-[42px]">
+                              <div className="text-right min-w-[48px]">
                                 <span className="text-sm font-black text-blue-400 italic block leading-none">{w.count}</span>
                                 <span className="text-[8px] text-gray-500 font-bold uppercase">abates</span>
                               </div>
@@ -1127,7 +1127,7 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
                 </button>
               </div>
 
-              <div className="p-6 md:p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="p-6 md:p-8 grid grid-cols-1 gap-8">
                 {/* P1 Victim Weapons */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between pb-3 border-b border-white/5">
@@ -1142,26 +1142,26 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
                         const max = p1.victimWeapons[0]?.count || 1;
                         const pct = Math.min(100, Math.round((w.count / max) * 100));
                         return (
-                          <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
-                              <div className="w-10 h-8 rounded-lg bg-black/80 border border-rose-500/20 overflow-hidden flex-shrink-0 flex items-center justify-center p-1">
+                          <div key={idx} className="bg-black/50 p-3.5 rounded-2xl border border-white/5 flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <span className="text-xs font-black text-gray-600 w-5 text-center">#{idx + 1}</span>
+                              <div className="w-12 h-9 rounded-lg bg-black/80 border border-rose-500/20 overflow-hidden flex-shrink-0 flex items-center justify-center p-1">
                                 {w.img ? (
                                   <img src={w.img} alt={w.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
                                 ) : (
-                                  <Skull size={14} className="text-rose-500" />
+                                  <Skull size={16} className="text-rose-500" />
                                 )}
                               </div>
-                              <div className="min-w-0">
-                                <span className="text-xs font-black text-white uppercase italic truncate block">{w.name}</span>
-                                <span className="text-[8px] text-gray-500 font-bold uppercase">Arma Letal Contra</span>
+                              <div className="min-w-0 flex-1">
+                                <span className="text-xs font-black text-white uppercase italic tracking-wide">{w.name}</span>
+                                <span className="text-[8px] text-gray-500 font-bold uppercase block">Arma Letal Contra</span>
                               </div>
                             </div>
-                            <div className="flex items-center gap-3 flex-shrink-0">
-                              <div className="w-14 hidden sm:block bg-white/5 h-1.5 rounded-full overflow-hidden">
+                            <div className="flex items-center gap-4 flex-shrink-0">
+                              <div className="w-24 sm:w-32 bg-white/5 h-2 rounded-full overflow-hidden hidden sm:block">
                                 <div className="bg-rose-500 h-full rounded-full" style={{ width: `${pct}%` }} />
                               </div>
-                              <div className="text-right min-w-[42px]">
+                              <div className="text-right min-w-[48px]">
                                 <span className="text-sm font-black text-rose-500 italic block leading-none">{w.count}</span>
                                 <span className="text-[8px] text-gray-500 font-bold uppercase">mortes</span>
                               </div>
@@ -1189,26 +1189,26 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
                         const max = p2.victimWeapons[0]?.count || 1;
                         const pct = Math.min(100, Math.round((w.count / max) * 100));
                         return (
-                          <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
-                              <div className="w-10 h-8 rounded-lg bg-black/80 border border-rose-500/20 overflow-hidden flex-shrink-0 flex items-center justify-center p-1">
+                          <div key={idx} className="bg-black/50 p-3.5 rounded-2xl border border-white/5 flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <span className="text-xs font-black text-gray-600 w-5 text-center">#{idx + 1}</span>
+                              <div className="w-12 h-9 rounded-lg bg-black/80 border border-rose-500/20 overflow-hidden flex-shrink-0 flex items-center justify-center p-1">
                                 {w.img ? (
                                   <img src={w.img} alt={w.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
                                 ) : (
-                                  <Skull size={14} className="text-rose-500" />
+                                  <Skull size={16} className="text-rose-500" />
                                 )}
                               </div>
-                              <div className="min-w-0">
-                                <span className="text-xs font-black text-white uppercase italic truncate block">{w.name}</span>
-                                <span className="text-[8px] text-gray-500 font-bold uppercase">Arma Letal Contra</span>
+                              <div className="min-w-0 flex-1">
+                                <span className="text-xs font-black text-white uppercase italic tracking-wide">{w.name}</span>
+                                <span className="text-[8px] text-gray-500 font-bold uppercase block">Arma Letal Contra</span>
                               </div>
                             </div>
-                            <div className="flex items-center gap-3 flex-shrink-0">
-                              <div className="w-14 hidden sm:block bg-white/5 h-1.5 rounded-full overflow-hidden">
+                            <div className="flex items-center gap-4 flex-shrink-0">
+                              <div className="w-24 sm:w-32 bg-white/5 h-2 rounded-full overflow-hidden hidden sm:block">
                                 <div className="bg-rose-500 h-full rounded-full" style={{ width: `${pct}%` }} />
                               </div>
-                              <div className="text-right min-w-[42px]">
+                              <div className="text-right min-w-[48px]">
                                 <span className="text-sm font-black text-rose-500 italic block leading-none">{w.count}</span>
                                 <span className="text-[8px] text-gray-500 font-bold uppercase">mortes</span>
                               </div>
