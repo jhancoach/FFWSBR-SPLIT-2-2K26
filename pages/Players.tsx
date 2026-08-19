@@ -744,6 +744,8 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
         const killerPlayersMap = new Map<string, number>();
         const victimTeamsMap = new Map<string, number>();
         const killerTeamsMap = new Map<string, number>();
+        const killerWeaponsMap = new Map<string, number>();
+        const victimWeaponsMap = new Map<string, number>();
 
         // Character breakdown map
         const charMap = new Map<string, {
@@ -866,6 +868,10 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                 const safeVal = k.SAFE || 'OUT';
                 stats.safeKills[safeVal] = (stats.safeKills[safeVal] || 0) + 1;
 
+                if (k.ARMA) {
+                    killerWeaponsMap.set(k.ARMA, (killerWeaponsMap.get(k.ARMA) || 0) + 1);
+                }
+
                 if (k.VITIMA) {
                     victimPlayersMap.set(k.VITIMA, (victimPlayersMap.get(k.VITIMA) || 0) + 1);
 
@@ -888,6 +894,10 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                     if (!validMatchKeys.has(key)) return;
                 }
                 stats.deaths++;
+
+                if (k.ARMA) {
+                    victimWeaponsMap.set(k.ARMA, (victimWeaponsMap.get(k.ARMA) || 0) + 1);
+                }
 
                 const matchChar = (data.characters || []).find(c => 
                     normalize(c.Player) === normalize(pName) && 
@@ -961,6 +971,24 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                 grupo: tDim?.grupo || '-'
             };
         }).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+
+        const getWeaponImg = (name: string) => {
+            if (!name) return undefined;
+            const w = (data.weapons || []).find(w => w.Arma && w.Arma.trim().toLowerCase() === name.trim().toLowerCase());
+            return w?.IMG;
+        };
+
+        const killerWeapons = Array.from(killerWeaponsMap.entries()).map(([name, count]) => ({
+            name,
+            count,
+            img: getWeaponImg(name)
+        })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+
+        const victimWeapons = Array.from(victimWeaponsMap.entries()).map(([name, count]) => ({
+            name,
+            count,
+            img: getWeaponImg(name)
+        })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 
         // Use rankingData fallback if habFilter is 'All' so we get exactly the same baseline as before for global
         if (habFilter === 'All' && stats.matches === 0) {
@@ -1080,7 +1108,9 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             victimPlayers,
             killerPlayers,
             victimTeams,
-            killerTeams
+            killerTeams,
+            killerWeapons,
+            victimWeapons
         };
     };
 

@@ -51,6 +51,8 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
   const [showAllKillerTeams, setShowAllKillerTeams] = useState(false);
   const [showAllVictimPlayers, setShowAllVictimPlayers] = useState(false);
   const [showAllKillerPlayers, setShowAllKillerPlayers] = useState(false);
+  const [showAllKillerWeapons, setShowAllKillerWeapons] = useState(false);
+  const [showAllVictimWeapons, setShowAllVictimWeapons] = useState(false);
 
   // Radar data
   const radarData = p1 && p2 ? [
@@ -969,6 +971,255 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
                   ) : (
                     <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado encontrado</div>
                   )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ========================================================================= */}
+          {/* SEÇÃO X: ARMAS QUE MAIS MATAM E ARMAS ALGOZES */}
+          {/* ========================================================================= */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Armas Favoritas (Mais Matam) */}
+            <div className="bg-[#1a1a1a] rounded-[32px] border border-gray-800 overflow-hidden shadow-2xl">
+              <div className="bg-gradient-to-r from-yellow-500/10 via-black/40 to-amber-500/10 px-6 md:px-8 py-5 border-b border-white/5 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-yellow-500/10 border border-yellow-500/20 rounded-xl text-yellow-400">
+                    <Flame size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-white uppercase tracking-[0.2em] italic">
+                      Armas que Mais Matam (Favoritas)
+                    </h3>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                      Armas mais utilizadas por cada jogador para eliminar adversários
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowAllKillerWeapons(prev => !prev)}
+                  className="text-[10px] font-black text-yellow-400 hover:text-yellow-300 flex items-center gap-1 uppercase transition-colors"
+                >
+                  {showAllKillerWeapons ? 'Exibir Top 5' : 'Ver Todas'}
+                  {showAllKillerWeapons ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+              </div>
+
+              <div className="p-6 md:p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* P1 Killer Weapons */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-white/5">
+                    <span className="text-xs font-black text-yellow-500 uppercase italic tracking-wider flex items-center gap-2">
+                      <Crosshair size={14} /> {p1.name}
+                    </span>
+                    <span className="text-[10px] font-bold text-gray-500 uppercase">{p1.killerWeapons?.length || 0} armas</span>
+                  </div>
+                  <div className="space-y-2.5">
+                    {p1.killerWeapons && p1.killerWeapons.length > 0 ? (
+                      (showAllKillerWeapons ? p1.killerWeapons : p1.killerWeapons.slice(0, 5)).map((w: any, idx: number) => {
+                        const max = p1.killerWeapons[0]?.count || 1;
+                        const pct = Math.min(100, Math.round((w.count / max) * 100));
+                        return (
+                          <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
+                              <div className="w-10 h-8 rounded-lg bg-black/80 border border-yellow-500/20 overflow-hidden flex-shrink-0 flex items-center justify-center p-1">
+                                {w.img ? (
+                                  <img src={w.img} alt={w.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                                ) : (
+                                  <Crosshair size={14} className="text-yellow-500" />
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <span className="text-xs font-black text-white uppercase italic truncate block">{w.name}</span>
+                                <span className="text-[8px] text-gray-500 font-bold uppercase">Arma Principal</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3 flex-shrink-0">
+                              <div className="w-14 hidden sm:block bg-white/5 h-1.5 rounded-full overflow-hidden">
+                                <div className="bg-yellow-500 h-full rounded-full" style={{ width: `${pct}%` }} />
+                              </div>
+                              <div className="text-right min-w-[42px]">
+                                <span className="text-sm font-black text-yellow-500 italic block leading-none">{w.count}</span>
+                                <span className="text-[8px] text-gray-500 font-bold uppercase">abates</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* P2 Killer Weapons */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-white/5">
+                    <span className="text-xs font-black text-blue-400 uppercase italic tracking-wider flex items-center gap-2">
+                      <Crosshair size={14} /> {p2.name}
+                    </span>
+                    <span className="text-[10px] font-bold text-gray-500 uppercase">{p2.killerWeapons?.length || 0} armas</span>
+                  </div>
+                  <div className="space-y-2.5">
+                    {p2.killerWeapons && p2.killerWeapons.length > 0 ? (
+                      (showAllKillerWeapons ? p2.killerWeapons : p2.killerWeapons.slice(0, 5)).map((w: any, idx: number) => {
+                        const max = p2.killerWeapons[0]?.count || 1;
+                        const pct = Math.min(100, Math.round((w.count / max) * 100));
+                        return (
+                          <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
+                              <div className="w-10 h-8 rounded-lg bg-black/80 border border-blue-500/20 overflow-hidden flex-shrink-0 flex items-center justify-center p-1">
+                                {w.img ? (
+                                  <img src={w.img} alt={w.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                                ) : (
+                                  <Crosshair size={14} className="text-blue-400" />
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <span className="text-xs font-black text-white uppercase italic truncate block">{w.name}</span>
+                                <span className="text-[8px] text-gray-500 font-bold uppercase">Arma Principal</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3 flex-shrink-0">
+                              <div className="w-14 hidden sm:block bg-white/5 h-1.5 rounded-full overflow-hidden">
+                                <div className="bg-blue-400 h-full rounded-full" style={{ width: `${pct}%` }} />
+                              </div>
+                              <div className="text-right min-w-[42px]">
+                                <span className="text-sm font-black text-blue-400 italic block leading-none">{w.count}</span>
+                                <span className="text-[8px] text-gray-500 font-bold uppercase">abates</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Armas Algozes (Mais Morre / Para Quais Mais Morre) */}
+            <div className="bg-[#1a1a1a] rounded-[32px] border border-gray-800 overflow-hidden shadow-2xl">
+              <div className="bg-gradient-to-r from-rose-500/10 via-black/40 to-red-500/10 px-6 md:px-8 py-5 border-b border-white/5 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400">
+                    <Skull size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-white uppercase tracking-[0.2em] italic">
+                      Armas Algozes (Mais Causam Mortes ao Jogador)
+                    </h3>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                      Armas responsáveis pelo maior número de eliminações sofridas por cada atleta
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowAllVictimWeapons(prev => !prev)}
+                  className="text-[10px] font-black text-rose-400 hover:text-rose-300 flex items-center gap-1 uppercase transition-colors"
+                >
+                  {showAllVictimWeapons ? 'Exibir Top 5' : 'Ver Todas'}
+                  {showAllVictimWeapons ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+              </div>
+
+              <div className="p-6 md:p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* P1 Victim Weapons */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-white/5">
+                    <span className="text-xs font-black text-yellow-500 uppercase italic tracking-wider flex items-center gap-2">
+                      <Skull size={14} className="text-rose-500" /> {p1.name}
+                    </span>
+                    <span className="text-[10px] font-bold text-gray-500 uppercase">{p1.victimWeapons?.length || 0} armas</span>
+                  </div>
+                  <div className="space-y-2.5">
+                    {p1.victimWeapons && p1.victimWeapons.length > 0 ? (
+                      (showAllVictimWeapons ? p1.victimWeapons : p1.victimWeapons.slice(0, 5)).map((w: any, idx: number) => {
+                        const max = p1.victimWeapons[0]?.count || 1;
+                        const pct = Math.min(100, Math.round((w.count / max) * 100));
+                        return (
+                          <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
+                              <div className="w-10 h-8 rounded-lg bg-black/80 border border-rose-500/20 overflow-hidden flex-shrink-0 flex items-center justify-center p-1">
+                                {w.img ? (
+                                  <img src={w.img} alt={w.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                                ) : (
+                                  <Skull size={14} className="text-rose-500" />
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <span className="text-xs font-black text-white uppercase italic truncate block">{w.name}</span>
+                                <span className="text-[8px] text-gray-500 font-bold uppercase">Arma Letal Contra</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3 flex-shrink-0">
+                              <div className="w-14 hidden sm:block bg-white/5 h-1.5 rounded-full overflow-hidden">
+                                <div className="bg-rose-500 h-full rounded-full" style={{ width: `${pct}%` }} />
+                              </div>
+                              <div className="text-right min-w-[42px]">
+                                <span className="text-sm font-black text-rose-500 italic block leading-none">{w.count}</span>
+                                <span className="text-[8px] text-gray-500 font-bold uppercase">mortes</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* P2 Victim Weapons */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-white/5">
+                    <span className="text-xs font-black text-blue-400 uppercase italic tracking-wider flex items-center gap-2">
+                      <Skull size={14} className="text-rose-500" /> {p2.name}
+                    </span>
+                    <span className="text-[10px] font-bold text-gray-500 uppercase">{p2.victimWeapons?.length || 0} armas</span>
+                  </div>
+                  <div className="space-y-2.5">
+                    {p2.victimWeapons && p2.victimWeapons.length > 0 ? (
+                      (showAllVictimWeapons ? p2.victimWeapons : p2.victimWeapons.slice(0, 5)).map((w: any, idx: number) => {
+                        const max = p2.victimWeapons[0]?.count || 1;
+                        const pct = Math.min(100, Math.round((w.count / max) * 100));
+                        return (
+                          <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
+                              <div className="w-10 h-8 rounded-lg bg-black/80 border border-rose-500/20 overflow-hidden flex-shrink-0 flex items-center justify-center p-1">
+                                {w.img ? (
+                                  <img src={w.img} alt={w.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                                ) : (
+                                  <Skull size={14} className="text-rose-500" />
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <span className="text-xs font-black text-white uppercase italic truncate block">{w.name}</span>
+                                <span className="text-[8px] text-gray-500 font-bold uppercase">Arma Letal Contra</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3 flex-shrink-0">
+                              <div className="w-14 hidden sm:block bg-white/5 h-1.5 rounded-full overflow-hidden">
+                                <div className="bg-rose-500 h-full rounded-full" style={{ width: `${pct}%` }} />
+                              </div>
+                              <div className="text-right min-w-[42px]">
+                                <span className="text-sm font-black text-rose-500 italic block leading-none">{w.count}</span>
+                                <span className="text-[8px] text-gray-500 font-bold uppercase">mortes</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado</div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

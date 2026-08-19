@@ -259,6 +259,8 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
       const killerPlayersMap = new Map<string, { count: number; team?: string }>();
       const victimTeamsMap = new Map<string, number>();
       const killerTeamsMap = new Map<string, number>();
+      const killerWeaponsMap = new Map<string, number>();
+      const victimWeaponsMap = new Map<string, number>();
 
       let totalKillsMade = 0;
       let totalDeathsSuffered = 0;
@@ -277,6 +279,9 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
         // 1. Time fez o abate
         if (isKillerMyTeam && victimName) {
           totalKillsMade++;
+          if (k.ARMA) {
+            killerWeaponsMap.set(k.ARMA, (killerWeaponsMap.get(k.ARMA) || 0) + 1);
+          }
 
           // Vítima (Jogador)
           const currVp = victimPlayersMap.get(victimName) || { count: 0, team: victimTeam };
@@ -293,6 +298,9 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
         // 2. Time sofreu a morte
         if (isVictimMyTeam && killerName) {
           totalDeathsSuffered++;
+          if (k.ARMA) {
+            victimWeaponsMap.set(k.ARMA, (victimWeaponsMap.get(k.ARMA) || 0) + 1);
+          }
 
           // Algoz (Jogador)
           const currKp = killerPlayersMap.get(killerName) || { count: 0, team: killerTeam };
@@ -360,6 +368,24 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
 
       const kdRatio = totalDeathsSuffered > 0 ? (totalKillsMade / totalDeathsSuffered).toFixed(2) : totalKillsMade.toFixed(2);
 
+      const getWeaponImg = (name: string) => {
+        if (!name) return undefined;
+        const w = (data.weapons || []).find(w => w.Arma && w.Arma.trim().toLowerCase() === name.trim().toLowerCase());
+        return w?.IMG;
+      };
+
+      const killerWeapons = Array.from(killerWeaponsMap.entries()).map(([name, count]) => ({
+        name,
+        count,
+        img: getWeaponImg(name)
+      })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+
+      const victimWeapons = Array.from(victimWeaponsMap.entries()).map(([name, count]) => ({
+        name,
+        count,
+        img: getWeaponImg(name)
+      })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+
       return {
         name: teamName,
         totalKillsMade,
@@ -368,7 +394,9 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
         victimTeams,
         killerTeams,
         victimPlayers,
-        killerPlayers
+        killerPlayers,
+        killerWeapons,
+        victimWeapons
       };
     };
 
