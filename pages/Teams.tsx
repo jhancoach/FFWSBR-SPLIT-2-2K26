@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { DashboardData, TeamStats, PlayerData, KillFeed, MatchDetails } from '../types';
 import { calculateTeamStats } from '../services/dataService';
-import { Shield, TrendingUp, Users, ArrowLeft, Target, Award, Crosshair, Map as MapIcon, BarChart3, Star, Disc, Activity, Layers, Zap, ListOrdered, Trophy, ChevronDown, Medal, CheckCircle2, Flame, TrendingDown, LayoutGrid, LayoutList, MapPin, Scale, ArrowUp, ArrowDown, Calendar, User, Search, ArrowUpDown, BarChart2, Swords, AlertTriangle, Crown, Eye, EyeOff, Info } from 'lucide-react';
+import { Shield, TrendingUp, Users, ArrowLeft, Target, Award, Crosshair, Map as MapIcon, BarChart3, Star, Disc, Activity, Layers, Zap, ListOrdered, Trophy, ChevronDown, Medal, CheckCircle2, Flame, TrendingDown, LayoutGrid, LayoutList, MapPin, Scale, ArrowUp, ArrowDown, Calendar, User, Search, ArrowUpDown, BarChart2, Swords, AlertTriangle, Crown, Eye, EyeOff, Info, Skull, Sparkles, Filter } from 'lucide-react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, LabelList, PieChart, Pie, Cell, Legend, CartesianGrid, YAxis } from 'recharts';
 import FilterBar from '../components/FilterBar';
 import { formatTeamName, findTeamLogo } from '../utils/teamUtils';
@@ -70,7 +70,9 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
   const [showAllTeamsMap, setShowAllTeamsMap] = useState<boolean>(false);
   const [mapStatsSort, setMapStatsSort] = useState<{ field: 'totalKills' | 'avgKillsPerMatch' | 'totalMatches' | 'mapName'; direction: 'asc' | 'desc' }>({ field: 'totalKills', direction: 'desc' });
   const [mapRoundViewMode, setMapRoundViewMode] = useState<'matrix' | 'cards'>('matrix');
-  const [teamProfileSubTab, setTeamProfileSubTab] = useState<'all' | 'zeradas' | 'rounds' | 'mapKills' | 'safes' | 'lineups'>('all');
+  const [teamProfileSubTab, setTeamProfileSubTab] = useState<'all' | 'zeradas' | 'rounds' | 'mapKills' | 'safes' | 'lineups' | 'killfeedPhases'>('all');
+  const [teamKillFeedPhaseFilter, setTeamKillFeedPhaseFilter] = useState<'ALL' | 'EARLY' | 'MID' | 'LATE'>('ALL');
+  const [teamKillFeedEventType, setTeamKillFeedEventType] = useState<'all' | 'kills' | 'deaths'>('all');
   const [compareSubTab, setCompareSubTab] = useState<'all' | 'overview' | 'combat' | 'zeradas' | 'mapKills' | 'safeKills' | 'safes'>('all');
   const [showTeamDetails, setShowTeamDetails] = useState<boolean>(true);
   const [matrixViewMode, setMatrixViewMode] = useState<'both' | 'points' | 'kills'>('both');
@@ -2666,6 +2668,66 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
     return analysis;
   }, [data.details]);
 
+  const getGamePhase = (safe: string | undefined): 'EARLY' | 'MID' | 'LATE' | 'OTHER' => {
+      if (!safe) return 'OTHER';
+      const s = safe.trim().toUpperCase();
+      if (s.includes('SAFE 1') || s.includes('SAFE 2') || s === '1' || s === '2') return 'EARLY';
+      if (s.includes('SAFE 3') || s.includes('SAFE 4') || s === '3' || s === '4') return 'MID';
+      if (s.includes('SAFE 5') || s.includes('SAFE 6') || s.includes('SAFE 7') || s === '5' || s === '6' || s === '7') return 'LATE';
+      return 'OTHER';
+  };
+
+  const allTeamsPhaseStats = useMemo(() => {
+    const phaseStatsMap = new Map<string, {
+      name: string;
+      image?: string;
+      earlyKills: number;
+      midKills: number;
+      lateKills: number;
+      otherKills: number;
+      totalPhaseKills: number;
+    }>();
+
+    filteredTeamStats.forEach(t => {
+      phaseStatsMap.set(t.name, {
+        name: t.name,
+        image: t.image,
+        earlyKills: 0,
+        midKills: 0,
+        lateKills: 0,
+        otherKills: 0,
+        totalPhaseKills: 0,
+      });
+    });
+
+    const playerToTeamMap = new Map<string, string>();
+    filteredData.players.forEach(p => {
+        if (p.PLAYER && p.TIME) {
+            playerToTeamMap.set(normalize(p.PLAYER), p.TIME);
+        }
+    });
+
+    filteredData.killFeed.forEach(k => {
+      const killerTeam = playerToTeamMap.get(normalize(k.PLAYER));
+      if (killerTeam && phaseStatsMap.has(killerTeam)) {
+        const ph = getGamePhase(k.SAFE);
+        const st = phaseStatsMap.get(killerTeam)!;
+        st.totalPhaseKills++;
+        if (ph === 'EARLY') st.earlyKills++;
+        else if (ph === 'MID') st.midKills++;
+        else if (ph === 'LATE') st.lateKills++;
+        else st.otherKills++;
+      }
+    });
+
+    return Array.from(phaseStatsMap.values()).map(t => ({
+        ...t,
+        earlyPct: t.totalPhaseKills > 0 ? (t.earlyKills / t.totalPhaseKills * 100).toFixed(1) : '0.0',
+        midPct: t.totalPhaseKills > 0 ? (t.midKills / t.totalPhaseKills * 100).toFixed(1) : '0.0',
+        latePct: t.totalPhaseKills > 0 ? (t.lateKills / t.totalPhaseKills * 100).toFixed(1) : '0.0',
+    })).sort((a, b) => b.totalPhaseKills - a.totalPhaseKills);
+  }, [filteredData.killFeed, filteredData.players, filteredTeamStats]);
+
   const handlePlayerClick = (playerName: string) => {
     navigate('/players', { state: { player: playerName } });
   };
@@ -2719,6 +2781,12 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                         className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'safeAnalysis' ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
                     >
                         <MapPin size={15} /> Onde Fechou
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('killfeedPhases')}
+                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'killfeedPhases' ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                    >
+                        <Crosshair size={15} /> Fases do Jogo
                     </button>
                     <button 
                         onClick={() => setActiveTab('comparison')}
@@ -2888,6 +2956,17 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                             }`}
                         >
                             <Users size={15} /> Formações (Lineups)
+                        </button>
+                        
+                        <button
+                            onClick={() => setTeamProfileSubTab('killfeedPhases')}
+                            className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                                teamProfileSubTab === 'killfeedPhases' 
+                                    ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20 font-black' 
+                                    : 'bg-black/40 text-gray-400 hover:text-white hover:bg-white/5 border border-white/5'
+                            }`}
+                        >
+                            <Crosshair size={15} /> Fases do Jogo
                         </button>
                     </div>
 
@@ -4424,6 +4503,77 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                 </div>
                             </div>
                         )}
+                    </div>
+                )}
+                
+                {/* SEÇÃO: KILL FEED PHASES (EARLY, MID, LATE) NO PERFIL DA EQUIPE */}
+                {showTeamDetails && (teamProfileSubTab === 'all' || teamProfileSubTab === 'killfeedPhases') && (
+                    <div className="bg-[#1a1a1a] p-8 rounded-3xl border border-emerald-900/30 shadow-2xl space-y-6">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-4">
+                            <div>
+                                <div className="flex items-center gap-2.5">
+                                    <div className="p-2 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400">
+                                        <Crosshair size={20} />
+                                    </div>
+                                    <h3 className="text-xl font-black text-white italic uppercase tracking-wider">
+                                        AGRESSIVIDADE POR FASE DO JOGO ({selectedTeamStats.name})
+                                    </h3>
+                                </div>
+                                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-1">
+                                    Análise da distribuição de abates da equipe baseada nas zonas seguras (Early, Mid e Late Game) no Kill Feed.
+                                </p>
+                            </div>
+                        </div>
+
+                        {(() => {
+                            const teamPhaseStats = allTeamsPhaseStats.find(t => t.name === selectedTeamStats.name);
+                            if (!teamPhaseStats || teamPhaseStats.totalPhaseKills === 0) {
+                                return (
+                                    <div className="py-12 text-center text-gray-500 font-black uppercase italic tracking-widest">
+                                        Nenhum registro de abates no kill feed para esta equipe.
+                                    </div>
+                                );
+                            }
+                            
+                            return (
+                                <div className="space-y-6">
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                        <div className="bg-black/60 p-6 rounded-2xl border border-emerald-500/30 text-center relative overflow-hidden group">
+                                            <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none group-hover:bg-emerald-500/20 transition-colors"></div>
+                                            <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest block mb-2">EARLY GAME (SAFES 1-2)</span>
+                                            <span className="text-4xl font-black text-white italic">{teamPhaseStats.earlyKills}</span>
+                                            <span className="text-xs font-bold text-gray-400 block mt-1">KILLS</span>
+                                            <div className="mt-4 bg-emerald-500/20 text-emerald-400 text-xs font-black px-3 py-1.5 rounded-full inline-block">
+                                                {teamPhaseStats.earlyPct}% do total
+                                            </div>
+                                        </div>
+                                        <div className="bg-black/60 p-6 rounded-2xl border border-yellow-500/30 text-center relative overflow-hidden group">
+                                            <div className="absolute top-0 right-0 w-24 h-24 bg-yellow-500/10 rounded-full blur-2xl pointer-events-none group-hover:bg-yellow-500/20 transition-colors"></div>
+                                            <span className="text-[10px] font-black text-yellow-400 uppercase tracking-widest block mb-2">MID GAME (SAFES 3-4)</span>
+                                            <span className="text-4xl font-black text-white italic">{teamPhaseStats.midKills}</span>
+                                            <span className="text-xs font-bold text-gray-400 block mt-1">KILLS</span>
+                                            <div className="mt-4 bg-yellow-500/20 text-yellow-400 text-xs font-black px-3 py-1.5 rounded-full inline-block">
+                                                {teamPhaseStats.midPct}% do total
+                                            </div>
+                                        </div>
+                                        <div className="bg-black/60 p-6 rounded-2xl border border-red-500/30 text-center relative overflow-hidden group">
+                                            <div className="absolute top-0 right-0 w-24 h-24 bg-red-500/10 rounded-full blur-2xl pointer-events-none group-hover:bg-red-500/20 transition-colors"></div>
+                                            <span className="text-[10px] font-black text-red-400 uppercase tracking-widest block mb-2">LATE GAME (SAFES 5+)</span>
+                                            <span className="text-4xl font-black text-white italic">{teamPhaseStats.lateKills}</span>
+                                            <span className="text-xs font-bold text-gray-400 block mt-1">KILLS</span>
+                                            <div className="mt-4 bg-red-500/20 text-red-400 text-xs font-black px-3 py-1.5 rounded-full inline-block">
+                                                {teamPhaseStats.latePct}% do total
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {teamPhaseStats.otherKills > 0 && (
+                                        <div className="text-center text-[10px] text-gray-500 font-bold uppercase tracking-widest">
+                                            + {teamPhaseStats.otherKills} abates em safes não identificadas
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })()}
                     </div>
                 )}
 
@@ -6482,6 +6632,108 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                     </div>
                 )}
             </div>
+        ) : activeTab === 'killfeedPhases' ? (
+            <div className="space-y-8 animate-in fade-in duration-500">
+                <div className="bg-[#1a1a1a] rounded-3xl p-8 border border-gray-800 shadow-xl">
+                    <h3 className="text-white font-black text-sm uppercase italic tracking-widest mb-6 flex items-center gap-2">
+                        <Crosshair size={20} className="text-emerald-500" />
+                        AGRESSIVIDADE POR FASE DO JOGO (TODAS AS EQUIPES)
+                    </h3>
+                    
+                    <div className="overflow-x-auto custom-scrollbar">
+                        <table className="w-full text-left border-collapse whitespace-nowrap min-w-[800px]">
+                            <thead className="bg-black/80 text-[10px] text-gray-500 uppercase font-black tracking-widest border-b-2 border-gray-800">
+                                <tr>
+                                    <th className="px-6 py-4 w-12 text-center">#</th>
+                                    <th className="px-6 py-4">Equipe</th>
+                                    <th className="px-6 py-4 text-center">
+                                        <div className="flex flex-col items-center">
+                                            <span className="text-emerald-400">EARLY GAME</span>
+                                            <span className="text-[8px] text-gray-600">(SAFES 1-2)</span>
+                                        </div>
+                                    </th>
+                                    <th className="px-6 py-4 text-center">
+                                        <div className="flex flex-col items-center">
+                                            <span className="text-yellow-400">MID GAME</span>
+                                            <span className="text-[8px] text-gray-600">(SAFES 3-4)</span>
+                                        </div>
+                                    </th>
+                                    <th className="px-6 py-4 text-center">
+                                        <div className="flex flex-col items-center">
+                                            <span className="text-red-400">LATE GAME</span>
+                                            <span className="text-[8px] text-gray-600">(SAFES 5+)</span>
+                                        </div>
+                                    </th>
+                                    <th className="px-6 py-4 text-center">
+                                        <div className="flex flex-col items-center">
+                                            <span className="text-gray-400">NÃO ID. / OUTRO</span>
+                                        </div>
+                                    </th>
+                                    <th className="px-6 py-4 text-center">TOTAL KILLS</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-800/40 text-xs font-medium">
+                                {allTeamsPhaseStats.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={7} className="py-8 text-center text-gray-500 italic">
+                                            Nenhum dado de kill feed encontrado para as equipes filtradas.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    allTeamsPhaseStats.map((team, tIdx) => (
+                                        <tr key={team.name} className="hover:bg-white/5 transition-colors group">
+                                            <td className="px-6 py-4 text-center text-gray-500 font-mono text-[10px]">
+                                                {tIdx + 1}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div 
+                                                    className="flex items-center gap-3 cursor-pointer"
+                                                    onClick={() => setFilters(prev => ({...prev, team: [team.name]}))}
+                                                >
+                                                    <div className="w-8 h-8 bg-black rounded-lg border border-gray-800 p-1 flex-shrink-0 flex items-center justify-center shadow-lg group-hover:border-emerald-500/50 transition-colors">
+                                                        {team.image ? (
+                                                            <img src={team.image} alt={team.name} className="w-full h-full object-contain" />
+                                                        ) : (
+                                                            <Shield size={16} className="text-gray-600" />
+                                                        )}
+                                                    </div>
+                                                    <span className="font-black text-white uppercase italic tracking-wider group-hover:text-emerald-400 transition-colors">
+                                                        {team.name}
+                                                    </span>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex flex-col items-center">
+                                                    <span className="font-black text-emerald-400 text-sm">{team.earlyKills}</span>
+                                                    <span className="text-[9px] text-gray-500 font-bold">{team.earlyPct}%</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex flex-col items-center">
+                                                    <span className="font-black text-yellow-400 text-sm">{team.midKills}</span>
+                                                    <span className="text-[9px] text-gray-500 font-bold">{team.midPct}%</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex flex-col items-center">
+                                                    <span className="font-black text-red-400 text-sm">{team.lateKills}</span>
+                                                    <span className="text-[9px] text-gray-500 font-bold">{team.latePct}%</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 text-center font-bold text-gray-500">
+                                                {team.otherKills > 0 ? team.otherKills : '-'}
+                                            </td>
+                                            <td className="px-6 py-4 text-center font-black text-white text-base">
+                                                {team.totalPhaseKills}
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         ) : activeTab === 'comparison' ? (
             <div className="space-y-8 animate-in fade-in duration-500">
                 <div className="flex flex-col md:flex-row gap-6 items-center justify-center">
@@ -7137,6 +7389,91 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                         </div>
                                     </div>
                                 ))}
+                            </div>
+                        )}
+
+                        {/* SUB-TAB: Killfeed Phases (Early/Mid/Late Game) */}
+                        {(compareSubTab === 'safeKills' || compareSubTab === 'all') && (
+                            <div className="space-y-6 animate-in fade-in duration-300">
+                                {compareSubTab === 'all' && (
+                                    <div className="flex flex-col items-center pt-8">
+                                        <div className="h-0.5 w-28 bg-gradient-to-r from-transparent via-emerald-500 to-transparent mb-3" />
+                                        <div className="flex items-center gap-2 text-emerald-500 font-black uppercase tracking-[0.4em] italic text-xs">
+                                            <Crosshair size={16} /> Agressividade por Fases do Jogo
+                                        </div>
+                                    </div>
+                                )}
+                                <div className="bg-[#1a1a1a] rounded-[40px] border border-gray-800 p-8 space-y-8 shadow-2xl relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/5 blur-[120px] rounded-full pointer-events-none" />
+                                    
+                                    <div className="border-b border-gray-800 pb-4 flex justify-between items-center relative z-10">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-400 border border-emerald-500/20">
+                                                <Crosshair size={18} />
+                                            </div>
+                                            <div>
+                                                <h4 className="text-xl font-black text-white uppercase italic tracking-widest">Agressividade (Early / Mid / Late)</h4>
+                                                <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Comparativo de kills por fase no Kill Feed</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 relative z-10">
+                                        {[filters.team[0], compareTeamB].map((teamName, idx) => {
+                                            const phaseStats = allTeamsPhaseStats.find(t => t.name === teamName);
+                                            if (!phaseStats) return null;
+
+                                            return (
+                                                <div key={teamName} className="space-y-6">
+                                                    <h5 className={`text-xl font-black uppercase italic tracking-widest ${idx === 0 ? 'text-yellow-500' : 'text-blue-400'}`}>
+                                                        {teamName}
+                                                    </h5>
+                                                    
+                                                    <div className="space-y-4">
+                                                        {/* Early */}
+                                                        <div className="bg-black/60 p-4 rounded-2xl border border-emerald-500/20 flex items-center justify-between group hover:border-emerald-500/40 transition-colors">
+                                                            <div>
+                                                                <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest block">EARLY GAME (SAFES 1-2)</span>
+                                                                <span className="text-xs text-gray-500 font-bold">Kills no início de partida</span>
+                                                            </div>
+                                                            <div className="flex flex-col items-end">
+                                                                <span className="text-2xl font-black text-white italic">{phaseStats.earlyKills} <span className="text-xs text-emerald-400 ml-1 font-bold">KILLS</span></span>
+                                                                <span className="text-[10px] text-emerald-400/80 font-black">{phaseStats.earlyPct}%</span>
+                                                            </div>
+                                                        </div>
+                                                        {/* Mid */}
+                                                        <div className="bg-black/60 p-4 rounded-2xl border border-yellow-500/20 flex items-center justify-between group hover:border-yellow-500/40 transition-colors">
+                                                            <div>
+                                                                <span className="text-[10px] font-black text-yellow-400 uppercase tracking-widest block">MID GAME (SAFES 3-4)</span>
+                                                                <span className="text-xs text-gray-500 font-bold">Kills no meio de jogo</span>
+                                                            </div>
+                                                            <div className="flex flex-col items-end">
+                                                                <span className="text-2xl font-black text-white italic">{phaseStats.midKills} <span className="text-xs text-yellow-400 ml-1 font-bold">KILLS</span></span>
+                                                                <span className="text-[10px] text-yellow-400/80 font-black">{phaseStats.midPct}%</span>
+                                                            </div>
+                                                        </div>
+                                                        {/* Late */}
+                                                        <div className="bg-black/60 p-4 rounded-2xl border border-red-500/20 flex items-center justify-between group hover:border-red-500/40 transition-colors">
+                                                            <div>
+                                                                <span className="text-[10px] font-black text-red-400 uppercase tracking-widest block">LATE GAME (SAFES 5+)</span>
+                                                                <span className="text-xs text-gray-500 font-bold">Kills decisivas</span>
+                                                            </div>
+                                                            <div className="flex flex-col items-end">
+                                                                <span className="text-2xl font-black text-white italic">{phaseStats.lateKills} <span className="text-xs text-red-400 ml-1 font-bold">KILLS</span></span>
+                                                                <span className="text-[10px] text-red-400/80 font-black">{phaseStats.latePct}%</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex items-center justify-between pt-4 border-t border-white/5 px-2">
+                                                        <span className="text-xs font-black text-gray-400 uppercase tracking-widest">Total Registrado</span>
+                                                        <span className="text-lg font-black text-white italic">{phaseStats.totalPhaseKills} KILLS</span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
                             </div>
                         )}
                     </div>
