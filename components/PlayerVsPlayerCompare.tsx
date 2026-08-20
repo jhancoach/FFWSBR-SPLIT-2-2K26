@@ -54,6 +54,12 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
   const [showAllKillerWeapons, setShowAllKillerWeapons] = useState(false);
   const [showAllVictimWeapons, setShowAllVictimWeapons] = useState(false);
 
+  const [showSection1, setShowSection1] = useState(true);
+  const [showSection2, setShowSection2] = useState(true);
+  const [showSection3, setShowSection3] = useState(true);
+  const [showSection4, setShowSection4] = useState(true);
+  const [showWeaponsSection, setShowWeaponsSection] = useState(true);
+
   // Radar data
   const radarData = p1 && p2 ? [
     {
@@ -101,368 +107,270 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
         {/* Seleção Jogador 1 */}
         <div id="p1-selector-card" className="bg-[#1a1a1a] rounded-3xl border border-yellow-500/30 p-8 shadow-2xl flex flex-col justify-between relative overflow-hidden">
           <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-500/5 rounded-full blur-3xl pointer-events-none" />
-          <div>
-            <label className="text-[10px] font-black text-yellow-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-              <User size={14} /> DESAFIANTE 1 (JOGADOR 1)
-            </label>
-            <select 
-              id="select-p1-player"
-              value={comparePlayers.p1} 
-              onChange={(e) => setComparePlayers(prev => ({...prev, p1: e.target.value}))}
-              className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-white font-bold focus:border-yellow-500 outline-none transition-all mb-3 text-sm"
-            >
-              <option value="">Selecione um jogador...</option>
-              {(allPlayersList || []).map(p => (
-                <option key={p.name} value={p.name}>{p.name} {p.team ? `(${p.team})` : ''}</option>
-              ))}
-            </select>
-            <select 
-              id="select-p1-hab"
-              value={comparePlayers.p1Hab} 
-              onChange={(e) => setComparePlayers(prev => ({...prev, p1Hab: e.target.value}))}
-              className="w-full bg-black border border-white/10 rounded-xl px-4 py-2.5 text-white font-bold focus:border-yellow-500 outline-none transition-all text-xs"
-            >
-              <option value="All">Com Qualquer Personagem / Habilidade</option>
-              {(activeHabs || []).map(h => <option key={h} value={h}>Com {h}</option>)}
-            </select>
-          </div>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-widest text-yellow-500 flex items-center gap-2">
+                <User size={14} /> Desafiante 1
+              </span>
+              {p1 && (
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+                  {p1.team || 'Sem Equipe'}
+                </span>
+              )}
+            </div>
 
-          {p1 && (
-            <div className="mt-8 flex flex-col items-center">
-              <div className="relative">
-                <div className="w-32 h-32 rounded-full border-4 border-yellow-500/40 overflow-hidden shadow-[0_0_30px_rgba(234,179,8,0.2)] mb-4 bg-black flex-shrink-0">
-                  {p1.playerImg ? (
-                    <img src={p1.playerImg} className="w-full h-full object-cover" alt={p1.name} referrerPolicy="no-referrer" />
-                  ) : p1.teamImg ? (
-                    <img src={p1.teamImg} className="w-full h-full object-contain p-2" alt={p1.team} referrerPolicy="no-referrer" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-gray-700 bg-black"><User size={48} /></div>
-                  )}
-                </div>
-                {p1.teamImg && (
-                  <div className="absolute -bottom-1 -right-1 w-10 h-10 rounded-full bg-black/90 border-2 border-yellow-500/40 p-1 shadow-lg flex items-center justify-center overflow-hidden">
-                    <img src={p1.teamImg} alt={p1.team} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
-                  </div>
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 rounded-2xl bg-black border border-yellow-500/30 p-1 flex-shrink-0 flex items-center justify-center overflow-hidden">
+                {p1?.img ? (
+                  <img src={p1.img} alt={p1.name} className="w-full h-full object-cover rounded-xl" referrerPolicy="no-referrer" />
+                ) : (
+                  <User size={32} className="text-yellow-500" />
                 )}
               </div>
-
-              <h4 className="text-2xl font-black text-white uppercase italic tracking-tighter text-center">{p1.name}</h4>
-              <span className="text-xs font-black text-yellow-500 uppercase tracking-widest mt-1">{p1.team}</span>
-
-              {/* Badge de Personagem do Jogador 1 */}
-              <div className="w-full mt-4 bg-black/50 p-3 rounded-2xl border border-yellow-500/20 flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-yellow-500/10 border border-yellow-500/30 p-1 flex-shrink-0 overflow-hidden flex items-center justify-center">
-                  {p1.activeHabImg ? (
-                    <img src={p1.activeHabImg} alt="Personagem" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
-                  ) : (
-                    <Zap size={22} className="text-yellow-500" />
-                  )}
-                </div>
-                <div className="flex flex-col min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[9px] font-black uppercase tracking-wider text-yellow-500">
-                      {comparePlayers.p1Hab !== 'All' ? 'Personagem Filtrado' : 'Personagem Principal (Main)'}
-                    </span>
-                    {comparePlayers.p1Hab === 'All' && p1.topCharacter && (
-                      <span className="text-[8px] px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400 font-black">
-                        {p1.topCharacter.pickRate}% uso
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-sm font-black text-white uppercase italic truncate">
-                    {comparePlayers.p1Hab !== 'All' ? comparePlayers.p1Hab : (p1.topCharacter?.name || 'Nenhum')}
-                  </span>
-                  {comparePlayers.p1Hab === 'All' && p1.characterPool && p1.characterPool.length > 1 && (
-                    <span className="text-[9px] text-gray-400 truncate">
-                      Pool: {p1.characterPool.map((c: any) => `${c.name} (${c.matches}Q)`).join(', ')}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Quick stats badges */}
-              <div className="grid grid-cols-4 gap-2 w-full mt-4 bg-black/40 p-3 rounded-2xl border border-white/5 text-center">
-                <div className="flex flex-col">
-                  <span className="text-[9px] font-black text-gray-500 uppercase tracking-wider">Abates</span>
-                  <span className="text-base font-black text-white">{p1.kills}</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[9px] font-black text-gray-500 uppercase tracking-wider">Mortes</span>
-                  <span className="text-base font-black text-red-400">{p1.deaths ?? 0}</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[9px] font-black text-gray-500 uppercase tracking-wider">K/D</span>
-                  <span className="text-base font-black text-yellow-400">{p1.kd ?? '0.00'}</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[9px] font-black text-gray-500 uppercase tracking-wider">Zeradas</span>
-                  <span className="text-base font-black text-orange-400">{p1.zeroKills ?? 0}</span>
-                </div>
+              <div className="flex-1">
+                <select
+                  id="p1-select"
+                  aria-label="Selecione o Jogador 1"
+                  value={comparePlayers.p1}
+                  onChange={(e) => setComparePlayers(prev => ({ ...prev, p1: e.target.value }))}
+                  className="w-full bg-black/60 border border-gray-800 rounded-xl px-4 py-3 text-sm font-black text-white uppercase tracking-wider focus:border-yellow-500 focus:outline-none transition-colors"
+                >
+                  <option value="">Selecione o Jogador 1</option>
+                  {allPlayersList.map(p => (
+                    <option key={`p1-${p.name}`} value={p.name}>
+                      {p.name} {p.team ? `(${p.team})` : ''}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
-          )}
+
+            {/* Filtro Opcional de Hab 1 */}
+            <div className="pt-2">
+              <label className="text-[9px] font-bold text-gray-500 uppercase tracking-wider block mb-1">
+                Filtrar por Habilidade Ativa (Opcional)
+              </label>
+              <select
+                id="p1-hab-select"
+                aria-label="Filtrar Habilidade Ativa Jogador 1"
+                value={comparePlayers.p1Hab}
+                onChange={(e) => setComparePlayers(prev => ({ ...prev, p1Hab: e.target.value }))}
+                className="w-full bg-black/40 border border-gray-800 rounded-lg px-3 py-2 text-xs font-bold text-gray-300 focus:border-yellow-500 focus:outline-none transition-colors"
+              >
+                <option value="">Todas as Habilidades Ativas</option>
+                {activeHabs.map(h => (
+                  <option key={`p1-hab-${h}`} value={h}>{h}</option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
 
         {/* Seleção Jogador 2 */}
         <div id="p2-selector-card" className="bg-[#1a1a1a] rounded-3xl border border-blue-500/30 p-8 shadow-2xl flex flex-col justify-between relative overflow-hidden">
           <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
-          <div>
-            <label className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-              <User size={14} /> DESAFIANTE 2 (JOGADOR 2)
-            </label>
-            <select 
-              id="select-p2-player"
-              value={comparePlayers.p2} 
-              onChange={(e) => setComparePlayers(prev => ({...prev, p2: e.target.value}))}
-              className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-white font-bold focus:border-blue-500 outline-none transition-all mb-3 text-sm"
-            >
-              <option value="">Selecione um jogador...</option>
-              {(allPlayersList || []).map(p => (
-                <option key={p.name} value={p.name}>{p.name} {p.team ? `(${p.team})` : ''}</option>
-              ))}
-            </select>
-            <select 
-              id="select-p2-hab"
-              value={comparePlayers.p2Hab} 
-              onChange={(e) => setComparePlayers(prev => ({...prev, p2Hab: e.target.value}))}
-              className="w-full bg-black border border-white/10 rounded-xl px-4 py-2.5 text-white font-bold focus:border-blue-500 outline-none transition-all text-xs"
-            >
-              <option value="All">Com Qualquer Personagem / Habilidade</option>
-              {(activeHabs || []).map(h => <option key={h} value={h}>Com {h}</option>)}
-            </select>
-          </div>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-widest text-blue-400 flex items-center gap-2">
+                <User size={14} /> Desafiante 2
+              </span>
+              {p2 && (
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+                  {p2.team || 'Sem Equipe'}
+                </span>
+              )}
+            </div>
 
-          {p2 && (
-            <div className="mt-8 flex flex-col items-center">
-              <div className="relative">
-                <div className="w-32 h-32 rounded-full border-4 border-blue-500/40 overflow-hidden shadow-[0_0_30px_rgba(59,130,246,0.2)] mb-4 bg-black flex-shrink-0">
-                  {p2.playerImg ? (
-                    <img src={p2.playerImg} className="w-full h-full object-cover" alt={p2.name} referrerPolicy="no-referrer" />
-                  ) : p2.teamImg ? (
-                    <img src={p2.teamImg} className="w-full h-full object-contain p-2" alt={p2.team} referrerPolicy="no-referrer" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-gray-700 bg-black"><User size={48} /></div>
-                  )}
-                </div>
-                {p2.teamImg && (
-                  <div className="absolute -bottom-1 -right-1 w-10 h-10 rounded-full bg-black/90 border-2 border-blue-500/40 p-1 shadow-lg flex items-center justify-center overflow-hidden">
-                    <img src={p2.teamImg} alt={p2.team} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
-                  </div>
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 rounded-2xl bg-black border border-blue-500/30 p-1 flex-shrink-0 flex items-center justify-center overflow-hidden">
+                {p2?.img ? (
+                  <img src={p2.img} alt={p2.name} className="w-full h-full object-cover rounded-xl" referrerPolicy="no-referrer" />
+                ) : (
+                  <User size={32} className="text-blue-400" />
                 )}
               </div>
-
-              <h4 className="text-2xl font-black text-white uppercase italic tracking-tighter text-center">{p2.name}</h4>
-              <span className="text-xs font-black text-blue-400 uppercase tracking-widest mt-1">{p2.team}</span>
-
-              {/* Badge de Personagem do Jogador 2 */}
-              <div className="w-full mt-4 bg-black/50 p-3 rounded-2xl border border-blue-500/20 flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/30 p-1 flex-shrink-0 overflow-hidden flex items-center justify-center">
-                  {p2.activeHabImg ? (
-                    <img src={p2.activeHabImg} alt="Personagem" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
-                  ) : (
-                    <Zap size={22} className="text-blue-500" />
-                  )}
-                </div>
-                <div className="flex flex-col min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[9px] font-black uppercase tracking-wider text-blue-400">
-                      {comparePlayers.p2Hab !== 'All' ? 'Personagem Filtrado' : 'Personagem Principal (Main)'}
-                    </span>
-                    {comparePlayers.p2Hab === 'All' && p2.topCharacter && (
-                      <span className="text-[8px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-black">
-                        {p2.topCharacter.pickRate}% uso
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-sm font-black text-white uppercase italic truncate">
-                    {comparePlayers.p2Hab !== 'All' ? comparePlayers.p2Hab : (p2.topCharacter?.name || 'Nenhum')}
-                  </span>
-                  {comparePlayers.p2Hab === 'All' && p2.characterPool && p2.characterPool.length > 1 && (
-                    <span className="text-[9px] text-gray-400 truncate">
-                      Pool: {p2.characterPool.map((c: any) => `${c.name} (${c.matches}Q)`).join(', ')}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Quick stats badges */}
-              <div className="grid grid-cols-4 gap-2 w-full mt-4 bg-black/40 p-3 rounded-2xl border border-white/5 text-center">
-                <div className="flex flex-col">
-                  <span className="text-[9px] font-black text-gray-500 uppercase tracking-wider">Abates</span>
-                  <span className="text-base font-black text-white">{p2.kills}</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[9px] font-black text-gray-500 uppercase tracking-wider">Mortes</span>
-                  <span className="text-base font-black text-red-400">{p2.deaths ?? 0}</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[9px] font-black text-gray-500 uppercase tracking-wider">K/D</span>
-                  <span className="text-base font-black text-blue-400">{p2.kd ?? '0.00'}</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[9px] font-black text-gray-500 uppercase tracking-wider">Zeradas</span>
-                  <span className="text-base font-black text-orange-400">{p2.zeroKills ?? 0}</span>
-                </div>
+              <div className="flex-1">
+                <select
+                  id="p2-select"
+                  aria-label="Selecione o Jogador 2"
+                  value={comparePlayers.p2}
+                  onChange={(e) => setComparePlayers(prev => ({ ...prev, p2: e.target.value }))}
+                  className="w-full bg-black/60 border border-gray-800 rounded-xl px-4 py-3 text-sm font-black text-white uppercase tracking-wider focus:border-blue-500 focus:outline-none transition-colors"
+                >
+                  <option value="">Selecione o Jogador 2</option>
+                  {allPlayersList.map(p => (
+                    <option key={`p2-${p.name}`} value={p.name}>
+                      {p.name} {p.team ? `(${p.team})` : ''}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
-          )}
+
+            {/* Filtro Opcional de Hab 1 */}
+            <div className="pt-2">
+              <label className="text-[9px] font-bold text-gray-500 uppercase tracking-wider block mb-1">
+                Filtrar por Habilidade Ativa (Opcional)
+              </label>
+              <select
+                id="p2-hab-select"
+                aria-label="Filtrar Habilidade Ativa Jogador 2"
+                value={comparePlayers.p2Hab}
+                onChange={(e) => setComparePlayers(prev => ({ ...prev, p2Hab: e.target.value }))}
+                className="w-full bg-black/40 border border-gray-800 rounded-lg px-3 py-2 text-xs font-bold text-gray-300 focus:border-blue-500 focus:outline-none transition-colors"
+              >
+                <option value="">Todas as Habilidades Ativas</option>
+                {activeHabs.map(h => (
+                  <option key={`p2-hab-${h}`} value={h}>{h}</option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* SEÇÃO PRINCIPAL SE OS DOIS JOGADORES ESTIVEREM SELECIONADOS */}
-      {p1 && p2 && (
-        <div className="space-y-8">
+      {p1 && p2 ? (
+        <div className="space-y-8 animate-in fade-in duration-500">
           {/* ========================================================================= */}
-          {/* CARD NOVO: CONFRONTO DIRETO (HEAD-TO-HEAD P1 vs P2) */}
+          {/* CONFRONTO DIRETO (HEAD-TO-HEAD) */}
           {/* ========================================================================= */}
-          <div id="h2h-summary-card" className="bg-[#1a1a1a] rounded-3xl border border-gray-800 overflow-hidden shadow-2xl">
-            <div className="bg-gradient-to-r from-yellow-500/20 via-black/80 to-blue-500/20 px-8 py-6 border-b border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-gradient-to-br from-yellow-500 to-amber-600 rounded-2xl text-black shadow-lg shadow-yellow-500/20">
-                  <Swords size={24} />
+          {headToHead && (
+            <div id="h2h-summary-card" className="bg-[#1a1a1a] rounded-3xl border border-gray-800 p-6 md:p-8 shadow-2xl relative overflow-hidden">
+              <div className="flex items-center justify-between border-b border-white/5 pb-4 mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400">
+                    <Swords size={22} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-white uppercase italic tracking-[0.2em]">
+                      Confronto Direto Head-to-Head
+                    </h3>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                      Eliminações diretas entre {p1.name} e {p2.name}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-base font-black text-white uppercase tracking-[0.2em] italic">Confronto Direto (Head-to-Head)</h3>
-                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                    Histórico exato de abates mútuos entre {p1.name} e {p2.name} nas partidas filtradas
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="px-3 py-1 bg-black/60 border border-white/10 rounded-xl text-xs font-black text-gray-300">
-                  {headToHead?.totalDuels || 0} Duelo(s) Registrado(s)
+                <span className="text-[10px] font-black uppercase tracking-widest px-3 py-1 bg-white/5 rounded-full border border-white/10 text-gray-300">
+                  {headToHead.totalDuels} duelos
                 </span>
               </div>
-            </div>
 
-            <div className="p-8 space-y-8">
-              {/* Placar do Duelo Direto */}
+              {/* Placar de Duelos */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
-                {/* Desafiante 1 Score */}
-                <div className="bg-black/50 p-6 rounded-2xl border border-yellow-500/30 flex items-center justify-between">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-12 h-12 rounded-full border-2 border-yellow-500/40 overflow-hidden bg-black flex-shrink-0">
-                      {p1.playerImg ? (
-                        <img src={p1.playerImg} alt={p1.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-yellow-500"><User size={20} /></div>
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <span className="text-sm font-black text-white uppercase italic truncate block">{p1.name}</span>
-                      <span className="text-[10px] text-yellow-500 font-bold uppercase">{p1.team}</span>
-                    </div>
+                {/* P1 */}
+                <div className="bg-black/40 p-5 rounded-2xl border border-yellow-500/20 flex items-center justify-between">
+                  <div>
+                    <span className="text-[9px] text-yellow-500 font-black uppercase tracking-widest block mb-1">
+                      DESAFIANTE 1
+                    </span>
+                    <span className="text-lg font-black text-white uppercase italic truncate block max-w-[140px]">
+                      {p1.name}
+                    </span>
+                    <span className="text-[10px] text-gray-400 font-bold">
+                      Taxa de Vitória: <span className="text-yellow-500 font-black">{headToHead.p1WinRate}%</span>
+                    </span>
                   </div>
                   <div className="text-right">
-                    <span className="text-4xl font-black text-yellow-500 italic block leading-none">{headToHead?.p1KillsP2 || 0}</span>
-                    <span className="text-[9px] font-bold text-gray-500 uppercase">Abates em {p2.name}</span>
+                    <span className="text-4xl font-black text-yellow-500 italic block leading-none">
+                      {headToHead.p1KillsP2}
+                    </span>
+                    <span className="text-[8px] text-gray-500 font-bold uppercase">abates em {p2.name}</span>
                   </div>
                 </div>
 
-                {/* Vantagem / Versus Center Indicator */}
-                <div className="flex flex-col items-center justify-center text-center p-4">
-                  <span className="text-2xl font-black italic tracking-widest text-gray-600 mb-1">VS</span>
-                  {headToHead && headToHead.totalDuels > 0 ? (
-                    headToHead.p1KillsP2 > headToHead.p2KillsP1 ? (
-                      <div className="px-4 py-1.5 rounded-full bg-yellow-500/10 border border-yellow-500/30 text-yellow-500 text-[11px] font-black uppercase flex items-center gap-1.5">
-                        <Trophy size={13} /> {p1.name} leva vantagem (+{headToHead.p1KillsP2 - headToHead.p2KillsP1})
-                      </div>
-                    ) : headToHead.p2KillsP1 > headToHead.p1KillsP2 ? (
-                      <div className="px-4 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 text-[11px] font-black uppercase flex items-center gap-1.5">
-                        <Trophy size={13} /> {p2.name} leva vantagem (+{headToHead.p2KillsP1 - headToHead.p1KillsP2})
-                      </div>
-                    ) : (
-                      <div className="px-4 py-1.5 rounded-full bg-white/10 border border-white/20 text-gray-300 text-[11px] font-black uppercase">
-                        Duelo Empatado ({headToHead.p1KillsP2} x {headToHead.p2KillsP1})
-                      </div>
-                    )
-                  ) : (
-                    <span className="text-xs font-bold text-gray-500 uppercase">Sem duelo direto no filtro atual</span>
-                  )}
-
-                  {/* Dominance Bar */}
-                  {headToHead && headToHead.totalDuels > 0 && (
-                    <div className="w-full mt-4 space-y-1.5">
-                      <div className="flex justify-between text-[10px] font-black">
-                        <span className="text-yellow-500">{headToHead.p1WinRate}%</span>
-                        <span className="text-gray-500">Taxa de Vitória no Duelo</span>
-                        <span className="text-blue-400">{headToHead.p2WinRate}%</span>
-                      </div>
-                      <div className="h-2 bg-black rounded-full overflow-hidden flex border border-white/10">
-                        <div 
-                          className="bg-yellow-500 h-full transition-all duration-700"
-                          style={{ width: `${headToHead.p1WinRate}%` }}
-                        />
-                        <div 
-                          className="bg-blue-500 h-full transition-all duration-700"
-                          style={{ width: `${headToHead.p2WinRate}%` }}
-                        />
-                      </div>
-                    </div>
-                  )}
+                {/* VS Center Indicator with Dual Bar */}
+                <div className="space-y-3 text-center">
+                  <div className="flex justify-between text-[10px] font-black uppercase tracking-wider px-1">
+                    <span className="text-yellow-500">{headToHead.p1WinRate}%</span>
+                    <span className="text-gray-500 font-black italic">DOMINÂNCIA DIRETA</span>
+                    <span className="text-blue-400">{headToHead.p2WinRate}%</span>
+                  </div>
+                  <div className="h-3 w-full bg-black rounded-full overflow-hidden flex border border-white/10 shadow-inner">
+                    <div
+                      className="h-full bg-gradient-to-r from-yellow-600 to-yellow-400 transition-all duration-700"
+                      style={{ width: `${headToHead.totalDuels > 0 ? (headToHead.p1KillsP2 / headToHead.totalDuels) * 100 : 50}%` }}
+                    />
+                    <div
+                      className="h-full bg-gradient-to-r from-blue-400 to-blue-600 transition-all duration-700"
+                      style={{ width: `${headToHead.totalDuels > 0 ? (headToHead.p2KillsP1 / headToHead.totalDuels) * 100 : 50}%` }}
+                    />
+                  </div>
+                  <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider block">
+                    {headToHead.p1KillsP2 > headToHead.p2KillsP1
+                      ? `🔥 ${p1.name} leva vantagem no duelo direto (+${headToHead.p1KillsP2 - headToHead.p2KillsP1})`
+                      : headToHead.p2KillsP1 > headToHead.p1KillsP2
+                      ? `🔥 ${p2.name} leva vantagem no duelo direto (+${headToHead.p2KillsP1 - headToHead.p1KillsP2})`
+                      : '⚖️ Duelo 100% equilibrado entre os atletas'}
+                  </span>
                 </div>
 
-                {/* Desafiante 2 Score */}
-                <div className="bg-black/50 p-6 rounded-2xl border border-blue-500/30 flex items-center justify-between">
-                  <div className="text-left">
-                    <span className="text-4xl font-black text-blue-400 italic block leading-none">{headToHead?.p2KillsP1 || 0}</span>
-                    <span className="text-[9px] font-bold text-gray-500 uppercase">Abates em {p1.name}</span>
+                {/* P2 */}
+                <div className="bg-black/40 p-5 rounded-2xl border border-blue-500/20 flex items-center justify-between">
+                  <div>
+                    <span className="text-[9px] text-blue-400 font-black uppercase tracking-widest block mb-1">
+                      DESAFIANTE 2
+                    </span>
+                    <span className="text-lg font-black text-white uppercase italic truncate block max-w-[140px]">
+                      {p2.name}
+                    </span>
+                    <span className="text-[10px] text-gray-400 font-bold">
+                      Taxa de Vitória: <span className="text-blue-400 font-black">{headToHead.p2WinRate}%</span>
+                    </span>
                   </div>
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="min-w-0 text-right">
-                      <span className="text-sm font-black text-white uppercase italic truncate block">{p2.name}</span>
-                      <span className="text-[10px] text-blue-400 font-bold uppercase">{p2.team}</span>
-                    </div>
-                    <div className="w-12 h-12 rounded-full border-2 border-blue-500/40 overflow-hidden bg-black flex-shrink-0">
-                      {p2.playerImg ? (
-                        <img src={p2.playerImg} alt={p2.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-blue-400"><User size={20} /></div>
-                      )}
-                    </div>
+                  <div className="text-right">
+                    <span className="text-4xl font-black text-blue-400 italic block leading-none">
+                      {headToHead.p2KillsP1}
+                    </span>
+                    <span className="text-[8px] text-gray-500 font-bold uppercase">abates em {p1.name}</span>
                   </div>
                 </div>
               </div>
 
-              {/* Linha do Tempo / Log dos Confrontos Diretos */}
-              {headToHead && headToHead.events && headToHead.events.length > 0 ? (
-                <div className="space-y-3 pt-4 border-t border-white/5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
-                      <Target size={14} className="text-yellow-500" /> Registro de Eliminações Mútuas
+              {/* Log de Duelos Diretos */}
+              {headToHead.events && headToHead.events.length > 0 && (
+                <div className="mt-6 pt-5 border-t border-white/5">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-xs font-black text-gray-400 uppercase tracking-wider">
+                      Feed de Abates do Duelo ({headToHead.events.length} eventos)
                     </span>
-                    {headToHead.events.length > 3 && (
-                      <button 
-                        onClick={() => setShowAllH2HEvents(prev => !prev)}
-                        className="text-[11px] font-black text-yellow-500 hover:text-yellow-400 flex items-center gap-1 uppercase transition-colors"
-                      >
-                        {showAllH2HEvents ? 'Mostrar Menos' : `Ver Todos (${headToHead.events.length})`}
-                        {showAllH2HEvents ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                      </button>
-                    )}
+                    <button
+                      onClick={() => setShowAllH2HEvents(prev => !prev)}
+                      className="text-[10px] font-black text-yellow-500 hover:text-yellow-400 flex items-center gap-1 uppercase transition-colors"
+                    >
+                      {showAllH2HEvents ? 'Exibir Menos' : 'Ver Todos'}
+                      {showAllH2HEvents ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-72 overflow-y-auto custom-scrollbar pr-1">
                     {(showAllH2HEvents ? headToHead.events : headToHead.events.slice(0, 6)).map((ev: any, idx: number) => {
-                      const isP1Killer = ev.winnerColor === 'yellow';
+                      const isP1Killer = ev.isP1Killer;
                       return (
-                        <div key={idx} className="bg-black/60 rounded-xl p-3 border border-white/5 flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className={`w-2 h-2 rounded-full ${isP1Killer ? 'bg-yellow-500' : 'bg-blue-500'}`}></span>
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-1 text-xs font-black truncate">
-                                <span className={isP1Killer ? 'text-yellow-500' : 'text-blue-400'}>{ev.PLAYER}</span>
-                                <span className="text-gray-500 font-normal">abateu</span>
-                                <span className={isP1Killer ? 'text-blue-400' : 'text-yellow-500'}>{ev.VITIMA}</span>
-                              </div>
-                              <span className="text-[9px] text-gray-500 font-bold block">
-                                RD {ev.RD || '-'} • Q{ev.Q || '-'} • {ev.MAPA || 'Mapa'} {ev.SAFE ? `• Safe ${ev.SAFE}` : ''}
+                        <div
+                          key={idx}
+                          className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 text-xs ${
+                            isP1Killer
+                              ? 'bg-yellow-500/5 border-yellow-500/20'
+                              : 'bg-blue-500/5 border-blue-500/20'
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1 font-black truncate">
+                              <span className={isP1Killer ? 'text-yellow-400' : 'text-blue-400'}>
+                                {ev.PLAYER}
+                              </span>
+                              <span className="text-gray-500 font-normal text-[10px]">⚔️</span>
+                              <span className={isP1Killer ? 'text-blue-400' : 'text-yellow-400'}>
+                                {ev.VITIMA}
                               </span>
                             </div>
+                            <span className="text-[8px] text-gray-500 font-bold block">
+                              RD {ev.RD || '-'} • Q{ev.Q || '-'} • {ev.MAPA || 'Mapa'} {ev.SAFE ? `• Safe ${ev.SAFE}` : ''}
+                            </span>
                           </div>
-                          {ev.ARM && (
-                            <span className="text-[8px] px-1.5 py-0.5 rounded bg-white/5 text-gray-300 font-black uppercase flex-shrink-0">
-                              {ev.ARM}
+                          {ev.ARMA && (
+                            <span className="text-[8px] px-1.5 py-0.5 rounded bg-black/60 text-gray-300 font-black uppercase flex-shrink-0 border border-white/5">
+                              {ev.ARMA}
                             </span>
                           )}
                         </div>
@@ -470,39 +378,44 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
                     })}
                   </div>
                 </div>
-              ) : (
-                <div className="text-center py-6 bg-black/30 rounded-2xl border border-white/5 text-gray-500 text-xs font-bold uppercase tracking-wider">
-                  Nenhuma eliminação direta registrada entre {p1.name} e {p2.name} com os filtros aplicados.
-                </div>
               )}
             </div>
-          </div>
+          )}
 
           {/* ========================================================================= */}
-          {/* RADAR COMPETITIVO */}
+          {/* RADAR CHART: COMPARATIVO DE ESTILO DE JOGO */}
           {/* ========================================================================= */}
           <div id="radar-compare-card" className="bg-[#1a1a1a] rounded-3xl border border-gray-800 p-8 shadow-2xl">
-            <div className="text-center mb-6">
-              <h3 className="text-base font-black text-white uppercase italic tracking-[0.2em]">Radar Competitivo de Habilidades</h3>
-              <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mt-1">Comparativo multidimensional normalizado de impacto competitivo</p>
-              <div className="flex justify-center items-center gap-6 mt-4 text-xs font-black uppercase">
-                <span className="flex items-center gap-2 text-yellow-500">
-                  <span className="w-3 h-3 rounded-full bg-yellow-500"></span> {p1.name}
-                </span>
-                <span className="flex items-center gap-2 text-blue-400">
-                  <span className="w-3 h-3 rounded-full bg-blue-500"></span> {p2.name}
-                </span>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-white/5">
+              <div>
+                <h3 className="text-base font-black text-white uppercase italic tracking-[0.2em] flex items-center gap-2">
+                  <Activity size={18} className="text-yellow-500" />
+                  Perfil de Atributos & Estilo de Jogo
+                </h3>
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-1">
+                  Radar normalizado por métricas-chave por queda
+                </p>
+              </div>
+              <div className="flex items-center gap-4 text-xs font-black uppercase">
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-yellow-500" />
+                  <span className="text-yellow-500">{p1.name}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-blue-500" />
+                  <span className="text-blue-400">{p2.name}</span>
+                </div>
               </div>
             </div>
 
-            <div className="h-[360px] w-full">
+            <div className="h-[340px] w-full pt-4">
               <ResponsiveContainer width="100%" height="100%">
-                <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarData}>
+                <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
                   <PolarGrid stroke="#333" />
-                  <PolarAngleAxis dataKey="subject" tick={{ fill: '#9ca3af', fontSize: 11, fontWeight: 'bold' }} />
-                  <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
-                  <Radar name={p1.name} dataKey="Jogador1" stroke="#eab308" fill="#eab308" fillOpacity={0.4} strokeWidth={2} />
-                  <Radar name={p2.name} dataKey="Jogador2" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.4} strokeWidth={2} />
+                  <PolarAngleAxis dataKey="subject" stroke="#888" tick={{ fill: '#9ca3af', fontSize: 11, fontWeight: 800 }} />
+                  <PolarRadiusAxis angle={30} domain={[0, 100]} stroke="#333" tick={false} />
+                  <Radar name={p1.name} dataKey="Jogador1" stroke="#eab308" fill="#eab308" fillOpacity={0.4} />
+                  <Radar name={p2.name} dataKey="Jogador2" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.4} />
                 </RadarChart>
               </ResponsiveContainer>
             </div>
@@ -511,536 +424,78 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
           {/* ========================================================================= */}
           {/* SEÇÃO 1: TIMES QUE MAIS MORREM (PRESAS FAVORITAS) */}
           {/* ========================================================================= */}
-          <div id="victim-teams-card" className="bg-[#1a1a1a] rounded-3xl border border-gray-800 overflow-hidden shadow-2xl">
-            <div className="bg-gradient-to-r from-emerald-500/10 via-black/40 to-teal-500/10 px-8 py-6 border-b border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="bg-[#1a1a1a] rounded-[32px] border border-gray-800 overflow-hidden shadow-2xl">
+            <div className="bg-gradient-to-r from-emerald-500/10 via-black/40 to-teal-500/10 px-6 md:px-8 py-5 border-b border-white/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400">
                   <Crown size={20} />
                 </div>
                 <div>
-                  <h3 className="text-sm font-black text-white uppercase tracking-[0.2em] italic">Times que Mais Morrem (Presas Favoritas)</h3>
+                  <h3 className="text-sm font-black text-white uppercase tracking-[0.2em] italic">
+                    Times que Mais Morrem (Presas Favoritas)
+                  </h3>
                   <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                    Equipes das quais cada jogador mais fez abates no campeonato
+                    Equipes que cada jogador mais abateu no campeonato
                   </p>
                 </div>
               </div>
-              <button 
-                onClick={() => setShowAllVictimTeams(prev => !prev)}
-                className="text-[10px] font-black text-emerald-400 hover:text-emerald-300 flex items-center gap-1 uppercase transition-colors"
-              >
-                {showAllVictimTeams ? 'Exibir Top 5' : 'Ver Todos os Times'}
-                {showAllVictimTeams ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-              </button>
-            </div>
-
-            <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
-              {/* Times Vítimas de P1 */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-white/5">
-                  <span className="text-xs font-black text-yellow-500 uppercase italic tracking-wider flex items-center gap-2">
-                    <User size={14} /> {p1.name} — Equipes Mais Abatidas
-                  </span>
-                  <span className="text-[10px] font-bold text-gray-500 uppercase">{p1.victimTeams?.length || 0} times vítimas</span>
-                </div>
-
-                <div className="space-y-2.5">
-                  {p1.victimTeams && p1.victimTeams.length > 0 ? (
-                    (showAllVictimTeams ? p1.victimTeams : p1.victimTeams.slice(0, 5)).map((team: any, idx: number) => {
-                      const maxKills = p1.victimTeams[0]?.count || 1;
-                      const pct = ((team.count / maxKills) * 100).toFixed(0);
-                      return (
-                        <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
-                            <div className="w-8 h-8 rounded-lg bg-black/80 border border-white/10 p-1 flex-shrink-0 flex items-center justify-center overflow-hidden">
-                              {team.img ? (
-                                <img src={team.img} alt={team.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
-                              ) : (
-                                <Shield size={14} className="text-gray-500" />
-                              )}
-                            </div>
-                            <div className="min-w-0">
-                              <span className="text-xs font-black text-white uppercase italic truncate block">{team.name}</span>
-                              <span className="text-[8px] text-gray-500 font-bold uppercase">Grupo {team.grupo}</span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-3 flex-shrink-0">
-                            <div className="w-16 hidden sm:block bg-white/5 h-1.5 rounded-full overflow-hidden">
-                              <div className="bg-yellow-500 h-full rounded-full" style={{ width: `${pct}%` }} />
-                            </div>
-                            <div className="text-right min-w-[48px]">
-                              <span className="text-sm font-black text-yellow-500 italic block leading-none">{team.count}</span>
-                              <span className="text-[8px] text-gray-500 font-bold uppercase">abates</span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado encontrado</div>
-                  )}
-                </div>
-              </div>
-
-              {/* Times Vítimas de P2 */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-white/5">
-                  <span className="text-xs font-black text-blue-400 uppercase italic tracking-wider flex items-center gap-2">
-                    <User size={14} /> {p2.name} — Equipes Mais Abatidas
-                  </span>
-                  <span className="text-[10px] font-bold text-gray-500 uppercase">{p2.victimTeams?.length || 0} times vítimas</span>
-                </div>
-
-                <div className="space-y-2.5">
-                  {p2.victimTeams && p2.victimTeams.length > 0 ? (
-                    (showAllVictimTeams ? p2.victimTeams : p2.victimTeams.slice(0, 5)).map((team: any, idx: number) => {
-                      const maxKills = p2.victimTeams[0]?.count || 1;
-                      const pct = ((team.count / maxKills) * 100).toFixed(0);
-                      return (
-                        <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
-                            <div className="w-8 h-8 rounded-lg bg-black/80 border border-white/10 p-1 flex-shrink-0 flex items-center justify-center overflow-hidden">
-                              {team.img ? (
-                                <img src={team.img} alt={team.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
-                              ) : (
-                                <Shield size={14} className="text-gray-500" />
-                              )}
-                            </div>
-                            <div className="min-w-0">
-                              <span className="text-xs font-black text-white uppercase italic truncate block">{team.name}</span>
-                              <span className="text-[8px] text-gray-500 font-bold uppercase">Grupo {team.grupo}</span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-3 flex-shrink-0">
-                            <div className="w-16 hidden sm:block bg-white/5 h-1.5 rounded-full overflow-hidden">
-                              <div className="bg-blue-500 h-full rounded-full" style={{ width: `${pct}%` }} />
-                            </div>
-                            <div className="text-right min-w-[48px]">
-                              <span className="text-sm font-black text-blue-400 italic block leading-none">{team.count}</span>
-                              <span className="text-[8px] text-gray-500 font-bold uppercase">abates</span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado encontrado</div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* ========================================================================= */}
-          {/* SEÇÃO 2: TIMES QUE MAIS MATAM (TIMES ALGOZES) */}
-          {/* ========================================================================= */}
-          <div id="killer-teams-card" className="bg-[#1a1a1a] rounded-3xl border border-gray-800 overflow-hidden shadow-2xl">
-            <div className="bg-gradient-to-r from-red-500/10 via-black/40 to-rose-500/10 px-8 py-6 border-b border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400">
-                  <ShieldAlert size={20} />
-                </div>
-                <div>
-                  <h3 className="text-sm font-black text-white uppercase tracking-[0.2em] italic">Times que Mais Matam (Equipes Algozes)</h3>
-                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                    Equipes que mais causaram a eliminação de cada jogador
-                  </p>
-                </div>
-              </div>
-              <button 
-                onClick={() => setShowAllKillerTeams(prev => !prev)}
-                className="text-[10px] font-black text-red-400 hover:text-red-300 flex items-center gap-1 uppercase transition-colors"
-              >
-                {showAllKillerTeams ? 'Exibir Top 5' : 'Ver Todos os Times'}
-                {showAllKillerTeams ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-              </button>
-            </div>
-
-            <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
-              {/* Times Algozes de P1 */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-white/5">
-                  <span className="text-xs font-black text-yellow-500 uppercase italic tracking-wider flex items-center gap-2">
-                    <Skull size={14} className="text-red-400" /> {p1.name} — Maiores Ameaças Coletivas
-                  </span>
-                  <span className="text-[10px] font-bold text-gray-500 uppercase">{p1.killerTeams?.length || 0} times algozes</span>
-                </div>
-
-                <div className="space-y-2.5">
-                  {p1.killerTeams && p1.killerTeams.length > 0 ? (
-                    (showAllKillerTeams ? p1.killerTeams : p1.killerTeams.slice(0, 5)).map((team: any, idx: number) => {
-                      const maxDeaths = p1.killerTeams[0]?.count || 1;
-                      const pct = ((team.count / maxDeaths) * 100).toFixed(0);
-                      return (
-                        <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
-                            <div className="w-8 h-8 rounded-lg bg-black/80 border border-white/10 p-1 flex-shrink-0 flex items-center justify-center overflow-hidden">
-                              {team.img ? (
-                                <img src={team.img} alt={team.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
-                              ) : (
-                                <Shield size={14} className="text-gray-500" />
-                              )}
-                            </div>
-                            <div className="min-w-0">
-                              <span className="text-xs font-black text-white uppercase italic truncate block">{team.name}</span>
-                              <span className="text-[8px] text-gray-500 font-bold uppercase">Grupo {team.grupo}</span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-3 flex-shrink-0">
-                            <div className="w-16 hidden sm:block bg-white/5 h-1.5 rounded-full overflow-hidden">
-                              <div className="bg-red-500 h-full rounded-full" style={{ width: `${pct}%` }} />
-                            </div>
-                            <div className="text-right min-w-[48px]">
-                              <span className="text-sm font-black text-red-400 italic block leading-none">{team.count}</span>
-                              <span className="text-[8px] text-gray-500 font-bold uppercase">mortes</span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado encontrado</div>
-                  )}
-                </div>
-              </div>
-
-              {/* Times Algozes de P2 */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-white/5">
-                  <span className="text-xs font-black text-blue-400 uppercase italic tracking-wider flex items-center gap-2">
-                    <Skull size={14} className="text-red-400" /> {p2.name} — Maiores Ameaças Coletivas
-                  </span>
-                  <span className="text-[10px] font-bold text-gray-500 uppercase">{p2.killerTeams?.length || 0} times algozes</span>
-                </div>
-
-                <div className="space-y-2.5">
-                  {p2.killerTeams && p2.killerTeams.length > 0 ? (
-                    (showAllKillerTeams ? p2.killerTeams : p2.killerTeams.slice(0, 5)).map((team: any, idx: number) => {
-                      const maxDeaths = p2.killerTeams[0]?.count || 1;
-                      const pct = ((team.count / maxDeaths) * 100).toFixed(0);
-                      return (
-                        <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
-                            <div className="w-8 h-8 rounded-lg bg-black/80 border border-white/10 p-1 flex-shrink-0 flex items-center justify-center overflow-hidden">
-                              {team.img ? (
-                                <img src={team.img} alt={team.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
-                              ) : (
-                                <Shield size={14} className="text-gray-500" />
-                              )}
-                            </div>
-                            <div className="min-w-0">
-                              <span className="text-xs font-black text-white uppercase italic truncate block">{team.name}</span>
-                              <span className="text-[8px] text-gray-500 font-bold uppercase">Grupo {team.grupo}</span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-3 flex-shrink-0">
-                            <div className="w-16 hidden sm:block bg-white/5 h-1.5 rounded-full overflow-hidden">
-                              <div className="bg-red-500 h-full rounded-full" style={{ width: `${pct}%` }} />
-                            </div>
-                            <div className="text-right min-w-[48px]">
-                              <span className="text-sm font-black text-red-400 italic block leading-none">{team.count}</span>
-                              <span className="text-[8px] text-gray-500 font-bold uppercase">mortes</span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado encontrado</div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* ========================================================================= */}
-          {/* SEÇÃO 3: JOGADORES QUE MAIS MORREM (VÍTIMAS FREQUENTES / FREGUESES) */}
-          {/* ========================================================================= */}
-          <div id="victim-players-card" className="bg-[#1a1a1a] rounded-3xl border border-gray-800 overflow-hidden shadow-2xl">
-            <div className="bg-gradient-to-r from-amber-500/10 via-black/40 to-yellow-500/10 px-8 py-6 border-b border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-400">
-                  <Crosshair size={20} />
-                </div>
-                <div>
-                  <h3 className="text-sm font-black text-white uppercase tracking-[0.2em] italic">Jogadores que Mais Morrem (Vítimas Frequentes)</h3>
-                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                    Jogadores individuais que mais foram eliminados por cada desafiante
-                  </p>
-                </div>
-              </div>
-              <button 
-                onClick={() => setShowAllVictimPlayers(prev => !prev)}
-                className="text-[10px] font-black text-amber-400 hover:text-amber-300 flex items-center gap-1 uppercase transition-colors"
-              >
-                {showAllVictimPlayers ? 'Exibir Top 5' : 'Ver Todos os Jogadores'}
-                {showAllVictimPlayers ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-              </button>
-            </div>
-
-            <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
-              {/* Jogadores Vítimas de P1 */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-white/5">
-                  <span className="text-xs font-black text-yellow-500 uppercase italic tracking-wider flex items-center gap-2">
-                    <User size={14} /> {p1.name} — Vítimas Favoritas
-                  </span>
-                  <span className="text-[10px] font-bold text-gray-500 uppercase">{p1.victimPlayers?.length || 0} jogadores</span>
-                </div>
-
-                <div className="space-y-2.5">
-                  {p1.victimPlayers && p1.victimPlayers.length > 0 ? (
-                    (showAllVictimPlayers ? p1.victimPlayers : p1.victimPlayers.slice(0, 5)).map((vPlayer: any, idx: number) => {
-                      return (
-                        <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
-                            <div className="w-9 h-9 rounded-full bg-black/80 border border-yellow-500/30 overflow-hidden flex-shrink-0 flex items-center justify-center">
-                              {vPlayer.img ? (
-                                <img src={vPlayer.img} alt={vPlayer.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                              ) : (
-                                <User size={16} className="text-gray-500" />
-                              )}
-                            </div>
-                            <div className="min-w-0">
-                              <span className="text-xs font-black text-white uppercase italic truncate block">{vPlayer.name}</span>
-                              <span className="text-[8px] text-gray-400 font-bold uppercase truncate block">{vPlayer.team || 'Sem Equipe'}</span>
-                            </div>
-                          </div>
-                          <div className="text-right flex-shrink-0 min-w-[50px]">
-                            <span className="text-sm font-black text-yellow-500 italic block leading-none">{vPlayer.count}</span>
-                            <span className="text-[8px] text-gray-500 font-bold uppercase">abates</span>
-                          </div>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado encontrado</div>
-                  )}
-                </div>
-              </div>
-
-              {/* Jogadores Vítimas de P2 */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-white/5">
-                  <span className="text-xs font-black text-blue-400 uppercase italic tracking-wider flex items-center gap-2">
-                    <User size={14} /> {p2.name} — Vítimas Favoritas
-                  </span>
-                  <span className="text-[10px] font-bold text-gray-500 uppercase">{p2.victimPlayers?.length || 0} jogadores</span>
-                </div>
-
-                <div className="space-y-2.5">
-                  {p2.victimPlayers && p2.victimPlayers.length > 0 ? (
-                    (showAllVictimPlayers ? p2.victimPlayers : p2.victimPlayers.slice(0, 5)).map((vPlayer: any, idx: number) => {
-                      return (
-                        <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
-                            <div className="w-9 h-9 rounded-full bg-black/80 border border-blue-500/30 overflow-hidden flex-shrink-0 flex items-center justify-center">
-                              {vPlayer.img ? (
-                                <img src={vPlayer.img} alt={vPlayer.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                              ) : (
-                                <User size={16} className="text-gray-500" />
-                              )}
-                            </div>
-                            <div className="min-w-0">
-                              <span className="text-xs font-black text-white uppercase italic truncate block">{vPlayer.name}</span>
-                              <span className="text-[8px] text-gray-400 font-bold uppercase truncate block">{vPlayer.team || 'Sem Equipe'}</span>
-                            </div>
-                          </div>
-                          <div className="text-right flex-shrink-0 min-w-[50px]">
-                            <span className="text-sm font-black text-blue-400 italic block leading-none">{vPlayer.count}</span>
-                            <span className="text-[8px] text-gray-500 font-bold uppercase">abates</span>
-                          </div>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado encontrado</div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* ========================================================================= */}
-          {/* SEÇÃO 4: JOGADORES QUE MAIS MATAM (ALGOZES INDIVIDUAIS) */}
-          {/* ========================================================================= */}
-          <div id="killer-players-card" className="bg-[#1a1a1a] rounded-3xl border border-gray-800 overflow-hidden shadow-2xl">
-            <div className="bg-gradient-to-r from-purple-500/10 via-black/40 to-pink-500/10 px-8 py-6 border-b border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-purple-500/10 border border-purple-500/20 rounded-xl text-purple-400">
-                  <Skull size={20} />
-                </div>
-                <div>
-                  <h3 className="text-sm font-black text-white uppercase tracking-[0.2em] italic">Jogadores que Mais Matam (Algozes Individuais)</h3>
-                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                    Jogadores que mais eliminaram cada desafiante no campeonato
-                  </p>
-                </div>
-              </div>
-              <button 
-                onClick={() => setShowAllKillerPlayers(prev => !prev)}
-                className="text-[10px] font-black text-purple-400 hover:text-purple-300 flex items-center gap-1 uppercase transition-colors"
-              >
-                {showAllKillerPlayers ? 'Exibir Top 5' : 'Ver Todos os Algozes'}
-                {showAllKillerPlayers ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-              </button>
-            </div>
-
-            <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
-              {/* Algozes de P1 */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-white/5">
-                  <span className="text-xs font-black text-yellow-500 uppercase italic tracking-wider flex items-center gap-2">
-                    <HeartCrack size={14} className="text-purple-400" /> {p1.name} — Algozes Diretos
-                  </span>
-                  <span className="text-[10px] font-bold text-gray-500 uppercase">{p1.killerPlayers?.length || 0} algozes</span>
-                </div>
-
-                <div className="space-y-2.5">
-                  {p1.killerPlayers && p1.killerPlayers.length > 0 ? (
-                    (showAllKillerPlayers ? p1.killerPlayers : p1.killerPlayers.slice(0, 5)).map((kPlayer: any, idx: number) => {
-                      return (
-                        <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
-                            <div className="w-9 h-9 rounded-full bg-black/80 border border-purple-500/30 overflow-hidden flex-shrink-0 flex items-center justify-center">
-                              {kPlayer.img ? (
-                                <img src={kPlayer.img} alt={kPlayer.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                              ) : (
-                                <User size={16} className="text-gray-500" />
-                              )}
-                            </div>
-                            <div className="min-w-0">
-                              <span className="text-xs font-black text-white uppercase italic truncate block">{kPlayer.name}</span>
-                              <span className="text-[8px] text-gray-400 font-bold uppercase truncate block">{kPlayer.team || 'Sem Equipe'}</span>
-                            </div>
-                          </div>
-                          <div className="text-right flex-shrink-0 min-w-[50px]">
-                            <span className="text-sm font-black text-purple-400 italic block leading-none">{kPlayer.count}</span>
-                            <span className="text-[8px] text-gray-500 font-bold uppercase">mortes</span>
-                          </div>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado encontrado</div>
-                  )}
-                </div>
-              </div>
-
-              {/* Algozes de P2 */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-white/5">
-                  <span className="text-xs font-black text-blue-400 uppercase italic tracking-wider flex items-center gap-2">
-                    <HeartCrack size={14} className="text-purple-400" /> {p2.name} — Algozes Diretos
-                  </span>
-                  <span className="text-[10px] font-bold text-gray-500 uppercase">{p2.killerPlayers?.length || 0} algozes</span>
-                </div>
-
-                <div className="space-y-2.5">
-                  {p2.killerPlayers && p2.killerPlayers.length > 0 ? (
-                    (showAllKillerPlayers ? p2.killerPlayers : p2.killerPlayers.slice(0, 5)).map((kPlayer: any, idx: number) => {
-                      return (
-                        <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
-                            <div className="w-9 h-9 rounded-full bg-black/80 border border-purple-500/30 overflow-hidden flex-shrink-0 flex items-center justify-center">
-                              {kPlayer.img ? (
-                                <img src={kPlayer.img} alt={kPlayer.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                              ) : (
-                                <User size={16} className="text-gray-500" />
-                              )}
-                            </div>
-                            <div className="min-w-0">
-                              <span className="text-xs font-black text-white uppercase italic truncate block">{kPlayer.name}</span>
-                              <span className="text-[8px] text-gray-400 font-bold uppercase truncate block">{kPlayer.team || 'Sem Equipe'}</span>
-                            </div>
-                          </div>
-                          <div className="text-right flex-shrink-0 min-w-[50px]">
-                            <span className="text-sm font-black text-purple-400 italic block leading-none">{kPlayer.count}</span>
-                            <span className="text-[8px] text-gray-500 font-bold uppercase">mortes</span>
-                          </div>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado encontrado</div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* ========================================================================= */}
-          {/* SEÇÃO X: ARMAS QUE MAIS MATAM E ARMAS ALGOZES */}
-          {/* ========================================================================= */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Armas Favoritas (Mais Matam) */}
-            <div className="bg-[#1a1a1a] rounded-[32px] border border-gray-800 overflow-hidden shadow-2xl">
-              <div className="bg-gradient-to-r from-yellow-500/10 via-black/40 to-amber-500/10 px-6 md:px-8 py-5 border-b border-white/5 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-yellow-500/10 border border-yellow-500/20 rounded-xl text-yellow-400">
-                    <Flame size={20} />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-black text-white uppercase tracking-[0.2em] italic">
-                      Armas que Mais Matam (Favoritas)
-                    </h3>
-                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                      Armas mais utilizadas por cada jogador para eliminar adversários
-                    </p>
-                  </div>
-                </div>
+              <div className="flex items-center gap-4">
                 <button
-                  onClick={() => setShowAllKillerWeapons(prev => !prev)}
-                  className="text-[10px] font-black text-yellow-400 hover:text-yellow-300 flex items-center gap-1 uppercase transition-colors"
+                  onClick={() => setShowAllVictimTeams(prev => !prev)}
+                  className="text-[10px] font-black text-emerald-400 hover:text-emerald-300 flex items-center gap-1 uppercase transition-colors"
                 >
-                  {showAllKillerWeapons ? 'Exibir Top 5' : 'Ver Todas'}
-                  {showAllKillerWeapons ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  {showAllVictimTeams ? 'Exibir Top 5' : 'Ver Todos os Times'}
+                  {showAllVictimTeams ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+                <button
+                  onClick={() => setShowSection1(prev => !prev)}
+                  className="text-[10px] font-black text-gray-400 hover:text-white flex items-center gap-1 uppercase transition-colors px-3 py-1.5 bg-white/5 rounded-full border border-white/10"
+                >
+                  {showSection1 ? 'Ocultar Seção' : 'Mostrar Seção'}
+                  {showSection1 ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                 </button>
               </div>
+            </div>
 
-              <div className="p-6 md:p-8 grid grid-cols-1 gap-8">
-                {/* P1 Killer Weapons */}
+            {showSection1 && (
+              <div className="p-6 md:p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* P1 Victim Teams */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between pb-3 border-b border-white/5">
                     <span className="text-xs font-black text-yellow-500 uppercase italic tracking-wider flex items-center gap-2">
-                      <Crosshair size={14} /> {p1.name}
+                      <Shield size={14} /> {p1.name} — Presas Favoritas
                     </span>
-                    <span className="text-[10px] font-bold text-gray-500 uppercase">{p1.killerWeapons?.length || 0} armas</span>
+                    <span className="text-[10px] font-bold text-gray-500 uppercase">
+                      {p1.victimTeams?.length || 0} times abatidos
+                    </span>
                   </div>
                   <div className="space-y-2.5">
-                    {p1.killerWeapons && p1.killerWeapons.length > 0 ? (
-                      (showAllKillerWeapons ? p1.killerWeapons : p1.killerWeapons.slice(0, 5)).map((w: any, idx: number) => {
-                        const max = p1.killerWeapons[0]?.count || 1;
-                        const pct = Math.min(100, Math.round((w.count / max) * 100));
+                    {p1.victimTeams && p1.victimTeams.length > 0 ? (
+                      (showAllVictimTeams ? p1.victimTeams : p1.victimTeams.slice(0, 5)).map((t: any, idx: number) => {
+                        const maxCount = p1.victimTeams[0]?.count || 1;
+                        const pct = Math.min(100, Math.round((t.count / maxCount) * 100));
                         return (
-                          <div key={idx} className="bg-black/50 p-3.5 rounded-2xl border border-white/5 flex items-center justify-between gap-4">
-                            <div className="flex items-center gap-3 min-w-0 flex-1">
-                              <span className="text-xs font-black text-gray-600 w-5 text-center">#{idx + 1}</span>
-                              <div className="w-12 h-9 rounded-lg bg-black/80 border border-yellow-500/20 overflow-hidden flex-shrink-0 flex items-center justify-center p-1">
-                                {w.img ? (
-                                  <img src={w.img} alt={w.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                          <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
+                              <div className="w-8 h-8 rounded-lg bg-black/80 border border-white/10 p-1 flex-shrink-0 flex items-center justify-center overflow-hidden">
+                                {t.img ? (
+                                  <img src={t.img} alt={t.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
                                 ) : (
-                                  <Crosshair size={16} className="text-yellow-500" />
+                                  <Shield size={14} className="text-gray-500" />
                                 )}
                               </div>
-                              <div className="min-w-0 flex-1">
-                                <span className="text-xs font-black text-white uppercase italic tracking-wide">{w.name}</span>
-                                <span className="text-[8px] text-gray-500 font-bold uppercase block">Arma Principal</span>
+                              <div className="min-w-0">
+                                <span className="text-xs font-black text-white uppercase italic truncate block">{t.name}</span>
+                                <span className="text-[8px] text-gray-500 font-bold uppercase">Grupo {t.grupo || 'N/A'}</span>
                               </div>
                             </div>
-                            <div className="flex items-center gap-4 flex-shrink-0">
-                              <div className="w-24 sm:w-32 bg-white/5 h-2 rounded-full overflow-hidden hidden sm:block">
+                            <div className="flex items-center gap-3 flex-shrink-0">
+                              <div className="w-16 hidden sm:block bg-white/5 h-1.5 rounded-full overflow-hidden">
                                 <div className="bg-yellow-500 h-full rounded-full" style={{ width: `${pct}%` }} />
                               </div>
                               <div className="text-right min-w-[48px]">
-                                <span className="text-sm font-black text-yellow-500 italic block leading-none">{w.count}</span>
+                                <span className="text-sm font-black text-yellow-500 italic block leading-none">{t.count}</span>
                                 <span className="text-[8px] text-gray-500 font-bold uppercase">abates</span>
                               </div>
                             </div>
@@ -1048,46 +503,48 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
                         );
                       })
                     ) : (
-                      <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado</div>
+                      <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado encontrado</div>
                     )}
                   </div>
                 </div>
 
-                {/* P2 Killer Weapons */}
+                {/* P2 Victim Teams */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between pb-3 border-b border-white/5">
                     <span className="text-xs font-black text-blue-400 uppercase italic tracking-wider flex items-center gap-2">
-                      <Crosshair size={14} /> {p2.name}
+                      <Shield size={14} /> {p2.name} — Presas Favoritas
                     </span>
-                    <span className="text-[10px] font-bold text-gray-500 uppercase">{p2.killerWeapons?.length || 0} armas</span>
+                    <span className="text-[10px] font-bold text-gray-500 uppercase">
+                      {p2.victimTeams?.length || 0} times abatidos
+                    </span>
                   </div>
                   <div className="space-y-2.5">
-                    {p2.killerWeapons && p2.killerWeapons.length > 0 ? (
-                      (showAllKillerWeapons ? p2.killerWeapons : p2.killerWeapons.slice(0, 5)).map((w: any, idx: number) => {
-                        const max = p2.killerWeapons[0]?.count || 1;
-                        const pct = Math.min(100, Math.round((w.count / max) * 100));
+                    {p2.victimTeams && p2.victimTeams.length > 0 ? (
+                      (showAllVictimTeams ? p2.victimTeams : p2.victimTeams.slice(0, 5)).map((t: any, idx: number) => {
+                        const maxCount = p2.victimTeams[0]?.count || 1;
+                        const pct = Math.min(100, Math.round((t.count / maxCount) * 100));
                         return (
-                          <div key={idx} className="bg-black/50 p-3.5 rounded-2xl border border-white/5 flex items-center justify-between gap-4">
-                            <div className="flex items-center gap-3 min-w-0 flex-1">
-                              <span className="text-xs font-black text-gray-600 w-5 text-center">#{idx + 1}</span>
-                              <div className="w-12 h-9 rounded-lg bg-black/80 border border-blue-500/20 overflow-hidden flex-shrink-0 flex items-center justify-center p-1">
-                                {w.img ? (
-                                  <img src={w.img} alt={w.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                          <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
+                              <div className="w-8 h-8 rounded-lg bg-black/80 border border-white/10 p-1 flex-shrink-0 flex items-center justify-center overflow-hidden">
+                                {t.img ? (
+                                  <img src={t.img} alt={t.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
                                 ) : (
-                                  <Crosshair size={16} className="text-blue-400" />
+                                  <Shield size={14} className="text-gray-500" />
                                 )}
                               </div>
-                              <div className="min-w-0 flex-1">
-                                <span className="text-xs font-black text-white uppercase italic tracking-wide">{w.name}</span>
-                                <span className="text-[8px] text-gray-500 font-bold uppercase block">Arma Principal</span>
+                              <div className="min-w-0">
+                                <span className="text-xs font-black text-white uppercase italic truncate block">{t.name}</span>
+                                <span className="text-[8px] text-gray-500 font-bold uppercase">Grupo {t.grupo || 'N/A'}</span>
                               </div>
                             </div>
-                            <div className="flex items-center gap-4 flex-shrink-0">
-                              <div className="w-24 sm:w-32 bg-white/5 h-2 rounded-full overflow-hidden hidden sm:block">
+                            <div className="flex items-center gap-3 flex-shrink-0">
+                              <div className="w-16 hidden sm:block bg-white/5 h-1.5 rounded-full overflow-hidden">
                                 <div className="bg-blue-400 h-full rounded-full" style={{ width: `${pct}%` }} />
                               </div>
                               <div className="text-right min-w-[48px]">
-                                <span className="text-sm font-black text-blue-400 italic block leading-none">{w.count}</span>
+                                <span className="text-sm font-black text-blue-400 italic block leading-none">{t.count}</span>
                                 <span className="text-[8px] text-gray-500 font-bold uppercase">abates</span>
                               </div>
                             </div>
@@ -1095,74 +552,89 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
                         );
                       })
                     ) : (
-                      <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado</div>
+                      <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado encontrado</div>
                     )}
                   </div>
                 </div>
               </div>
-            </div>
+            )}
+          </div>
 
-            {/* Armas Algozes (Mais Morre / Para Quais Mais Morre) */}
-            <div className="bg-[#1a1a1a] rounded-[32px] border border-gray-800 overflow-hidden shadow-2xl">
-              <div className="bg-gradient-to-r from-rose-500/10 via-black/40 to-red-500/10 px-6 md:px-8 py-5 border-b border-white/5 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400">
-                    <Skull size={20} />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-black text-white uppercase tracking-[0.2em] italic">
-                      Armas Algozes (Mais Causam Mortes ao Jogador)
-                    </h3>
-                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                      Armas responsáveis pelo maior número de eliminações sofridas por cada atleta
-                    </p>
-                  </div>
+          {/* ========================================================================= */}
+          {/* SEÇÃO 2: TIMES QUE MAIS MATAM (EQUIPES ALGOZES) */}
+          {/* ========================================================================= */}
+          <div className="bg-[#1a1a1a] rounded-[32px] border border-gray-800 overflow-hidden shadow-2xl">
+            <div className="bg-gradient-to-r from-red-500/10 via-black/40 to-rose-500/10 px-6 md:px-8 py-5 border-b border-white/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400">
+                  <Skull size={20} />
                 </div>
+                <div>
+                  <h3 className="text-sm font-black text-white uppercase tracking-[0.2em] italic">
+                    Times que Mais Matam (Equipes Algozes)
+                  </h3>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                    Equipes que mais abateram cada jogador
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
                 <button
-                  onClick={() => setShowAllVictimWeapons(prev => !prev)}
-                  className="text-[10px] font-black text-rose-400 hover:text-rose-300 flex items-center gap-1 uppercase transition-colors"
+                  onClick={() => setShowAllKillerTeams(prev => !prev)}
+                  className="text-[10px] font-black text-red-400 hover:text-red-300 flex items-center gap-1 uppercase transition-colors"
                 >
-                  {showAllVictimWeapons ? 'Exibir Top 5' : 'Ver Todas'}
-                  {showAllVictimWeapons ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  {showAllKillerTeams ? 'Exibir Top 5' : 'Ver Todos os Times'}
+                  {showAllKillerTeams ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+                <button
+                  onClick={() => setShowSection2(prev => !prev)}
+                  className="text-[10px] font-black text-gray-400 hover:text-white flex items-center gap-1 uppercase transition-colors px-3 py-1.5 bg-white/5 rounded-full border border-white/10"
+                >
+                  {showSection2 ? 'Ocultar Seção' : 'Mostrar Seção'}
+                  {showSection2 ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                 </button>
               </div>
+            </div>
 
-              <div className="p-6 md:p-8 grid grid-cols-1 gap-8">
-                {/* P1 Victim Weapons */}
+            {showSection2 && (
+              <div className="p-6 md:p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* P1 Killer Teams */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between pb-3 border-b border-white/5">
                     <span className="text-xs font-black text-yellow-500 uppercase italic tracking-wider flex items-center gap-2">
-                      <Skull size={14} className="text-rose-500" /> {p1.name}
+                      <ShieldAlert size={14} className="text-red-500" /> Algozes de {p1.name}
                     </span>
-                    <span className="text-[10px] font-bold text-gray-500 uppercase">{p1.victimWeapons?.length || 0} armas</span>
+                    <span className="text-[10px] font-bold text-gray-500 uppercase">
+                      {p1.killerTeams?.length || 0} times algozes
+                    </span>
                   </div>
                   <div className="space-y-2.5">
-                    {p1.victimWeapons && p1.victimWeapons.length > 0 ? (
-                      (showAllVictimWeapons ? p1.victimWeapons : p1.victimWeapons.slice(0, 5)).map((w: any, idx: number) => {
-                        const max = p1.victimWeapons[0]?.count || 1;
-                        const pct = Math.min(100, Math.round((w.count / max) * 100));
+                    {p1.killerTeams && p1.killerTeams.length > 0 ? (
+                      (showAllKillerTeams ? p1.killerTeams : p1.killerTeams.slice(0, 5)).map((t: any, idx: number) => {
+                        const maxCount = p1.killerTeams[0]?.count || 1;
+                        const pct = Math.min(100, Math.round((t.count / maxCount) * 100));
                         return (
-                          <div key={idx} className="bg-black/50 p-3.5 rounded-2xl border border-white/5 flex items-center justify-between gap-4">
-                            <div className="flex items-center gap-3 min-w-0 flex-1">
-                              <span className="text-xs font-black text-gray-600 w-5 text-center">#{idx + 1}</span>
-                              <div className="w-12 h-9 rounded-lg bg-black/80 border border-rose-500/20 overflow-hidden flex-shrink-0 flex items-center justify-center p-1">
-                                {w.img ? (
-                                  <img src={w.img} alt={w.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                          <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
+                              <div className="w-8 h-8 rounded-lg bg-black/80 border border-white/10 p-1 flex-shrink-0 flex items-center justify-center overflow-hidden">
+                                {t.img ? (
+                                  <img src={t.img} alt={t.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
                                 ) : (
-                                  <Skull size={16} className="text-rose-500" />
+                                  <Shield size={14} className="text-gray-500" />
                                 )}
                               </div>
-                              <div className="min-w-0 flex-1">
-                                <span className="text-xs font-black text-white uppercase italic tracking-wide">{w.name}</span>
-                                <span className="text-[8px] text-gray-500 font-bold uppercase block">Arma Letal Contra</span>
+                              <div className="min-w-0">
+                                <span className="text-xs font-black text-white uppercase italic truncate block">{t.name}</span>
+                                <span className="text-[8px] text-gray-500 font-bold uppercase">Grupo {t.grupo || 'N/A'}</span>
                               </div>
                             </div>
-                            <div className="flex items-center gap-4 flex-shrink-0">
-                              <div className="w-24 sm:w-32 bg-white/5 h-2 rounded-full overflow-hidden hidden sm:block">
-                                <div className="bg-rose-500 h-full rounded-full" style={{ width: `${pct}%` }} />
+                            <div className="flex items-center gap-3 flex-shrink-0">
+                              <div className="w-16 hidden sm:block bg-white/5 h-1.5 rounded-full overflow-hidden">
+                                <div className="bg-red-500 h-full rounded-full" style={{ width: `${pct}%` }} />
                               </div>
                               <div className="text-right min-w-[48px]">
-                                <span className="text-sm font-black text-rose-500 italic block leading-none">{w.count}</span>
+                                <span className="text-sm font-black text-red-500 italic block leading-none">{t.count}</span>
                                 <span className="text-[8px] text-gray-500 font-bold uppercase">mortes</span>
                               </div>
                             </div>
@@ -1170,46 +642,48 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
                         );
                       })
                     ) : (
-                      <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado</div>
+                      <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado encontrado</div>
                     )}
                   </div>
                 </div>
 
-                {/* P2 Victim Weapons */}
+                {/* P2 Killer Teams */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between pb-3 border-b border-white/5">
                     <span className="text-xs font-black text-blue-400 uppercase italic tracking-wider flex items-center gap-2">
-                      <Skull size={14} className="text-rose-500" /> {p2.name}
+                      <ShieldAlert size={14} className="text-red-500" /> Algozes de {p2.name}
                     </span>
-                    <span className="text-[10px] font-bold text-gray-500 uppercase">{p2.victimWeapons?.length || 0} armas</span>
+                    <span className="text-[10px] font-bold text-gray-500 uppercase">
+                      {p2.killerTeams?.length || 0} times algozes
+                    </span>
                   </div>
                   <div className="space-y-2.5">
-                    {p2.victimWeapons && p2.victimWeapons.length > 0 ? (
-                      (showAllVictimWeapons ? p2.victimWeapons : p2.victimWeapons.slice(0, 5)).map((w: any, idx: number) => {
-                        const max = p2.victimWeapons[0]?.count || 1;
-                        const pct = Math.min(100, Math.round((w.count / max) * 100));
+                    {p2.killerTeams && p2.killerTeams.length > 0 ? (
+                      (showAllKillerTeams ? p2.killerTeams : p2.killerTeams.slice(0, 5)).map((t: any, idx: number) => {
+                        const maxCount = p2.killerTeams[0]?.count || 1;
+                        const pct = Math.min(100, Math.round((t.count / maxCount) * 100));
                         return (
-                          <div key={idx} className="bg-black/50 p-3.5 rounded-2xl border border-white/5 flex items-center justify-between gap-4">
-                            <div className="flex items-center gap-3 min-w-0 flex-1">
-                              <span className="text-xs font-black text-gray-600 w-5 text-center">#{idx + 1}</span>
-                              <div className="w-12 h-9 rounded-lg bg-black/80 border border-rose-500/20 overflow-hidden flex-shrink-0 flex items-center justify-center p-1">
-                                {w.img ? (
-                                  <img src={w.img} alt={w.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                          <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
+                              <div className="w-8 h-8 rounded-lg bg-black/80 border border-white/10 p-1 flex-shrink-0 flex items-center justify-center overflow-hidden">
+                                {t.img ? (
+                                  <img src={t.img} alt={t.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
                                 ) : (
-                                  <Skull size={16} className="text-rose-500" />
+                                  <Shield size={14} className="text-gray-500" />
                                 )}
                               </div>
-                              <div className="min-w-0 flex-1">
-                                <span className="text-xs font-black text-white uppercase italic tracking-wide">{w.name}</span>
-                                <span className="text-[8px] text-gray-500 font-bold uppercase block">Arma Letal Contra</span>
+                              <div className="min-w-0">
+                                <span className="text-xs font-black text-white uppercase italic truncate block">{t.name}</span>
+                                <span className="text-[8px] text-gray-500 font-bold uppercase">Grupo {t.grupo || 'N/A'}</span>
                               </div>
                             </div>
-                            <div className="flex items-center gap-4 flex-shrink-0">
-                              <div className="w-24 sm:w-32 bg-white/5 h-2 rounded-full overflow-hidden hidden sm:block">
-                                <div className="bg-rose-500 h-full rounded-full" style={{ width: `${pct}%` }} />
+                            <div className="flex items-center gap-3 flex-shrink-0">
+                              <div className="w-16 hidden sm:block bg-white/5 h-1.5 rounded-full overflow-hidden">
+                                <div className="bg-red-500 h-full rounded-full" style={{ width: `${pct}%` }} />
                               </div>
                               <div className="text-right min-w-[48px]">
-                                <span className="text-sm font-black text-rose-500 italic block leading-none">{w.count}</span>
+                                <span className="text-sm font-black text-red-500 italic block leading-none">{t.count}</span>
                                 <span className="text-[8px] text-gray-500 font-bold uppercase">mortes</span>
                               </div>
                             </div>
@@ -1217,12 +691,566 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
                         );
                       })
                     ) : (
-                      <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado</div>
+                      <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado encontrado</div>
                     )}
                   </div>
                 </div>
               </div>
+            )}
+          </div>
+
+          {/* ========================================================================= */}
+          {/* SEÇÃO 3: JOGADORES QUE MAIS MORREM (VÍTIMAS FREQUENTES) */}
+          {/* ========================================================================= */}
+          <div className="bg-[#1a1a1a] rounded-[32px] border border-gray-800 overflow-hidden shadow-2xl">
+            <div className="bg-gradient-to-r from-amber-500/10 via-black/40 to-yellow-500/10 px-6 md:px-8 py-5 border-b border-white/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-400">
+                  <Target size={20} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white uppercase tracking-[0.2em] italic">
+                    Jogadores que Mais Morrem (Vítimas Frequentes)
+                  </h3>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                    Jogadores individuais que cada atleta mais eliminou
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => setShowAllVictimPlayers(prev => !prev)}
+                  className="text-[10px] font-black text-amber-400 hover:text-amber-300 flex items-center gap-1 uppercase transition-colors"
+                >
+                  {showAllVictimPlayers ? 'Exibir Top 5' : 'Ver Todos os Jogadores'}
+                  {showAllVictimPlayers ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+                <button
+                  onClick={() => setShowSection3(prev => !prev)}
+                  className="text-[10px] font-black text-gray-400 hover:text-white flex items-center gap-1 uppercase transition-colors px-3 py-1.5 bg-white/5 rounded-full border border-white/10"
+                >
+                  {showSection3 ? 'Ocultar Seção' : 'Mostrar Seção'}
+                  {showSection3 ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+              </div>
             </div>
+
+            {showSection3 && (
+              <div className="p-6 md:p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* P1 Victim Players */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-white/5">
+                    <span className="text-xs font-black text-yellow-500 uppercase italic tracking-wider flex items-center gap-2">
+                      <User size={14} /> Vítimas Favoritas de {p1.name}
+                    </span>
+                    <span className="text-[10px] font-bold text-gray-500 uppercase">
+                      {p1.victimPlayers?.length || 0} jogadores abatidos
+                    </span>
+                  </div>
+                  <div className="space-y-2.5">
+                    {p1.victimPlayers && p1.victimPlayers.length > 0 ? (
+                      (showAllVictimPlayers ? p1.victimPlayers : p1.victimPlayers.slice(0, 5)).map((p: any, idx: number) => {
+                        const maxCount = p1.victimPlayers[0]?.count || 1;
+                        const pct = Math.min(100, Math.round((p.count / maxCount) * 100));
+                        return (
+                          <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
+                              <div className="w-8 h-8 rounded-full bg-black/80 border border-white/10 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                                {p.img ? (
+                                  <img src={p.img} alt={p.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                ) : (
+                                  <User size={14} className="text-gray-500" />
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <span className="text-xs font-black text-white uppercase italic truncate block">{p.name}</span>
+                                <span className="text-[8px] text-gray-500 font-bold uppercase truncate block">{p.team || 'Sem Equipe'}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3 flex-shrink-0">
+                              <div className="w-16 hidden sm:block bg-white/5 h-1.5 rounded-full overflow-hidden">
+                                <div className="bg-yellow-500 h-full rounded-full" style={{ width: `${pct}%` }} />
+                              </div>
+                              <div className="text-right min-w-[48px]">
+                                <span className="text-sm font-black text-yellow-500 italic block leading-none">{p.count}</span>
+                                <span className="text-[8px] text-gray-500 font-bold uppercase">abates</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado encontrado</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* P2 Victim Players */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-white/5">
+                    <span className="text-xs font-black text-blue-400 uppercase italic tracking-wider flex items-center gap-2">
+                      <User size={14} /> Vítimas Favoritas de {p2.name}
+                    </span>
+                    <span className="text-[10px] font-bold text-gray-500 uppercase">
+                      {p2.victimPlayers?.length || 0} jogadores abatidos
+                    </span>
+                  </div>
+                  <div className="space-y-2.5">
+                    {p2.victimPlayers && p2.victimPlayers.length > 0 ? (
+                      (showAllVictimPlayers ? p2.victimPlayers : p2.victimPlayers.slice(0, 5)).map((p: any, idx: number) => {
+                        const maxCount = p2.victimPlayers[0]?.count || 1;
+                        const pct = Math.min(100, Math.round((p.count / maxCount) * 100));
+                        return (
+                          <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
+                              <div className="w-8 h-8 rounded-full bg-black/80 border border-white/10 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                                {p.img ? (
+                                  <img src={p.img} alt={p.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                ) : (
+                                  <User size={14} className="text-gray-500" />
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <span className="text-xs font-black text-white uppercase italic truncate block">{p.name}</span>
+                                <span className="text-[8px] text-gray-500 font-bold uppercase truncate block">{p.team || 'Sem Equipe'}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3 flex-shrink-0">
+                              <div className="w-16 hidden sm:block bg-white/5 h-1.5 rounded-full overflow-hidden">
+                                <div className="bg-blue-400 h-full rounded-full" style={{ width: `${pct}%` }} />
+                              </div>
+                              <div className="text-right min-w-[48px]">
+                                <span className="text-sm font-black text-blue-400 italic block leading-none">{p.count}</span>
+                                <span className="text-[8px] text-gray-500 font-bold uppercase">abates</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado encontrado</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ========================================================================= */}
+          {/* SEÇÃO 4: JOGADORES QUE MAIS MATAM (MAIORES ALGOZES) */}
+          {/* ========================================================================= */}
+          <div className="bg-[#1a1a1a] rounded-[32px] border border-gray-800 overflow-hidden shadow-2xl">
+            <div className="bg-gradient-to-r from-rose-500/10 via-black/40 to-red-500/10 px-6 md:px-8 py-5 border-b border-white/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400">
+                  <Crosshair size={20} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white uppercase tracking-[0.2em] italic">
+                    Jogadores que Mais Matam (Maiores Algozes)
+                  </h3>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                    Jogadores individuais que mais abateram cada atleta
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => setShowAllKillerPlayers(prev => !prev)}
+                  className="text-[10px] font-black text-rose-400 hover:text-rose-300 flex items-center gap-1 uppercase transition-colors"
+                >
+                  {showAllKillerPlayers ? 'Exibir Top 5' : 'Ver Todos os Jogadores'}
+                  {showAllKillerPlayers ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+                <button
+                  onClick={() => setShowSection4(prev => !prev)}
+                  className="text-[10px] font-black text-gray-400 hover:text-white flex items-center gap-1 uppercase transition-colors px-3 py-1.5 bg-white/5 rounded-full border border-white/10"
+                >
+                  {showSection4 ? 'Ocultar Seção' : 'Mostrar Seção'}
+                  {showSection4 ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+              </div>
+            </div>
+
+            {showSection4 && (
+              <div className="p-6 md:p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* P1 Killer Players */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-white/5">
+                    <span className="text-xs font-black text-yellow-500 uppercase italic tracking-wider flex items-center gap-2">
+                      <User size={14} className="text-rose-500" /> Maiores Algozes de {p1.name}
+                    </span>
+                    <span className="text-[10px] font-bold text-gray-500 uppercase">
+                      {p1.killerPlayers?.length || 0} jogadores algozes
+                    </span>
+                  </div>
+                  <div className="space-y-2.5">
+                    {p1.killerPlayers && p1.killerPlayers.length > 0 ? (
+                      (showAllKillerPlayers ? p1.killerPlayers : p1.killerPlayers.slice(0, 5)).map((p: any, idx: number) => {
+                        const maxCount = p1.killerPlayers[0]?.count || 1;
+                        const pct = Math.min(100, Math.round((p.count / maxCount) * 100));
+                        return (
+                          <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
+                              <div className="w-8 h-8 rounded-full bg-black/80 border border-white/10 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                                {p.img ? (
+                                  <img src={p.img} alt={p.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                ) : (
+                                  <User size={14} className="text-gray-500" />
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <span className="text-xs font-black text-white uppercase italic truncate block">{p.name}</span>
+                                <span className="text-[8px] text-gray-500 font-bold uppercase truncate block">{p.team || 'Sem Equipe'}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3 flex-shrink-0">
+                              <div className="w-16 hidden sm:block bg-white/5 h-1.5 rounded-full overflow-hidden">
+                                <div className="bg-rose-500 h-full rounded-full" style={{ width: `${pct}%` }} />
+                              </div>
+                              <div className="text-right min-w-[48px]">
+                                <span className="text-sm font-black text-rose-500 italic block leading-none">{p.count}</span>
+                                <span className="text-[8px] text-gray-500 font-bold uppercase">mortes</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado encontrado</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* P2 Killer Players */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-white/5">
+                    <span className="text-xs font-black text-blue-400 uppercase italic tracking-wider flex items-center gap-2">
+                      <User size={14} className="text-rose-500" /> Maiores Algozes de {p2.name}
+                    </span>
+                    <span className="text-[10px] font-bold text-gray-500 uppercase">
+                      {p2.killerPlayers?.length || 0} jogadores algozes
+                    </span>
+                  </div>
+                  <div className="space-y-2.5">
+                    {p2.killerPlayers && p2.killerPlayers.length > 0 ? (
+                      (showAllKillerPlayers ? p2.killerPlayers : p2.killerPlayers.slice(0, 5)).map((p: any, idx: number) => {
+                        const maxCount = p2.killerPlayers[0]?.count || 1;
+                        const pct = Math.min(100, Math.round((p.count / maxCount) * 100));
+                        return (
+                          <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
+                              <div className="w-8 h-8 rounded-full bg-black/80 border border-white/10 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                                {p.img ? (
+                                  <img src={p.img} alt={p.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                ) : (
+                                  <User size={14} className="text-gray-500" />
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <span className="text-xs font-black text-white uppercase italic truncate block">{p.name}</span>
+                                <span className="text-[8px] text-gray-500 font-bold uppercase truncate block">{p.team || 'Sem Equipe'}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3 flex-shrink-0">
+                              <div className="w-16 hidden sm:block bg-white/5 h-1.5 rounded-full overflow-hidden">
+                                <div className="bg-rose-500 h-full rounded-full" style={{ width: `${pct}%` }} />
+                              </div>
+                              <div className="text-right min-w-[48px]">
+                                <span className="text-sm font-black text-rose-500 italic block leading-none">{p.count}</span>
+                                <span className="text-[8px] text-gray-500 font-bold uppercase">mortes</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado encontrado</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ========================================================================= */}
+          {/* SEÇÃO: ANÁLISE DE ARMAS */}
+          {/* ========================================================================= */}
+          <div className="bg-[#1a1a1a] rounded-[32px] border border-gray-800 p-6 md:p-8 shadow-2xl overflow-hidden mt-8">
+            <div className="flex items-center justify-between border-b border-white/5 pb-4 mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-yellow-500/10 border border-yellow-500/20 rounded-xl text-yellow-400">
+                  <Crosshair size={22} />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white uppercase italic tracking-[0.2em]">
+                    Análise de Armas
+                  </h3>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                    Desempenho com armamentos individuais
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowWeaponsSection(prev => !prev)}
+                className="text-[10px] font-black text-gray-400 hover:text-white flex items-center gap-1 uppercase transition-colors px-3 py-1.5 bg-white/5 rounded-full border border-white/10"
+              >
+                {showWeaponsSection ? 'Ocultar Seção' : 'Mostrar Seção'}
+                {showWeaponsSection ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+            </div>
+
+            {showWeaponsSection && (
+              <div className="grid grid-cols-1 gap-8">
+                {/* Armas Favoritas (Mais Matam) */}
+                <div className="bg-[#1a1a1a] rounded-[32px] border border-gray-800 overflow-hidden shadow-2xl">
+                  <div className="bg-gradient-to-r from-yellow-500/10 via-black/40 to-amber-500/10 px-6 md:px-8 py-5 border-b border-white/5 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 bg-yellow-500/10 border border-yellow-500/20 rounded-xl text-yellow-400">
+                        <Flame size={20} />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-black text-white uppercase tracking-[0.2em] italic">
+                          Armas que Mais Matam (Favoritas)
+                        </h3>
+                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                          Armas mais utilizadas por cada jogador para eliminar adversários
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setShowAllKillerWeapons(prev => !prev)}
+                      className="text-[10px] font-black text-yellow-400 hover:text-yellow-300 flex items-center gap-1 uppercase transition-colors"
+                    >
+                      {showAllKillerWeapons ? 'Exibir Top 5' : 'Ver Todas'}
+                      {showAllKillerWeapons ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+                  </div>
+
+                  <div className="p-6 md:p-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* P1 Killer Weapons */}
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between pb-3 border-b border-white/5">
+                        <span className="text-xs font-black text-yellow-500 uppercase italic tracking-wider flex items-center gap-2">
+                          <Crosshair size={14} /> {p1.name}
+                        </span>
+                        <span className="text-[10px] font-bold text-gray-500 uppercase">{p1.killerWeapons?.length || 0} armas</span>
+                      </div>
+                      <div className="space-y-2.5">
+                        {p1.killerWeapons && p1.killerWeapons.length > 0 ? (
+                          (showAllKillerWeapons ? p1.killerWeapons : p1.killerWeapons.slice(0, 5)).map((w: any, idx: number) => {
+                            const max = p1.killerWeapons[0]?.count || 1;
+                            const pct = Math.min(100, Math.round((w.count / max) * 100));
+                            return (
+                              <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                  <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
+                                  <div className="w-10 h-8 rounded-lg bg-black/80 border border-yellow-500/20 overflow-hidden flex-shrink-0 flex items-center justify-center p-1">
+                                    {w.img ? (
+                                      <img src={w.img} alt={w.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                                    ) : (
+                                      <Crosshair size={14} className="text-yellow-500" />
+                                    )}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <span className="text-xs font-black text-white uppercase italic tracking-wide truncate block">{w.name}</span>
+                                    <span className="text-[8px] text-gray-500 font-bold uppercase block">Arma Principal</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2.5 flex-shrink-0">
+                                  <div className="w-16 sm:w-20 bg-white/5 h-1.5 rounded-full overflow-hidden hidden sm:block">
+                                    <div className="bg-yellow-500 h-full rounded-full" style={{ width: `${pct}%` }} />
+                                  </div>
+                                  <div className="text-right min-w-[40px]">
+                                    <span className="text-sm font-black text-yellow-500 italic block leading-none">{w.count}</span>
+                                    <span className="text-[8px] text-gray-500 font-bold uppercase">abates</span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado</div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* P2 Killer Weapons */}
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between pb-3 border-b border-white/5">
+                        <span className="text-xs font-black text-blue-400 uppercase italic tracking-wider flex items-center gap-2">
+                          <Crosshair size={14} /> {p2.name}
+                        </span>
+                        <span className="text-[10px] font-bold text-gray-500 uppercase">{p2.killerWeapons?.length || 0} armas</span>
+                      </div>
+                      <div className="space-y-2.5">
+                        {p2.killerWeapons && p2.killerWeapons.length > 0 ? (
+                          (showAllKillerWeapons ? p2.killerWeapons : p2.killerWeapons.slice(0, 5)).map((w: any, idx: number) => {
+                            const max = p2.killerWeapons[0]?.count || 1;
+                            const pct = Math.min(100, Math.round((w.count / max) * 100));
+                            return (
+                              <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                  <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
+                                  <div className="w-10 h-8 rounded-lg bg-black/80 border border-blue-500/20 overflow-hidden flex-shrink-0 flex items-center justify-center p-1">
+                                    {w.img ? (
+                                      <img src={w.img} alt={w.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                                    ) : (
+                                      <Crosshair size={14} className="text-blue-400" />
+                                    )}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <span className="text-xs font-black text-white uppercase italic tracking-wide truncate block">{w.name}</span>
+                                    <span className="text-[8px] text-gray-500 font-bold uppercase block">Arma Principal</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2.5 flex-shrink-0">
+                                  <div className="w-16 sm:w-20 bg-white/5 h-1.5 rounded-full overflow-hidden hidden sm:block">
+                                    <div className="bg-blue-400 h-full rounded-full" style={{ width: `${pct}%` }} />
+                                  </div>
+                                  <div className="text-right min-w-[40px]">
+                                    <span className="text-sm font-black text-blue-400 italic block leading-none">{w.count}</span>
+                                    <span className="text-[8px] text-gray-500 font-bold uppercase">abates</span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Armas Algozes (Mais Morre / Para Quais Mais Morre) */}
+                <div className="bg-[#1a1a1a] rounded-[32px] border border-gray-800 overflow-hidden shadow-2xl">
+                  <div className="bg-gradient-to-r from-rose-500/10 via-black/40 to-red-500/10 px-6 md:px-8 py-5 border-b border-white/5 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400">
+                        <Skull size={20} />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-black text-white uppercase tracking-[0.2em] italic">
+                          Armas Algozes (Mais Causam Mortes ao Jogador)
+                        </h3>
+                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                          Armas responsáveis pelo maior número de eliminações sofridas por cada atleta
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setShowAllVictimWeapons(prev => !prev)}
+                      className="text-[10px] font-black text-rose-400 hover:text-rose-300 flex items-center gap-1 uppercase transition-colors"
+                    >
+                      {showAllVictimWeapons ? 'Exibir Top 5' : 'Ver Todas'}
+                      {showAllVictimWeapons ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+                  </div>
+
+                  <div className="p-6 md:p-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* P1 Victim Weapons */}
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between pb-3 border-b border-white/5">
+                        <span className="text-xs font-black text-yellow-500 uppercase italic tracking-wider flex items-center gap-2">
+                          <Skull size={14} className="text-rose-500" /> {p1.name}
+                        </span>
+                        <span className="text-[10px] font-bold text-gray-500 uppercase">{p1.victimWeapons?.length || 0} armas</span>
+                      </div>
+                      <div className="space-y-2.5">
+                        {p1.victimWeapons && p1.victimWeapons.length > 0 ? (
+                          (showAllVictimWeapons ? p1.victimWeapons : p1.victimWeapons.slice(0, 5)).map((w: any, idx: number) => {
+                            const max = p1.victimWeapons[0]?.count || 1;
+                            const pct = Math.min(100, Math.round((w.count / max) * 100));
+                            return (
+                              <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                  <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
+                                  <div className="w-10 h-8 rounded-lg bg-black/80 border border-rose-500/20 overflow-hidden flex-shrink-0 flex items-center justify-center p-1">
+                                    {w.img ? (
+                                      <img src={w.img} alt={w.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                                    ) : (
+                                      <Skull size={14} className="text-rose-500" />
+                                    )}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <span className="text-xs font-black text-white uppercase italic tracking-wide truncate block">{w.name}</span>
+                                    <span className="text-[8px] text-gray-500 font-bold uppercase block">Arma Letal Contra</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2.5 flex-shrink-0">
+                                  <div className="w-16 sm:w-20 bg-white/5 h-1.5 rounded-full overflow-hidden hidden sm:block">
+                                    <div className="bg-rose-500 h-full rounded-full" style={{ width: `${pct}%` }} />
+                                  </div>
+                                  <div className="text-right min-w-[40px]">
+                                    <span className="text-sm font-black text-rose-500 italic block leading-none">{w.count}</span>
+                                    <span className="text-[8px] text-gray-500 font-bold uppercase">mortes</span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado</div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* P2 Victim Weapons */}
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between pb-3 border-b border-white/5">
+                        <span className="text-xs font-black text-blue-400 uppercase italic tracking-wider flex items-center gap-2">
+                          <Skull size={14} className="text-rose-500" /> {p2.name}
+                        </span>
+                        <span className="text-[10px] font-bold text-gray-500 uppercase">{p2.victimWeapons?.length || 0} armas</span>
+                      </div>
+                      <div className="space-y-2.5">
+                        {p2.victimWeapons && p2.victimWeapons.length > 0 ? (
+                          (showAllVictimWeapons ? p2.victimWeapons : p2.victimWeapons.slice(0, 5)).map((w: any, idx: number) => {
+                            const max = p2.victimWeapons[0]?.count || 1;
+                            const pct = Math.min(100, Math.round((w.count / max) * 100));
+                            return (
+                              <div key={idx} className="bg-black/50 p-3 rounded-2xl border border-white/5 flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                  <span className="text-xs font-black text-gray-600 w-4 text-center">#{idx + 1}</span>
+                                  <div className="w-10 h-8 rounded-lg bg-black/80 border border-rose-500/20 overflow-hidden flex-shrink-0 flex items-center justify-center p-1">
+                                    {w.img ? (
+                                      <img src={w.img} alt={w.name} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                                    ) : (
+                                      <Skull size={14} className="text-rose-500" />
+                                    )}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <span className="text-xs font-black text-white uppercase italic tracking-wide truncate block">{w.name}</span>
+                                    <span className="text-[8px] text-gray-500 font-bold uppercase block">Arma Letal Contra</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2.5 flex-shrink-0">
+                                  <div className="w-16 sm:w-20 bg-white/5 h-1.5 rounded-full overflow-hidden hidden sm:block">
+                                    <div className="bg-rose-500 h-full rounded-full" style={{ width: `${pct}%` }} />
+                                  </div>
+                                  <div className="text-right min-w-[40px]">
+                                    <span className="text-sm font-black text-rose-500 italic block leading-none">{w.count}</span>
+                                    <span className="text-[8px] text-gray-500 font-bold uppercase">mortes</span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div className="text-center py-6 text-gray-600 text-xs font-bold uppercase">Nenhum dado</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* ========================================================================= */}
@@ -1317,10 +1345,8 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
                     const avg1 = c1 ? c1.avgKills : '0.00';
                     const avg2 = c2 ? c2.avgKills : '0.00';
                     const img = c1?.img || c2?.img;
-
                     const isP1Better = parseFloat(avg1) > parseFloat(avg2);
                     const isP2Better = parseFloat(avg2) > parseFloat(avg1);
-
                     return (
                       <div key={charName} className="bg-black/30 p-4 rounded-2xl border border-white/5 space-y-2">
                         <div className="flex items-center justify-between">
@@ -1328,12 +1354,10 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
                             <span className={`text-sm ${isP1Better ? 'text-yellow-500' : 'text-gray-400'}`}>{avg1} k/q</span>
                             <span className="text-[9px] text-gray-600">({k1}k em {m1}Q)</span>
                           </div>
-
                           <div className="flex items-center gap-2">
                             {img && <img src={img} alt={charName} className="w-6 h-6 object-contain" referrerPolicy="no-referrer" />}
                             <span className="text-xs font-black text-white uppercase italic">{charName}</span>
                           </div>
-
                           <div className="flex items-center gap-2 text-xs font-black">
                             <span className="text-[9px] text-gray-600">({k2}k em {m2}Q)</span>
                             <span className={`text-sm ${isP2Better ? 'text-blue-400' : 'text-gray-400'}`}>{avg2} k/q</span>
@@ -1366,6 +1390,7 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
             <div className="bg-black/40 px-8 py-6 border-b border-white/5 text-center">
               <h3 className="text-sm font-black text-yellow-500 uppercase tracking-[0.3em] italic">Loadout Favorito & Habilidades Passivas</h3>
             </div>
+
             <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
               {/* Loadout Favorito Desafiante 1 */}
               <div className="bg-black/30 rounded-2xl border border-yellow-500/20 p-6 space-y-4">
@@ -1442,6 +1467,7 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
             <div className="bg-black/40 px-8 py-6 border-b border-white/5 text-center">
               <h3 className="text-sm font-black text-yellow-500 uppercase tracking-[0.3em] italic">Comparativo Geral de Performance</h3>
             </div>
+
             <div className="p-8 space-y-6">
               {[
                 { label: 'Abates Totais', key: 'kills' },
@@ -1478,6 +1504,7 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
                       <span className="text-white">{stat.label}</span>
                       <span className={isP2Better ? 'text-blue-500 font-black' : ''}>{display2}</span>
                     </div>
+
                     <div className="h-2 bg-black rounded-full overflow-hidden flex">
                       <div 
                         className={`h-full transition-all duration-1000 ${isP1Better ? 'bg-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.5)]' : 'bg-gray-800'}`} 
@@ -1501,6 +1528,7 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
             <div className="bg-black/40 px-8 py-6 border-b border-white/5 text-center">
               <h3 className="text-sm font-black text-yellow-500 uppercase tracking-[0.3em] italic">Abates por Mapa</h3>
             </div>
+
             <div className="p-8 space-y-6">
               {Array.from(new Set([...Object.keys(p1.mapKills || {}), ...Object.keys(p2.mapKills || {})])).sort().map(mapName => {
                 const val1 = p1.mapKills?.[mapName] || 0;
@@ -1515,6 +1543,7 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
                       <span className="text-white">{mapName}</span>
                       <span className={isP2Better ? 'text-blue-500 font-black' : ''}>{val2}</span>
                     </div>
+
                     <div className="h-2 bg-black rounded-full overflow-hidden flex">
                       <div 
                         className={`h-full transition-all duration-1000 ${isP1Better ? 'bg-yellow-500' : 'bg-gray-800'}`} 
@@ -1538,6 +1567,7 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
             <div className="bg-black/40 px-8 py-6 border-b border-white/5 text-center">
               <h3 className="text-sm font-black text-yellow-500 uppercase tracking-[0.3em] italic">Abates por Safe</h3>
             </div>
+
             <div className="p-8 space-y-6">
               {Array.from(new Set([...Object.keys(p1.safeKills || {}), ...Object.keys(p2.safeKills || {})])).sort().map(safeName => {
                 const val1 = p1.safeKills?.[safeName] || 0;
@@ -1552,6 +1582,7 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
                       <span className="text-white">{safeName === 'OUT' ? 'OUT' : `Safe ${safeName}`}</span>
                       <span className={isP2Better ? 'text-blue-500 font-black' : ''}>{val2}</span>
                     </div>
+
                     <div className="h-2 bg-black rounded-full overflow-hidden flex">
                       <div 
                         className={`h-full transition-all duration-1000 ${isP1Better ? 'bg-yellow-500' : 'bg-gray-800'}`} 
@@ -1567,6 +1598,16 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
               })}
             </div>
           </div>
+        </div>
+      ) : (
+        <div className="bg-[#1a1a1a] rounded-3xl border border-gray-800 p-12 text-center shadow-2xl">
+          <AlertCircle size={48} className="text-yellow-500/50 mx-auto mb-4" />
+          <h4 className="text-lg font-black text-white uppercase italic tracking-wider mb-2">
+            Selecione Dois Jogadores para Comparar
+          </h4>
+          <p className="text-xs text-gray-400 font-bold max-w-md mx-auto">
+            Escolha os atletas acima para visualizar o confronto direto, radar de atributos, presas favoritas, maiores algozes, análise de armas e histórico completo.
+          </p>
         </div>
       )}
     </div>

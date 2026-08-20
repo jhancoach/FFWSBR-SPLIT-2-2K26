@@ -12,6 +12,7 @@ import { getTeamDropComposition, getTeamCharacterSummary, getTeamCharacters, get
 import { findDimImg } from '../utils/skillImages';
 import { TeamVsTeamCombatCompare } from '../components/TeamVsTeamCombatCompare';
 import { TeamVsTeamSafeKillsCompare } from '../components/TeamVsTeamSafeKillsCompare';
+import { TeamVsTeamMapCompare } from '../components/TeamVsTeamMapCompare';
 
 interface TeamsProps {
   data: DashboardData;
@@ -6911,87 +6912,18 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                         <h3 className="text-[10px] font-black text-white/40 uppercase tracking-[0.5em] italic">Comparativo por Território</h3>
                                     </div>
                                     
-                                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                                        {comparisonMapStats.map((m, idx) => (
-                                            <div key={idx} className="bg-[#1a1a1a] rounded-3xl border border-gray-800 overflow-hidden shadow-xl flex flex-col">
-                                                <div className="bg-black/40 p-4 border-b border-gray-800 flex justify-center items-center gap-3">
-                                                    <MapIcon size={14} className="text-gray-500" />
-                                                    <span className="text-xs font-black text-white uppercase italic tracking-widest">{m.mapName}</span>
-                                                </div>
-                                                <div className="p-5 flex-grow">
-                                                    <div className="flex items-center justify-between mb-4">
-                                                        <div className="text-left">
-                                                            <span className="text-[8px] text-yellow-500 font-black block leading-none mb-1">TEAM A</span>
-                                                            <span className="text-[10px] text-white font-black truncate max-w-[80px] block">{filters.team[0]}</span>
-                                                        </div>
-                                                        <div className="w-8 h-8 rounded-full bg-gray-900 border border-gray-800 flex items-center justify-center text-[8px] font-black text-gray-500">VS</div>
-                                                        <div className="text-right">
-                                                            <span className="text-[8px] text-blue-500 font-black block leading-none mb-1">TEAM B</span>
-                                                            <span className="text-[10px] text-white font-black truncate max-w-[80px] block">{compareTeamB}</span>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="space-y-3">
-                                                        {/* PTS Comparison */}
-                                                        <div className="space-y-1">
-                                                            <div className="flex justify-between text-[8px] font-black uppercase text-gray-500">
-                                                                <span>PTS Total: {m.teamA.pts}</span>
-                                                                <span>{m.teamB.pts}</span>
-                                                            </div>
-                                                            <div className="h-1.5 bg-black rounded-full overflow-hidden flex">
-                                                                <div className="h-full bg-yellow-500" style={{ width: `${(m.teamA.pts + m.teamB.pts) > 0 ? (m.teamA.pts / (m.teamA.pts + m.teamB.pts)) * 100 : 50}%` }} />
-                                                                <div className="h-full bg-blue-500" style={{ width: `${(m.teamA.pts + m.teamB.pts) > 0 ? (m.teamB.pts / (m.teamA.pts + m.teamB.pts)) * 100 : 50}%` }} />
-                                                            </div>
-                                                        </div>
-
-                                                        {/* KILLS Comparison */}
-                                                        <div className="space-y-1">
-                                                            <div className="flex justify-between text-[8px] font-black uppercase text-gray-500 border-t border-white/5 pt-1">
-                                                                <span>Kills: {m.teamA.abts}</span>
-                                                                <span>{m.teamB.abts}</span>
-                                                            </div>
-                                                            <div className="h-1 bg-black rounded-full overflow-hidden flex">
-                                                                <div className="h-full bg-red-600" style={{ width: `${(m.teamA.abts + m.teamB.abts) > 0 ? (m.teamA.abts / (m.teamA.abts + m.teamB.abts)) * 100 : 50}%` }} />
-                                                                <div className="h-full bg-red-400" style={{ width: `${(m.teamA.abts + m.teamB.abts) > 0 ? (m.teamB.abts / (m.teamA.abts + m.teamB.abts)) * 100 : 50}%` }} />
-                                                            </div>
-                                                        </div>
-
-                                                        {/* POS PTS Comparison */}
-                                                        <div className="space-y-1">
-                                                            <div className="flex justify-between text-[8px] font-black uppercase text-gray-500 border-t border-white/5 pt-1">
-                                                                <span>Pts Pos: {m.teamA.ptsc}</span>
-                                                                <span>{m.teamB.ptsc}</span>
-                                                            </div>
-                                                            <div className="h-1 bg-black rounded-full overflow-hidden flex">
-                                                                <div className="h-full bg-orange-600" style={{ width: `${(m.teamA.ptsc + m.teamB.ptsc) > 0 ? (m.teamA.ptsc / (m.teamA.ptsc + m.teamB.ptsc)) * 100 : 50}%` }} />
-                                                                <div className="h-full bg-orange-400" style={{ width: `${(m.teamA.ptsc + m.teamB.ptsc) > 0 ? (m.teamB.ptsc / (m.teamA.ptsc + m.teamB.ptsc)) * 100 : 50}%` }} />
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Averages Grid */}
-                                                        <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-gray-800">
-                                                            <div className="bg-black/40 rounded-xl p-2 text-center">
-                                                                <span className="text-[7px] text-gray-500 font-bold block mb-1">AVG PTS (A vs B)</span>
-                                                                <div className="flex justify-center items-center gap-1">
-                                                                    <span className="text-[9px] font-black text-yellow-500 italic">{m.teamA.avgPts}</span>
-                                                                    <span className="text-[7px] text-gray-700">|</span>
-                                                                    <span className="text-[9px] font-black text-blue-400 italic">{m.teamB.avgPts}</span>
-                                                                </div>
-                                                            </div>
-                                                            <div className="bg-black/40 rounded-xl p-2 text-center">
-                                                                <span className="text-[7px] text-gray-500 font-bold block mb-1">AVG KLLS (A vs B)</span>
-                                                                <div className="flex justify-center items-center gap-1">
-                                                                    <span className="text-[9px] font-black text-red-500 italic">{m.teamA.avgAbts}</span>
-                                                                    <span className="text-[7px] text-gray-700">|</span>
-                                                                    <span className="text-[9px] font-black text-red-400 italic">{m.teamB.avgAbts}</span>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
+                                    <TeamVsTeamMapCompare
+                                        teamA={filters.team[0]}
+                                        teamB={compareTeamB}
+                                        allDetails={data.details}
+                                        allPlayers={data.players}
+                                        killFeed={data.killFeed}
+                                        playersDimension={data.playersDimension}
+                                        teamsReference={data.teamsReference}
+                                        weapons={data.weapons}
+                                        filters={filters}
+                                        onPlayerClick={(pName) => navigate('/players', { state: { player: pName } })}
+                                    />
                                 </div>
 
                                 {/* Comparison Table for detailed metrics */}
