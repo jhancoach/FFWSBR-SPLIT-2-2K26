@@ -671,7 +671,7 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
                     <div className="bg-[#1a1a1a] rounded-3xl border border-gray-800 p-5 shadow-2xl space-y-3">
                         <div className="flex items-center justify-between gap-2">
                             <h3 className="text-sm font-black uppercase tracking-wider text-white">
-                                Locais ({filteredSidebarList.length})
+                                Locais ({filteredDangers.length})
                             </h3>
                             {safeFilter !== 'ALL' && (
                                 <button 
