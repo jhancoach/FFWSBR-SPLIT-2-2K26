@@ -8,6 +8,7 @@ import { doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db, isFirebasePlaceholder } from '../firebase';
 import { OperationType, handleFirestoreError } from '../utils/firestoreError';
 import { DashboardData } from '../types';
+import { HeatmapOverlay } from './HeatmapOverlay';
 
 export interface DangerRecord {
     id: string;
@@ -97,6 +98,10 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
     // Filter & Search Sidebar State
     const [searchFilter, setSearchFilter] = useState('');
     const [safeFilter, setSafeFilter] = useState<number | 'ALL'>('ALL');
+
+    // Heatmap State
+    const [heatmapMode, setHeatmapMode] = useState<'both' | 'heatmap' | 'markers'>('both');
+    const [heatmapRadius, setHeatmapRadius] = useState<number>(45);
 
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -216,6 +221,14 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
 
         return groups;
     }, [filteredDangers]);
+
+    const heatmapPoints = useMemo(() => {
+        return groupedDangers.map(g => ({
+            x: g.x,
+            y: g.y,
+            weight: g.count
+        }));
+    }, [groupedDangers]);
 
     // Map Click Action (Opens modal to specify Safe, Game Time and details)
     const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -520,6 +533,72 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
                             </div>
                         </div>
 
+                        {/* Heatmap Control Toolbar */}
+                        <div className="w-full flex flex-wrap items-center justify-between gap-2 bg-black/40 p-2 rounded-xl border border-white/10 text-xs">
+                            <div className="flex items-center gap-2">
+                                <Flame size={15} className="text-amber-500 animate-pulse" />
+                                <span className="font-bold text-gray-300">Modo de Visão:</span>
+                                <div className="flex items-center gap-1 bg-black/60 p-1 rounded-lg border border-white/10">
+                                    <button
+                                        type="button"
+                                        onClick={() => setHeatmapMode('both')}
+                                        className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all ${
+                                            heatmapMode === 'both'
+                                            ? 'bg-amber-500 text-black font-black'
+                                            : 'text-gray-400 hover:text-white'
+                                        }`}
+                                    >
+                                        Heatmap + Pinos
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setHeatmapMode('heatmap')}
+                                        className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all ${
+                                            heatmapMode === 'heatmap'
+                                            ? 'bg-amber-500 text-black font-black'
+                                            : 'text-gray-400 hover:text-white'
+                                        }`}
+                                    >
+                                        Apenas Heatmap
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setHeatmapMode('markers')}
+                                        className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all ${
+                                            heatmapMode === 'markers'
+                                            ? 'bg-amber-500 text-black font-black'
+                                            : 'text-gray-400 hover:text-white'
+                                        }`}
+                                    >
+                                        Apenas Pinos
+                                    </button>
+                                </div>
+                            </div>
+
+                            {heatmapMode !== 'markers' && (
+                                <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="text-[10px] uppercase tracking-wider text-gray-400 font-bold">Raio Calor:</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setHeatmapRadius(r => Math.max(25, r - 10))}
+                                            className="px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/20 font-mono font-bold text-gray-200"
+                                        >
+                                            -
+                                        </button>
+                                        <span className="font-mono text-xs font-bold text-amber-400">{heatmapRadius}px</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setHeatmapRadius(r => Math.min(90, r + 10))}
+                                            className="px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/20 font-mono font-bold text-gray-200"
+                                        >
+                                            +
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
                         {/* Interactive Canvas Container */}
                         <div 
                             className="relative w-full aspect-square max-w-[800px] rounded-2xl overflow-hidden bg-[#0a0a0a] border-2 border-amber-500/30 cursor-crosshair shadow-inner flex items-center justify-center select-none"
@@ -557,6 +636,15 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
                                     className="w-full h-full object-cover pointer-events-none"
                                 />
 
+                                {/* Heatmap Layer */}
+                                <HeatmapOverlay
+                                    points={heatmapPoints}
+                                    visible={heatmapMode !== 'markers'}
+                                    palette="danger"
+                                    radius={heatmapRadius}
+                                    opacity={0.8}
+                                />
+
                                 {/* Click layer */}
                                 <div 
                                     className="absolute inset-0 z-10" 
@@ -570,7 +658,9 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
                                             key={group.id}
                                             onClick={(e) => handleMarkerClick(group, e)}
                                             onContextMenu={(e) => handleMarkerRightClick(group, e)}
-                                            className="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer z-20 group transition-all duration-200"
+                                            className={`absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer z-20 group transition-all duration-200 ${
+                                                heatmapMode === 'heatmap' ? 'opacity-40 hover:opacity-100 scale-90' : ''
+                                            }`}
                                             style={{ left: `${group.x}%`, top: `${group.y}%` }}
                                             title="Clique para +1 | Botão Direito para -1 | Shift+Clique para Editar"
                                         >

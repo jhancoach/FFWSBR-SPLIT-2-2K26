@@ -5,6 +5,7 @@ import {
     X, Check, AlertCircle, RefreshCw, BarChart2, Layers, User, ChevronRight, Info,
     Flame, Target, Trophy, Users
 } from 'lucide-react';
+import { HeatmapOverlay } from './HeatmapOverlay';
 import { doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db, isFirebasePlaceholder } from '../firebase';
 import { OperationType, handleFirestoreError } from '../utils/firestoreError';
@@ -110,6 +111,10 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
 
     // Hover / Highlighting State
     const [hoveredRecordId, setHoveredRecordId] = useState<string | null>(null);
+
+    // Heatmap State
+    const [heatmapMode, setHeatmapMode] = useState<'both' | 'heatmap' | 'markers'>('both');
+    const [heatmapRadius, setHeatmapRadius] = useState<number>(45);
 
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -254,6 +259,14 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
 
         return groups;
     }, [filteredFights]);
+
+    const heatmapPoints = useMemo(() => {
+        return groupedFights.map(g => ({
+            x: g.x,
+            y: g.y,
+            weight: g.count
+        }));
+    }, [groupedFights]);
 
     // Map Click Action (Opens modal to specify Safe, Game Time and details)
     const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -979,6 +992,72 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
                         </div>
                     </div>
 
+                    {/* Heatmap Control Toolbar */}
+                    <div className="w-full flex flex-wrap items-center justify-between gap-2 bg-black/40 p-2 rounded-xl border border-white/10 text-xs">
+                        <div className="flex items-center gap-2">
+                            <Flame size={15} className="text-red-500 animate-pulse" />
+                            <span className="font-bold text-gray-300">Modo de Visão:</span>
+                            <div className="flex items-center gap-1 bg-black/60 p-1 rounded-lg border border-white/10">
+                                <button
+                                    type="button"
+                                    onClick={() => setHeatmapMode('both')}
+                                    className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all ${
+                                        heatmapMode === 'both'
+                                        ? 'bg-red-500 text-white font-black'
+                                        : 'text-gray-400 hover:text-white'
+                                    }`}
+                                >
+                                    Heatmap + Pinos
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setHeatmapMode('heatmap')}
+                                    className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all ${
+                                        heatmapMode === 'heatmap'
+                                        ? 'bg-red-500 text-white font-black'
+                                        : 'text-gray-400 hover:text-white'
+                                    }`}
+                                >
+                                    Apenas Heatmap
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setHeatmapMode('markers')}
+                                    className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all ${
+                                        heatmapMode === 'markers'
+                                        ? 'bg-red-500 text-white font-black'
+                                        : 'text-gray-400 hover:text-white'
+                                    }`}
+                                >
+                                    Apenas Pinos
+                                </button>
+                            </div>
+                        </div>
+
+                        {heatmapMode !== 'markers' && (
+                            <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] uppercase tracking-wider text-gray-400 font-bold">Raio Calor:</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setHeatmapRadius(r => Math.max(25, r - 10))}
+                                        className="px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/20 font-mono font-bold text-gray-200"
+                                    >
+                                        -
+                                    </button>
+                                    <span className="font-mono text-xs font-bold text-red-400">{heatmapRadius}px</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setHeatmapRadius(r => Math.min(90, r + 10))}
+                                        className="px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/20 font-mono font-bold text-gray-200"
+                                    >
+                                        +
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
                     {/* Interactive Map Canvas Container */}
                     <div 
                         className="relative w-full aspect-square rounded-2xl overflow-hidden bg-[#0a0a0a] border-2 border-gray-800 cursor-crosshair shadow-inner flex items-center justify-center select-none"
@@ -1020,6 +1099,15 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
                                 draggable={false}
                             />
 
+                            {/* Heatmap Layer */}
+                            <HeatmapOverlay
+                                points={heatmapPoints}
+                                visible={heatmapMode !== 'markers'}
+                                palette="fire"
+                                radius={heatmapRadius}
+                                opacity={0.8}
+                            />
+
                             {/* Click layer */}
                             <div 
                                 className="absolute inset-0 z-10" 
@@ -1036,6 +1124,8 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
                                             onMouseEnter={() => setHoveredRecordId(group.id)}
                                             onMouseLeave={() => setHoveredRecordId(null)}
                                             className={`absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer z-20 group transition-all duration-200 ${
+                                                heatmapMode === 'heatmap' ? 'opacity-40 hover:opacity-100 scale-90' : ''
+                                            } ${
                                                 isHovered ? 'scale-125 z-30' : 'hover:scale-110'
                                             }`}
                                             style={{ left: `${group.x}%`, top: `${group.y}%` }}
