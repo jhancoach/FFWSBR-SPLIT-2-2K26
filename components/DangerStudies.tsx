@@ -84,6 +84,7 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
     // Modal State
     const [showModal, setShowModal] = useState(false);
     const [editingRecord, setEditingRecord] = useState<DangerRecord | null>(null);
+    const [selectedGroupRecords, setSelectedGroupRecords] = useState<DangerRecord[]>([]);
     const [clickCoords, setClickCoords] = useState<{ x: number; y: number } | null>(null);
 
     // Form State
@@ -205,7 +206,7 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
         return groups;
     }, [mapDangers, totalDangerCount]);
 
-    // Instant Map Click Action (Creates new point directly)
+    // Map Click Action (Opens modal to specify Safe, Game Time and details)
     const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
         if (isDragging) return;
 
@@ -215,34 +216,30 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
 
         const locName = `Ponto ${Math.round(xPercent)},${Math.round(yPercent)}`;
 
-        const newRec: DangerRecord = {
-            id: 'danger_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
-            mapId: selectedMap.id,
-            x: xPercent,
-            y: yPercent,
-            locationName: locName,
-            timeInMinutes: 3.0,
-            safeNumber: 1,
-            count: 1,
-            createdAt: Date.now()
-        };
-        saveDangers([...dangers, newRec]);
+        // Find existing group nearby
+        const existingGroup = groupedDangers.find(g => 
+            Math.abs(g.x - xPercent) <= 3.5 && Math.abs(g.y - yPercent) <= 3.5
+        );
+
+        if (existingGroup && existingGroup.items.length > 0) {
+            handleEditRecord(existingGroup.items[0], existingGroup.items);
+        } else {
+            setEditingRecord(null);
+            setSelectedGroupRecords([]);
+            setClickCoords({ x: xPercent, y: yPercent });
+            setFormLocation(locName);
+            setFormTimeStr('03:00');
+            setFormSafeNumber(1);
+            setFormCount(1);
+            setFormNotes('');
+            setShowModal(true);
+        }
     };
 
-    // Marker Left Click (+1)
+    // Marker Click (Opens modal for viewing and adding records with custom Safe & Game Time)
     const handleMarkerClick = (group: typeof groupedDangers[0], e: React.MouseEvent) => {
         e.stopPropagation();
-        if (e.shiftKey) {
-            handleEditRecord(group.items[0], e);
-            return;
-        }
-
-        const mainRec = group.items[0];
-        const updated = dangers.map(r => r.id === mainRec.id ? {
-            ...r,
-            count: (r.count || 1) + 1
-        } : r);
-        saveDangers(updated);
+        handleEditRecord(group.items[0], group.items, e);
     };
 
     // Marker Right Click (-1 or delete)
@@ -265,16 +262,41 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
         }
     };
 
-    // Open Modal for Editing Record
-    const handleEditRecord = (record: DangerRecord, e?: React.MouseEvent) => {
+    // Open Modal for Editing Record / Viewing Group Records
+    const handleEditRecord = (record: DangerRecord, groupItems?: DangerRecord[], e?: React.MouseEvent) => {
         if (e) e.stopPropagation();
         setEditingRecord(record);
+        setSelectedGroupRecords(groupItems && groupItems.length > 0 ? groupItems : [record]);
+        setClickCoords({ x: record.x, y: record.y });
         setFormLocation(record.locationName || '');
         setFormTimeStr(formatMinutesToMS(record.timeInMinutes));
         setFormSafeNumber(record.safeNumber || 1);
         setFormCount(record.count || 1);
         setFormNotes(record.notes || '');
         setShowModal(true);
+    };
+
+    // Save as a NEW record at the current spot
+    const handleSaveAsNewRecord = (e?: React.MouseEvent) => {
+        if (e) e.preventDefault();
+        const timeInMin = parseMSToMinutes(formTimeStr);
+
+        if (clickCoords) {
+            const newRec: DangerRecord = {
+                id: 'danger_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+                mapId: selectedMap.id,
+                x: clickCoords.x,
+                y: clickCoords.y,
+                locationName: formLocation || 'Local Desconhecido',
+                timeInMinutes: timeInMin,
+                safeNumber: formSafeNumber,
+                count: Math.max(1, formCount),
+                notes: formNotes,
+                createdAt: Date.now()
+            };
+            saveDangers([...dangers, newRec]);
+        }
+        setShowModal(false);
     };
 
     const handleFormSubmit = (e: React.FormEvent) => {
@@ -704,6 +726,55 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
                                 <X size={18} />
                             </button>
                         </div>
+
+                        {/* Group Selection Pills */}
+                        {selectedGroupRecords.length > 0 && (
+                            <div className="bg-black/40 p-3 rounded-2xl border border-white/10 space-y-2">
+                                <div className="flex items-center justify-between text-xs font-bold text-gray-400">
+                                    <span>Zonas de Danger neste local ({selectedGroupRecords.length}):</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {selectedGroupRecords.map((r, i) => (
+                                        <button
+                                            key={r.id}
+                                            type="button"
+                                            onClick={() => {
+                                                setEditingRecord(r);
+                                                setFormLocation(r.locationName || '');
+                                                setFormTimeStr(formatMinutesToMS(r.timeInMinutes));
+                                                setFormSafeNumber(r.safeNumber || 1);
+                                                setFormCount(r.count || 1);
+                                                setFormNotes(r.notes || '');
+                                            }}
+                                            className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg border transition-all ${
+                                                editingRecord?.id === r.id
+                                                ? 'bg-amber-500 text-black border-amber-400 font-black'
+                                                : 'bg-black/80 text-amber-400 border-amber-500/30 hover:border-amber-500'
+                                            }`}
+                                        >
+                                            #{i + 1} Safe {r.safeNumber || 1} ({formatMinutesToMS(r.timeInMinutes)}) - {r.count || 1}x
+                                        </button>
+                                    ))}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setEditingRecord(null);
+                                            setFormTimeStr('03:00');
+                                            setFormSafeNumber(1);
+                                            setFormCount(1);
+                                            setFormNotes('');
+                                        }}
+                                        className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1 ${
+                                            editingRecord === null
+                                            ? 'bg-yellow-400 text-black border-yellow-300 font-black'
+                                            : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/40 hover:bg-yellow-500/20'
+                                        }`}
+                                    >
+                                        <Plus size={12} /> + Outro Registro Neste Local
+                                    </button>
+                                </div>
+                            </div>
+                        )}
 
                         <form onSubmit={handleFormSubmit} className="space-y-4">
                             {/* Location Name */}

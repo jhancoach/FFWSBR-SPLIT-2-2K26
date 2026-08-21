@@ -224,7 +224,7 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
         return groups;
     }, [revivals]);
 
-    // Instant Map Click Action (Creates new point directly on map click)
+    // Map Click Action (Opens modal to specify Safe, Game Time and details)
     const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
         if (isDragging) return;
 
@@ -234,34 +234,31 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
 
         const locName = `Ponto ${Math.round(xPercent)},${Math.round(yPercent)}`;
 
-        const newRec: RevivalRecord = {
-            id: 'rev_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
-            mapId: selectedMap.id,
-            x: xPercent,
-            y: yPercent,
-            locationName: locName,
-            timeInMinutes: 3.0,
-            safeNumber: 1,
-            revivalCount: 1,
-            createdAt: Date.now()
-        };
-        saveRevivals([...revivals, newRec]);
+        // Find existing group nearby
+        const existingGroup = groupedRevivals.find(g => 
+            Math.abs(g.x - xPercent) <= 4 && Math.abs(g.y - yPercent) <= 4
+        );
+
+        if (existingGroup && existingGroup.items.length > 0) {
+            handleEditRecord(existingGroup.items[0], existingGroup.items);
+        } else {
+            setEditingRecord(null);
+            setSelectedGroupRecords([]);
+            setClickCoords({ x: xPercent, y: yPercent });
+            setFormLocation(locName);
+            setFormTimeStr('03:00');
+            setFormSafeNumber(1);
+            setFormTeam('');
+            setFormRevivalCount(1);
+            setFormNotes('');
+            setShowModal(true);
+        }
     };
 
-    // Marker Left Click (Increments +1)
+    // Marker Click (Opens modal for viewing and adding records with custom Safe & Game Time)
     const handleMarkerClick = (group: typeof groupedRevivals[0], e: React.MouseEvent) => {
         e.stopPropagation();
-        if (e.shiftKey) {
-            handleEditRecord(group.items[0], group.items, e);
-            return;
-        }
-
-        const mainRec = group.items[0];
-        const updated = revivals.map(r => r.id === mainRec.id ? {
-            ...r,
-            revivalCount: (r.revivalCount || 1) + 1
-        } : r);
-        saveRevivals(updated);
+        handleEditRecord(group.items[0], group.items, e);
     };
 
     // Marker Right Click (Decrements -1 or removes)

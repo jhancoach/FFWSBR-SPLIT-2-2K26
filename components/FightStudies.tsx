@@ -89,6 +89,7 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
     // Modal State
     const [showModal, setShowModal] = useState(false);
     const [editingRecord, setEditingRecord] = useState<FightRecord | null>(null);
+    const [selectedGroupRecords, setSelectedGroupRecords] = useState<FightRecord[]>([]);
     const [clickCoords, setClickCoords] = useState<{ x: number; y: number } | null>(null);
 
     // Form State
@@ -226,7 +227,7 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
         return groups;
     }, [fights]);
 
-    // Instant Map Click Action
+    // Map Click Action (Opens modal to specify Safe, Game Time and details)
     const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
         if (isDragging) return;
 
@@ -236,34 +237,32 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
 
         const locName = `Ponto ${Math.round(xPercent)},${Math.round(yPercent)}`;
 
-        const newRec: FightRecord = {
-            id: 'fight_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
-            mapId: selectedMap.id,
-            x: xPercent,
-            y: yPercent,
-            locationName: locName,
-            timeInMinutes: 4.0,
-            safeNumber: 1,
-            count: 1,
-            createdAt: Date.now()
-        };
-        saveFights([...fights, newRec]);
+        // Find existing group nearby
+        const existingGroup = groupedFights.find(g => 
+            Math.abs(g.x - xPercent) <= 4 && Math.abs(g.y - yPercent) <= 4
+        );
+
+        if (existingGroup && existingGroup.items.length > 0) {
+            handleEditRecord(existingGroup.items[0], existingGroup.items);
+        } else {
+            setEditingRecord(null);
+            setSelectedGroupRecords([]);
+            setClickCoords({ x: xPercent, y: yPercent });
+            setFormLocation(locName);
+            setFormTimeStr('04:00');
+            setFormSafeNumber(1);
+            setFormTeamA('');
+            setFormTeamB('');
+            setFormWinner('');
+            setFormNotes('');
+            setShowModal(true);
+        }
     };
 
-    // Marker Left Click (+1)
+    // Marker Click (Opens modal for viewing and adding records with custom Safe & Game Time)
     const handleMarkerClick = (group: typeof groupedFights[0], e: React.MouseEvent) => {
         e.stopPropagation();
-        if (e.shiftKey) {
-            handleEditRecord(group.items[0], e);
-            return;
-        }
-
-        const mainRec = group.items[0];
-        const updated = fights.map(r => r.id === mainRec.id ? {
-            ...r,
-            count: (r.count || 1) + 1
-        } : r);
-        saveFights(updated);
+        handleEditRecord(group.items[0], group.items, e);
     };
 
     // Marker Right Click (-1 or delete)
@@ -286,10 +285,11 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
         }
     };
 
-    // Open Modal for Editing Record
-    const handleEditRecord = (rec: FightRecord, e?: React.MouseEvent) => {
+    // Open Modal for Editing Record / Viewing Group Records
+    const handleEditRecord = (rec: FightRecord, groupItems?: FightRecord[], e?: React.MouseEvent) => {
         if (e) e.stopPropagation();
         setEditingRecord(rec);
+        setSelectedGroupRecords(groupItems && groupItems.length > 0 ? groupItems : [rec]);
         setClickCoords({ x: rec.x, y: rec.y });
         setFormLocation(rec.locationName || '');
         setFormTimeStr(formatMinutesToMS(rec.timeInMinutes));
@@ -299,6 +299,37 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
         setFormWinner(rec.winnerTeam || '');
         setFormNotes(rec.notes || '');
         setShowModal(true);
+    };
+
+    // Save as a NEW record at the current spot
+    const handleSaveAsNewRecord = (e?: React.MouseEvent) => {
+        if (e) e.preventDefault();
+        const minutes = parseMSToMinutes(formTimeStr);
+        if (minutes <= 0) {
+            alert("Por favor, digite um tempo válido em minutos/segundos (Ex: 04:15 ou 4.25).");
+            return;
+        }
+
+        const locName = formLocation.trim() || 'Zona ' + (clickCoords ? `${Math.round(clickCoords.x)},${Math.round(clickCoords.y)}` : 'Geral');
+
+        if (clickCoords) {
+            const newRec: FightRecord = {
+                id: 'fight_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+                mapId: selectedMap.id,
+                x: clickCoords.x,
+                y: clickCoords.y,
+                locationName: locName,
+                timeInMinutes: minutes,
+                safeNumber: formSafeNumber,
+                teamA: formTeamA.trim() || undefined,
+                teamB: formTeamB.trim() || undefined,
+                winnerTeam: formWinner.trim() || undefined,
+                notes: formNotes.trim() || undefined,
+                createdAt: Date.now()
+            };
+            saveFights([...fights, newRec]);
+        }
+        setShowModal(false);
     };
 
     // Handle Form Submit
@@ -538,6 +569,59 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
                                 </p>
                             </div>
                         </div>
+
+                        {/* Group Selection Pills */}
+                        {selectedGroupRecords.length > 0 && (
+                            <div className="bg-black/40 p-3 rounded-2xl border border-white/10 mb-4 space-y-2">
+                                <div className="flex items-center justify-between text-xs font-bold text-gray-400">
+                                    <span>Trocações neste local ({selectedGroupRecords.length}):</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {selectedGroupRecords.map((r, i) => (
+                                        <button
+                                            key={r.id}
+                                            type="button"
+                                            onClick={() => {
+                                                setEditingRecord(r);
+                                                setFormLocation(r.locationName || '');
+                                                setFormTimeStr(formatMinutesToMS(r.timeInMinutes));
+                                                setFormSafeNumber(r.safeNumber || 1);
+                                                setFormTeamA(r.teamA || '');
+                                                setFormTeamB(r.teamB || '');
+                                                setFormWinner(r.winnerTeam || '');
+                                                setFormNotes(r.notes || '');
+                                            }}
+                                            className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg border transition-all ${
+                                                editingRecord?.id === r.id
+                                                ? 'bg-red-500 text-white border-red-400 font-black'
+                                                : 'bg-black/80 text-red-400 border-red-500/30 hover:border-red-500'
+                                            }`}
+                                        >
+                                            #{i + 1} S{r.safeNumber || 1} ({formatMinutesToMS(r.timeInMinutes)})
+                                        </button>
+                                    ))}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setEditingRecord(null);
+                                            setFormTimeStr('04:00');
+                                            setFormSafeNumber(1);
+                                            setFormTeamA('');
+                                            setFormTeamB('');
+                                            setFormWinner('');
+                                            setFormNotes('');
+                                        }}
+                                        className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1 ${
+                                            editingRecord === null
+                                            ? 'bg-yellow-400 text-black border-yellow-300 font-black'
+                                            : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/40 hover:bg-yellow-500/20'
+                                        }`}
+                                    >
+                                        <Plus size={12} /> + Adicionar Outro Registro
+                                    </button>
+                                </div>
+                            </div>
+                        )}
 
                         <form onSubmit={handleFormSubmit} className="space-y-4">
                             {/* Location Name Input & Shortcuts */}
