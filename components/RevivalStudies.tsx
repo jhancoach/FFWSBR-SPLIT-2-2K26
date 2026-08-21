@@ -86,6 +86,7 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
     // Modal State
     const [showModal, setShowModal] = useState(false);
     const [editingRecord, setEditingRecord] = useState<RevivalRecord | null>(null);
+    const [selectedGroupRecords, setSelectedGroupRecords] = useState<RevivalRecord[]>([]);
     const [clickCoords, setClickCoords] = useState<{ x: number; y: number } | null>(null);
 
     // Form State
@@ -223,7 +224,7 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
         return groups;
     }, [revivals]);
 
-    // Open Modal for New Record (Map Click)
+    // Instant Map Click Action (Creates new point directly on map click)
     const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
         if (isDragging) return;
 
@@ -231,23 +232,67 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
         const xPercent = Math.round((((e.clientX - rect.left) / rect.width) * 100) * 10) / 10;
         const yPercent = Math.round((((e.clientY - rect.top) / rect.height) * 100) * 10) / 10;
 
-        setClickCoords({ x: xPercent, y: yPercent });
-        setEditingRecord(null);
+        // Find nearest map location name if available
+        const nearbyLoc = selectedMap.locations.find(loc => 
+            Math.abs(loc.x - xPercent) <= 8 && Math.abs(loc.y - yPercent) <= 8
+        );
+        const locName = nearbyLoc ? nearbyLoc.name : `Ponto ${Math.round(xPercent)},${Math.round(yPercent)}`;
 
-        // Reset form
-        setFormLocation('');
-        setFormTimeStr('03:00');
-        setFormSafeNumber(1);
-        setFormTeam('');
-        setFormRevivalCount(1);
-        setFormNotes('');
-        setShowModal(true);
+        const newRec: RevivalRecord = {
+            id: 'rev_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+            mapId: selectedMap.id,
+            x: xPercent,
+            y: yPercent,
+            locationName: locName,
+            timeInMinutes: 3.0,
+            safeNumber: 1,
+            revivalCount: 1,
+            createdAt: Date.now()
+        };
+        saveRevivals([...revivals, newRec]);
     };
 
-    // Open Modal for Editing Record
-    const handleEditRecord = (rec: RevivalRecord, e?: React.MouseEvent) => {
+    // Marker Left Click (Increments +1)
+    const handleMarkerClick = (group: typeof groupedRevivals[0], e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (e.shiftKey) {
+            handleEditRecord(group.items[0], group.items, e);
+            return;
+        }
+
+        const mainRec = group.items[0];
+        const updated = revivals.map(r => r.id === mainRec.id ? {
+            ...r,
+            revivalCount: (r.revivalCount || 1) + 1
+        } : r);
+        saveRevivals(updated);
+    };
+
+    // Marker Right Click (Decrements -1 or removes)
+    const handleMarkerRightClick = (group: typeof groupedRevivals[0], e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const mainRec = group.items[0];
+        const currentCount = mainRec.revivalCount || 1;
+
+        if (currentCount > 1) {
+            const updated = revivals.map(r => r.id === mainRec.id ? {
+                ...r,
+                revivalCount: currentCount - 1
+            } : r);
+            saveRevivals(updated);
+        } else {
+            const updated = revivals.filter(r => r.id !== mainRec.id);
+            saveRevivals(updated);
+        }
+    };
+
+    // Open Modal for Editing/Viewing Group Records
+    const handleEditRecord = (rec: RevivalRecord, groupItems?: RevivalRecord[], e?: React.MouseEvent) => {
         if (e) e.stopPropagation();
         setEditingRecord(rec);
+        setSelectedGroupRecords(groupItems && groupItems.length > 0 ? groupItems : [rec]);
         setClickCoords({ x: rec.x, y: rec.y });
         setFormLocation(rec.locationName || '');
         setFormTimeStr(formatMinutesToMS(rec.timeInMinutes));
@@ -256,6 +301,36 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
         setFormRevivalCount(rec.revivalCount || 1);
         setFormNotes(rec.notes || '');
         setShowModal(true);
+    };
+
+    // Save as a NEW record at the current spot
+    const handleSaveAsNewRecord = (e?: React.MouseEvent) => {
+        if (e) e.preventDefault();
+        const minutes = parseMSToMinutes(formTimeStr);
+        if (minutes <= 0) {
+            alert("Por favor, digite um tempo válido em minutos/segundos (Ex: 03:30 ou 3.5).");
+            return;
+        }
+
+        const locName = formLocation.trim() || 'Zona ' + (clickCoords ? `${Math.round(clickCoords.x)},${Math.round(clickCoords.y)}` : 'Geral');
+
+        if (clickCoords) {
+            const newRec: RevivalRecord = {
+                id: 'rev_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+                mapId: selectedMap.id,
+                x: clickCoords.x,
+                y: clickCoords.y,
+                locationName: locName,
+                timeInMinutes: minutes,
+                safeNumber: formSafeNumber,
+                teamName: formTeam.trim() || undefined,
+                revivalCount: formRevivalCount,
+                notes: formNotes.trim() || undefined,
+                createdAt: Date.now()
+            };
+            saveRevivals([...revivals, newRec]);
+        }
+        setShowModal(false);
     };
 
     // Handle Form Submit
@@ -492,6 +567,57 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
                             </div>
                         </div>
 
+                        {/* Existing Records Selector at this spot */}
+                        {selectedGroupRecords.length > 0 && (
+                            <div className="mb-4 p-3 bg-black/60 rounded-2xl border border-white/10">
+                                <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+                                    <span>Registros neste local ({selectedGroupRecords.reduce((acc, r) => acc + (r.revivalCount || 1), 0)} revividos):</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {selectedGroupRecords.map((r, i) => (
+                                        <button
+                                            key={r.id}
+                                            type="button"
+                                            onClick={() => {
+                                                setEditingRecord(r);
+                                                setFormLocation(r.locationName || '');
+                                                setFormTimeStr(formatMinutesToMS(r.timeInMinutes));
+                                                setFormSafeNumber(r.safeNumber || 1);
+                                                setFormTeam(r.teamName || '');
+                                                setFormRevivalCount(r.revivalCount || 1);
+                                                setFormNotes(r.notes || '');
+                                            }}
+                                            className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg border transition-all ${
+                                                editingRecord?.id === r.id
+                                                ? 'bg-emerald-500 text-black border-emerald-400 font-black'
+                                                : 'bg-black/80 text-emerald-400 border-emerald-500/30 hover:border-emerald-500'
+                                            }`}
+                                        >
+                                            #{i + 1} S{r.safeNumber || 1} ({formatMinutesToMS(r.timeInMinutes)}) - {r.revivalCount || 1}x
+                                        </button>
+                                    ))}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setEditingRecord(null);
+                                            setFormTimeStr('03:00');
+                                            setFormSafeNumber(1);
+                                            setFormTeam('');
+                                            setFormRevivalCount(1);
+                                            setFormNotes('');
+                                        }}
+                                        className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1 ${
+                                            editingRecord === null
+                                            ? 'bg-yellow-400 text-black border-yellow-300 font-black'
+                                            : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/40 hover:bg-yellow-500/20'
+                                        }`}
+                                    >
+                                        <Plus size={12} /> + Adicionar Outro Registro
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                         <form onSubmit={handleFormSubmit} className="space-y-4">
                             {/* Location Name Input & Shortcuts */}
                             <div>
@@ -660,19 +786,28 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
                             </div>
 
                             {/* Buttons */}
-                            <div className="flex gap-3 pt-4">
+                            <div className="flex flex-col sm:flex-row gap-2 pt-4">
                                 <button 
                                     type="button" 
                                     onClick={() => setShowModal(false)}
-                                    className="flex-1 bg-white/5 hover:bg-white/10 text-gray-400 font-bold uppercase tracking-widest py-3 rounded-xl transition-colors text-xs"
+                                    className="px-4 bg-white/5 hover:bg-white/10 text-gray-400 font-bold uppercase tracking-widest py-3 rounded-xl transition-colors text-xs"
                                 >
                                     Cancelar
                                 </button>
+                                {editingRecord && (
+                                    <button 
+                                        type="button"
+                                        onClick={handleSaveAsNewRecord}
+                                        className="flex-1 bg-yellow-400 hover:bg-yellow-300 text-black font-black uppercase tracking-widest py-3 rounded-xl transition-colors text-xs shadow-lg shadow-yellow-400/20"
+                                    >
+                                        + Salvar Como Novo Registro
+                                    </button>
+                                )}
                                 <button 
                                     type="submit" 
                                     className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-black font-black uppercase tracking-widest py-3 rounded-xl transition-colors text-xs shadow-lg shadow-emerald-500/20"
                                 >
-                                    {editingRecord ? 'Atualizar Registro' : 'Salvar Revivido'}
+                                    {editingRecord ? 'Atualizar Este Registro' : 'Salvar Revivido Neste Local'}
                                 </button>
                             </div>
                         </form>
@@ -866,29 +1001,26 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
                                     return (
                                         <div 
                                             key={group.id}
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleEditRecord(group.items[0], e);
-                                            }}
+                                            onClick={(e) => handleMarkerClick(group, e)}
+                                            onContextMenu={(e) => handleMarkerRightClick(group, e)}
                                             onMouseEnter={() => setHoveredRecordId(group.id)}
                                             onMouseLeave={() => setHoveredRecordId(null)}
                                             className={`absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer z-20 group transition-all duration-200 ${
                                                 isHovered ? 'scale-125 z-30' : 'hover:scale-110'
                                             }`}
                                             style={{ left: `${group.x}%`, top: `${group.y}%` }}
+                                            title="Clique para +1 | Botão Direito para -1 | Shift+Clique para Editar"
                                         >
                                             {/* Pulse Aura */}
                                             <div className="absolute -inset-2 rounded-full bg-emerald-500/30 blur-sm animate-ping pointer-events-none"></div>
 
-                                            {/* Pin Marker - ONLY QUANTITY AND % */}
-                                            <div className={`relative flex items-center gap-1.5 px-2.5 py-1 rounded-lg border shadow-2xl transition-all ${
+                                            {/* Pin Marker - ONLY QUANTITY NUMBER */}
+                                            <div className={`relative flex items-center justify-center rounded-full border-2 shadow-2xl transition-all ${
                                                 isHovered 
-                                                ? 'bg-yellow-500 text-black border-white ring-2 ring-yellow-300' 
-                                                : 'bg-black/90 text-white border-yellow-500/60 hover:bg-black/95'
-                                            }`}>
-                                                <span className="font-mono text-xs font-black text-yellow-400">{group.count}</span>
-                                                <span className="text-gray-500 text-xs font-normal">|</span>
-                                                <span className="font-mono text-xs font-black text-white">{group.pct}%</span>
+                                                ? 'bg-yellow-400 text-black border-white ring-4 ring-yellow-400/50 scale-110' 
+                                                : 'bg-black/95 text-yellow-400 border-yellow-400 hover:bg-black'
+                                            } min-w-[32px] h-8 px-2 font-mono text-xs font-black`}>
+                                                {group.count}
                                             </div>
 
                                             {/* Tooltip on Hover */}
@@ -896,15 +1028,25 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
                                                 <div className="font-black text-emerald-400 uppercase italic flex items-center justify-between gap-3">
                                                     <span>{group.locationName}</span>
                                                     <span className="text-black bg-yellow-400 font-black text-[9px] px-1.5 py-0.5 rounded uppercase">
-                                                        {group.count} REVIVIDOS ({group.pct}%)
+                                                        {group.count} REVIVIDO{group.count > 1 ? 'S' : ''}
                                                     </span>
                                                 </div>
                                                 <div className="mt-1 flex flex-col gap-1 max-h-32 overflow-y-auto">
                                                     {group.items.map((rec, idx) => (
                                                         <div key={rec.id || idx} className="text-gray-300 font-mono text-[9px] border-t border-white/10 pt-0.5">
-                                                            ⏱️ {formatMinutesToMS(rec.timeInMinutes)} | Safe {rec.safeNumber || 1} {rec.teamName ? `| 🛡️ ${rec.teamName}` : ''}
+                                                            ⏱️ {formatMinutesToMS(rec.timeInMinutes)} | Safe {rec.safeNumber || 1} ({rec.revivalCount || 1}x) {rec.teamName ? `| 🛡️ ${rec.teamName}` : ''}
                                                         </div>
                                                     ))}
+                                                </div>
+                                                <div className="mt-2 border-t border-white/10 pt-1.5 flex items-center justify-between gap-2 text-[9px] font-semibold text-gray-400">
+                                                    <span>⚡ Clique: +1 | 🖱️ Dir: -1</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => handleEditRecord(group.items[0], group.items, e)}
+                                                        className="text-yellow-400 hover:underline font-bold"
+                                                    >
+                                                        ⚙️ Editar
+                                                    </button>
                                                 </div>
                                             </div>
                                         </div>
@@ -915,13 +1057,17 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
                     </div>
 
                     {/* Footer Tip */}
-                    <div className="w-full flex items-center justify-between text-[11px] text-gray-400 bg-black/40 px-4 py-2 rounded-xl border border-white/5">
+                    <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-gray-400 bg-black/40 px-4 py-2.5 rounded-xl border border-white/5">
                         <span className="flex items-center gap-1.5">
-                            <Info size={14} className="text-emerald-400" />
-                            Clique em um ponto marcado no mapa para editar ou apagar.
+                            <Info size={14} className="text-emerald-400 shrink-0" />
+                            <span>
+                                <strong className="text-white">Clique Esquerdo:</strong> +1 no local &nbsp;|&nbsp; 
+                                <strong className="text-white"> Botão Direito:</strong> -1 &nbsp;|&nbsp; 
+                                <strong className="text-white"> Shift + Clique:</strong> Detalhes
+                            </span>
                         </span>
-                        <span className="font-mono text-emerald-400 font-bold">
-                            {revivals.length} Ponto{revivals.length !== 1 ? 's' : ''} Marcado{revivals.length !== 1 ? 's' : ''}
+                        <span className="font-mono text-emerald-400 font-bold shrink-0">
+                            {totalCount} Revivido{totalCount !== 1 ? 's' : ''} em {revivals.length} Ponto{revivals.length !== 1 ? 's' : ''}
                         </span>
                     </div>
                 </div>

@@ -23,6 +23,7 @@ export interface FightRecord {
     teamB?: string;
     winnerTeam?: string;
     notes?: string;
+    count?: number;
     createdAt: number;
 }
 
@@ -225,7 +226,7 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
         return groups;
     }, [fights]);
 
-    // Open Modal for New Record (Map Click)
+    // Instant Map Click Action
     const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
         if (isDragging) return;
 
@@ -233,17 +234,59 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
         const xPercent = Math.round((((e.clientX - rect.left) / rect.width) * 100) * 10) / 10;
         const yPercent = Math.round((((e.clientY - rect.top) / rect.height) * 100) * 10) / 10;
 
-        setClickCoords({ x: xPercent, y: yPercent });
-        setEditingRecord(null);
+        const nearbyLoc = selectedMap.locations.find(loc => 
+            Math.abs(loc.x - xPercent) <= 8 && Math.abs(loc.y - yPercent) <= 8
+        );
+        const locName = nearbyLoc ? nearbyLoc.name : `Ponto ${Math.round(xPercent)},${Math.round(yPercent)}`;
 
-        setFormLocation('');
-        setFormTimeStr('04:00');
-        setFormSafeNumber(1);
-        setFormTeamA('');
-        setFormTeamB('');
-        setFormWinner('');
-        setFormNotes('');
-        setShowModal(true);
+        const newRec: FightRecord = {
+            id: 'fight_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+            mapId: selectedMap.id,
+            x: xPercent,
+            y: yPercent,
+            locationName: locName,
+            timeInMinutes: 4.0,
+            safeNumber: 1,
+            count: 1,
+            createdAt: Date.now()
+        };
+        saveFights([...fights, newRec]);
+    };
+
+    // Marker Left Click (+1)
+    const handleMarkerClick = (group: typeof groupedFights[0], e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (e.shiftKey) {
+            handleEditRecord(group.items[0], e);
+            return;
+        }
+
+        const mainRec = group.items[0];
+        const updated = fights.map(r => r.id === mainRec.id ? {
+            ...r,
+            count: (r.count || 1) + 1
+        } : r);
+        saveFights(updated);
+    };
+
+    // Marker Right Click (-1 or delete)
+    const handleMarkerRightClick = (group: typeof groupedFights[0], e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const mainRec = group.items[0];
+        const currentCount = mainRec.count || 1;
+
+        if (currentCount > 1) {
+            const updated = fights.map(r => r.id === mainRec.id ? {
+                ...r,
+                count: currentCount - 1
+            } : r);
+            saveFights(updated);
+        } else {
+            const updated = fights.filter(r => r.id !== mainRec.id);
+            saveFights(updated);
+        }
     };
 
     // Open Modal for Editing Record
@@ -868,29 +911,26 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
                                     return (
                                         <div 
                                             key={group.id}
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleEditRecord(group.items[0], e);
-                                            }}
+                                            onClick={(e) => handleMarkerClick(group, e)}
+                                            onContextMenu={(e) => handleMarkerRightClick(group, e)}
                                             onMouseEnter={() => setHoveredRecordId(group.id)}
                                             onMouseLeave={() => setHoveredRecordId(null)}
                                             className={`absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer z-20 group transition-all duration-200 ${
                                                 isHovered ? 'scale-125 z-30' : 'hover:scale-110'
                                             }`}
                                             style={{ left: `${group.x}%`, top: `${group.y}%` }}
+                                            title="Clique para +1 | Botão Direito para -1 | Shift+Clique para Editar"
                                         >
                                             {/* Pulse Aura */}
                                             <div className="absolute -inset-2 rounded-full bg-red-500/30 blur-sm animate-ping pointer-events-none"></div>
 
-                                            {/* Pin Marker - ONLY QUANTITY AND % */}
-                                            <div className={`relative flex items-center gap-1.5 px-2.5 py-1 rounded-lg border shadow-2xl transition-all ${
+                                            {/* Pin Marker - ONLY QUANTITY NUMBER */}
+                                            <div className={`relative flex items-center justify-center rounded-full border-2 shadow-2xl transition-all ${
                                                 isHovered 
-                                                ? 'bg-yellow-500 text-black border-white ring-2 ring-yellow-300' 
-                                                : 'bg-black/90 text-white border-yellow-500/60 hover:bg-black/95'
-                                            }`}>
-                                                <span className="font-mono text-xs font-black text-yellow-400">{group.count}</span>
-                                                <span className="text-gray-500 text-xs font-normal">|</span>
-                                                <span className="font-mono text-xs font-black text-white">{group.pct}%</span>
+                                                ? 'bg-yellow-400 text-black border-white ring-4 ring-yellow-400/50 scale-110' 
+                                                : 'bg-black/95 text-red-400 border-red-500 hover:bg-black'
+                                            } min-w-[32px] h-8 px-2 font-mono text-xs font-black`}>
+                                                {group.count}
                                             </div>
 
                                             {/* Tooltip on Hover */}
@@ -898,7 +938,7 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
                                                 <div className="font-black text-red-400 uppercase italic flex items-center justify-between gap-3">
                                                     <span>{group.locationName}</span>
                                                     <span className="text-black bg-yellow-400 font-black text-[9px] px-1.5 py-0.5 rounded uppercase">
-                                                        {group.count} TROCAÇÕES ({group.pct}%)
+                                                        {group.count} TROCAÇÃO{group.count > 1 ? 'ÕES' : 'ÃO'}
                                                     </span>
                                                 </div>
                                                 <div className="mt-1 flex flex-col gap-1 max-h-32 overflow-y-auto">
@@ -907,6 +947,16 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
                                                             ⚔️ {rec.teamA || 'Time 1'} vs {rec.teamB || 'Time 2'} {rec.winnerTeam ? `(Vencedor: ${rec.winnerTeam})` : ''} | ⏱️ {formatMinutesToMS(rec.timeInMinutes)}
                                                         </div>
                                                     ))}
+                                                </div>
+                                                <div className="mt-2 border-t border-white/10 pt-1.5 flex items-center justify-between gap-2 text-[9px] font-semibold text-gray-400">
+                                                    <span>⚡ Clique: +1 | 🖱️ Dir: -1</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => handleEditRecord(group.items[0], e)}
+                                                        className="text-yellow-400 hover:underline font-bold"
+                                                    >
+                                                        ⚙️ Editar
+                                                    </button>
                                                 </div>
                                             </div>
                                         </div>
@@ -917,13 +967,17 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
                     </div>
 
                     {/* Footer Tip */}
-                    <div className="w-full flex items-center justify-between text-[11px] text-gray-400 bg-black/40 px-4 py-2 rounded-xl border border-white/5">
+                    <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-gray-400 bg-black/40 px-4 py-2.5 rounded-xl border border-white/5">
                         <span className="flex items-center gap-1.5">
-                            <Info size={14} className="text-red-400" />
-                            Clique em uma trocação marcada para editar ou apagar.
+                            <Info size={14} className="text-red-400 shrink-0" />
+                            <span>
+                                <strong className="text-white">Clique Esquerdo:</strong> +1 no local &nbsp;|&nbsp; 
+                                <strong className="text-white"> Botão Direito:</strong> -1 &nbsp;|&nbsp; 
+                                <strong className="text-white"> Shift + Clique:</strong> Detalhes
+                            </span>
                         </span>
-                        <span className="font-mono text-red-400 font-bold">
-                            {fights.length} Ponto{fights.length !== 1 ? 's' : ''} Marcado{fights.length !== 1 ? 's' : ''}
+                        <span className="font-mono text-red-400 font-bold shrink-0">
+                            {fights.reduce((a, b) => a + (b.count || 1), 0)} Trocações em {fights.length} Ponto{fights.length !== 1 ? 's' : ''}
                         </span>
                     </div>
                 </div>

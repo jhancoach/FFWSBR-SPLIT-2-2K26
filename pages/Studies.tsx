@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Map as MapIcon, Trash2, Crosshair, ZoomIn, ZoomOut, Move, LogIn, LogOut, X, Download, Upload, Tv, Play, Plus, ExternalLink, Youtube, Film, Info, Shield, BarChart2, Trophy, Flame, Target, Layers, ListOrdered, TrendingUp, User, Users, Search, Award, Swords, LayoutGrid, ArrowUpDown, MapPin, HeartPulse } from 'lucide-react';
+import { Map as MapIcon, Trash2, Crosshair, ZoomIn, ZoomOut, Move, LogIn, LogOut, X, Download, Upload, Tv, Play, Plus, ExternalLink, Youtube, Film, Info, Shield, BarChart2, Trophy, Flame, Target, Layers, ListOrdered, TrendingUp, User, Users, Search, Award, Swords, LayoutGrid, ArrowUpDown, MapPin, HeartPulse, AlertTriangle } from 'lucide-react';
 import { doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db, auth, isFirebasePlaceholder } from '../firebase';
 import { OperationType, handleFirestoreError } from '../utils/firestoreError';
@@ -8,6 +8,7 @@ import { findTeamLogo } from '../utils/teamUtils';
 import { getRestedTeamsInRound, parseRoundNumber } from '../utils/scheduleData';
 import { RevivalStudies } from '../components/RevivalStudies';
 import { FightStudies } from '../components/FightStudies';
+import { DangerStudies } from '../components/DangerStudies';
 
 const MAPS = [
     { id: 'BER', name: 'Bermuda', url: 'https://i.ibb.co/q34yct8f/BERMUDA-MAPA.png' },
@@ -76,7 +77,7 @@ interface StudiesProps {
 }
 
 const Studies: React.FC<StudiesProps> = ({ data }) => {
-    const [activeMainTab, setActiveMainTab] = useState<'safe' | 'revives' | 'fights' | 'mapstream'>('safe');
+    const [activeMainTab, setActiveMainTab] = useState<'safe' | 'revives' | 'fights' | 'dangers' | 'mapstream'>('safe');
 
     // Safe Studies State
     const [selectedMap, setSelectedMap] = useState(MAPS[0]);
@@ -579,6 +580,17 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
                         Estudos de Trocações
                     </button>
                     <button
+                        onClick={() => setActiveMainTab('dangers')}
+                        className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all ${
+                            activeMainTab === 'dangers'
+                            ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20 scale-[1.02]'
+                            : 'text-gray-400 hover:text-white hover:bg-white/5'
+                        }`}
+                    >
+                        <AlertTriangle size={16} />
+                        Estudos de Dangers
+                    </button>
+                    <button
                         onClick={() => setActiveMainTab('mapstream')}
                         className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all ${
                             activeMainTab === 'mapstream'
@@ -812,6 +824,18 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
             {/* TAB 3: ESTUDOS DE TROCAÇÕES */}
             {activeMainTab === 'fights' && (
                 <FightStudies
+                    maps={MAPS}
+                    selectedMap={selectedMap}
+                    setSelectedMap={setSelectedMap}
+                    data={data}
+                    isAdmin={isAdmin}
+                    setShowAuthModal={setShowAuthModal}
+                />
+            )}
+
+            {/* TAB 4: ESTUDOS DE DANGERS */}
+            {activeMainTab === 'dangers' && (
+                <DangerStudies
                     maps={MAPS}
                     selectedMap={selectedMap}
                     setSelectedMap={setSelectedMap}
