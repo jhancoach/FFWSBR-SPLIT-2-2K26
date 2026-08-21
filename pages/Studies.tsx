@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Map as MapIcon, Trash2, Crosshair, ZoomIn, ZoomOut, Move, LogIn, LogOut, X, Download, Upload, Tv, Play, Plus, ExternalLink, Youtube, Film, Info, Shield, BarChart2, Trophy, Flame, Target, Layers, ListOrdered, TrendingUp, User, Users, Search, Award, Swords, LayoutGrid, ArrowUpDown, MapPin } from 'lucide-react';
+import { Map as MapIcon, Trash2, Crosshair, ZoomIn, ZoomOut, Move, LogIn, LogOut, X, Download, Upload, Tv, Play, Plus, ExternalLink, Youtube, Film, Info, Shield, BarChart2, Trophy, Flame, Target, Layers, ListOrdered, TrendingUp, User, Users, Search, Award, Swords, LayoutGrid, ArrowUpDown, MapPin, HeartPulse } from 'lucide-react';
 import { doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db, auth, isFirebasePlaceholder } from '../firebase';
 import { OperationType, handleFirestoreError } from '../utils/firestoreError';
 import { DashboardData } from '../types';
 import { findTeamLogo } from '../utils/teamUtils';
 import { getRestedTeamsInRound, parseRoundNumber } from '../utils/scheduleData';
+import { RevivalStudies } from '../components/RevivalStudies';
+import { FightStudies } from '../components/FightStudies';
 
 const MAPS = [
     { id: 'BER', name: 'Bermuda', url: 'https://i.ibb.co/q34yct8f/BERMUDA-MAPA.png' },
@@ -74,7 +76,7 @@ interface StudiesProps {
 }
 
 const Studies: React.FC<StudiesProps> = ({ data }) => {
-    const [activeMainTab, setActiveMainTab] = useState<'safe' | 'mapstream'>('safe');
+    const [activeMainTab, setActiveMainTab] = useState<'safe' | 'revives' | 'fights' | 'mapstream'>('safe');
 
     // Safe Studies State
     const [selectedMap, setSelectedMap] = useState(MAPS[0]);
@@ -552,12 +554,12 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
 
             {/* Top Navigation Tabs: Estudos de Safe vs MapStream */}
             <div className="flex flex-col md:flex-row items-center justify-between gap-4 border-b border-gray-800 pb-4">
-                <div className="flex bg-black/50 p-1.5 rounded-2xl border border-white/5 shadow-inner w-full md:w-auto">
+                <div className="flex bg-black/60 p-1.5 rounded-2xl border border-white/10 shadow-inner w-full md:w-auto overflow-x-auto custom-scrollbar gap-1">
                     <button
                         onClick={() => setActiveMainTab('safe')}
-                        className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+                        className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all ${
                             activeMainTab === 'safe'
-                            ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 scale-102'
+                            ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 scale-[1.02]'
                             : 'text-gray-400 hover:text-white hover:bg-white/5'
                         }`}
                     >
@@ -565,16 +567,40 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
                         Estudos de Safe
                     </button>
                     <button
+                        onClick={() => setActiveMainTab('revives')}
+                        className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all ${
+                            activeMainTab === 'revives'
+                            ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 scale-[1.02]'
+                            : 'text-gray-400 hover:text-white hover:bg-white/5'
+                        }`}
+                    >
+                        <HeartPulse size={16} />
+                        Estudos de Revividos
+                    </button>
+                    <button
+                        onClick={() => setActiveMainTab('fights')}
+                        className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all ${
+                            activeMainTab === 'fights'
+                            ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 scale-[1.02]'
+                            : 'text-gray-400 hover:text-white hover:bg-white/5'
+                        }`}
+                    >
+                        <Swords size={16} />
+                        Estudos de Trocações
+                    </button>
+                    <button
                         onClick={() => setActiveMainTab('mapstream')}
-                        className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+                        className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all ${
                             activeMainTab === 'mapstream'
-                            ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 scale-102'
+                            ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 scale-[1.02]'
                             : 'text-gray-400 hover:text-white hover:bg-white/5'
                         }`}
                     >
                         <Tv size={16} />
                         MapStream
-                        <span className="bg-red-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase animate-pulse">
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase transition-all ${
+                            activeMainTab === 'mapstream' ? 'bg-black text-yellow-400 font-black' : 'bg-red-600 text-white animate-pulse'
+                        }`}>
                             {mapStreams.length}
                         </span>
                     </button>
@@ -779,6 +805,30 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* TAB 2: ESTUDOS DE REVIVIDOS */}
+            {activeMainTab === 'revives' && (
+                <RevivalStudies
+                    maps={MAPS}
+                    selectedMap={selectedMap}
+                    setSelectedMap={setSelectedMap}
+                    data={data}
+                    isAdmin={isAdmin}
+                    setShowAuthModal={setShowAuthModal}
+                />
+            )}
+
+            {/* TAB 3: ESTUDOS DE TROCAÇÕES */}
+            {activeMainTab === 'fights' && (
+                <FightStudies
+                    maps={MAPS}
+                    selectedMap={selectedMap}
+                    setSelectedMap={setSelectedMap}
+                    data={data}
+                    isAdmin={isAdmin}
+                    setShowAuthModal={setShowAuthModal}
+                />
             )}
 
             {/* TAB 3: MAPSTREAM */}
