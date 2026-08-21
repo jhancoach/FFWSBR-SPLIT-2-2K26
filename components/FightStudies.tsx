@@ -234,10 +234,7 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
         const xPercent = Math.round((((e.clientX - rect.left) / rect.width) * 100) * 10) / 10;
         const yPercent = Math.round((((e.clientY - rect.top) / rect.height) * 100) * 10) / 10;
 
-        const nearbyLoc = selectedMap.locations.find(loc => 
-            Math.abs(loc.x - xPercent) <= 8 && Math.abs(loc.y - yPercent) <= 8
-        );
-        const locName = nearbyLoc ? nearbyLoc.name : `Ponto ${Math.round(xPercent)},${Math.round(yPercent)}`;
+        const locName = `Ponto ${Math.round(xPercent)},${Math.round(yPercent)}`;
 
         const newRec: FightRecord = {
             id: 'fight_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),

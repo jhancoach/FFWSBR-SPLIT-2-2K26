@@ -213,10 +213,7 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
         const xPercent = Math.round((((e.clientX - rect.left) / rect.width) * 100) * 10) / 10;
         const yPercent = Math.round((((e.clientY - rect.top) / rect.height) * 100) * 10) / 10;
 
-        const nearbyLoc = selectedMap.locations?.find((loc: any) => 
-            Math.abs(loc.x - xPercent) <= 8 && Math.abs(loc.y - yPercent) <= 8
-        );
-        const locName = nearbyLoc ? nearbyLoc.name : `Ponto ${Math.round(xPercent)},${Math.round(yPercent)}`;
+        const locName = `Ponto ${Math.round(xPercent)},${Math.round(yPercent)}`;
 
         const newRec: DangerRecord = {
             id: 'danger_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
@@ -483,7 +480,6 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
                             }}
                             onMouseUp={() => setIsDragging(false)}
                             onMouseLeave={() => setIsDragging(false)}
-                            onClick={handleMapClick}
                         >
                             <div 
                                 className="relative w-full h-full transition-transform duration-75 ease-out origin-center"
@@ -497,6 +493,12 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
                                     alt={selectedMap.name} 
                                     className="w-full h-full object-cover pointer-events-none"
                                 />
+
+                                {/* Click layer */}
+                                <div 
+                                    className="absolute inset-0 z-10" 
+                                    onClick={handleMapClick}
+                                >
 
                                 {/* Render Danger Pins */}
                                 {groupedDangers.map((group) => {
@@ -542,6 +544,7 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
                                         </div>
                                     );
                                 })}
+                                </div>
                             </div>
                         </div>
 
