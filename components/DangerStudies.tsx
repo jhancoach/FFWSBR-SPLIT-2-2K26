@@ -168,7 +168,16 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
         return mapDangers.reduce((acc, item) => acc + (item.count || 1), 0);
     }, [mapDangers]);
 
-    // Grouping nearby danger points (distance threshold ~ 3.5%)
+    // Filtered Dangers for map rendering and sidebar list
+    const filteredDangers = useMemo(() => {
+        return mapDangers.filter(r => {
+            const matchesSearch = !searchFilter || (r.locationName && r.locationName.toLowerCase().includes(searchFilter.toLowerCase())) || (r.notes && r.notes.toLowerCase().includes(searchFilter.toLowerCase()));
+            const matchesSafe = safeFilter === 'ALL' || r.safeNumber === safeFilter || (safeFilter === 1 && !r.safeNumber);
+            return matchesSearch && matchesSafe;
+        });
+    }, [mapDangers, searchFilter, safeFilter]);
+
+    // Grouping nearby danger points (distance threshold ~ 3.5%) using filtered list
     const groupedDangers = useMemo(() => {
         const groups: {
             id: string;
@@ -180,7 +189,9 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
             items: DangerRecord[];
         }[] = [];
 
-        mapDangers.forEach(record => {
+        const total = filteredDangers.reduce((acc, item) => acc + (item.count || 1), 0);
+
+        filteredDangers.forEach(record => {
             const currentCount = record.count || 1;
             const existing = groups.find(g => Math.abs(g.x - record.x) <= 3.5 && Math.abs(g.y - record.y) <= 3.5);
             if (existing) {
@@ -200,11 +211,11 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
         });
 
         groups.forEach(g => {
-            g.pct = totalDangerCount > 0 ? ((g.count / totalDangerCount) * 100).toFixed(1) : '0';
+            g.pct = total > 0 ? ((g.count / total) * 100).toFixed(1) : '0';
         });
 
         return groups;
-    }, [mapDangers, totalDangerCount]);
+    }, [filteredDangers]);
 
     // Map Click Action (Opens modal to specify Safe, Game Time and details)
     const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -224,12 +235,13 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
         if (existingGroup && existingGroup.items.length > 0) {
             handleEditRecord(existingGroup.items[0], existingGroup.items);
         } else {
+            const defaultSafe = safeFilter !== 'ALL' ? (typeof safeFilter === 'number' ? safeFilter : parseInt(String(safeFilter))) : 1;
             setEditingRecord(null);
             setSelectedGroupRecords([]);
             setClickCoords({ x: xPercent, y: yPercent });
             setFormLocation(locName);
             setFormTimeStr('03:00');
-            setFormSafeNumber(1);
+            setFormSafeNumber(defaultSafe);
             setFormCount(1);
             setFormNotes('');
             setShowModal(true);
@@ -379,15 +391,6 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
         reader.readAsText(file);
     };
 
-    // Filtered list for the sidebar
-    const filteredSidebarList = useMemo(() => {
-        return mapDangers.filter(r => {
-            const matchesSearch = !searchFilter || (r.locationName && r.locationName.toLowerCase().includes(searchFilter.toLowerCase())) || (r.notes && r.notes.toLowerCase().includes(searchFilter.toLowerCase()));
-            const matchesSafe = safeFilter === 'ALL' || r.safeNumber === safeFilter;
-            return matchesSearch && matchesSafe;
-        });
-    }, [mapDangers, searchFilter, safeFilter]);
-
     // Safe Statistics
     const safeStats = useMemo(() => {
         const stats: Record<number, number> = {};
@@ -477,6 +480,44 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
                             <button onClick={handleClearMap} className="p-2 bg-red-500/10 hover:bg-red-500/20 rounded-lg text-red-500 transition-colors" title="Limpar Dangers Deste Mapa">
                                 <Trash2 size={18} />
                             </button>
+                        </div>
+
+                        {/* Safe Zone Quick Filter Bar above Map */}
+                        <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-2 bg-black/60 p-2.5 rounded-2xl border border-white/10 z-20">
+                            <div className="flex items-center gap-2 shrink-0">
+                                <Shield size={16} className="text-amber-400 shrink-0" />
+                                <span className="text-xs font-black uppercase tracking-wider text-gray-200">
+                                    Mostrar no Mapa:
+                                </span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto justify-center">
+                                <button
+                                    type="button"
+                                    onClick={() => setSafeFilter('ALL')}
+                                    className={`px-3 py-1 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
+                                        safeFilter === 'ALL'
+                                        ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/20 font-black'
+                                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
+                                    }`}
+                                >
+                                    Todas Safes
+                                </button>
+                                {[1, 2, 3, 4, 5, 6, 7].map(sNum => (
+                                    <button
+                                        key={sNum}
+                                        type="button"
+                                        onClick={() => setSafeFilter(safeFilter === sNum ? 'ALL' : sNum)}
+                                        className={`px-2.5 py-1 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1 ${
+                                            safeFilter === sNum
+                                            ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/20 ring-2 ring-amber-400/50'
+                                            : 'bg-white/5 text-gray-300 hover:text-white hover:bg-white/10'
+                                        }`}
+                                    >
+                                        <span>Safe</span>
+                                        <span className="font-mono font-black">{sNum}</span>
+                                    </button>
+                                ))}
+                            </div>
                         </div>
 
                         {/* Interactive Canvas Container */}
@@ -656,12 +697,12 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
 
                         {/* List items */}
                         <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1 custom-scrollbar">
-                            {filteredSidebarList.length === 0 ? (
+                            {filteredDangers.length === 0 ? (
                                 <div className="text-center py-8 text-xs text-gray-500 font-semibold">
                                     Nenhum registro de danger encontrado.
                                 </div>
                             ) : (
-                                filteredSidebarList.map((rec) => (
+                                filteredDangers.map((rec) => (
                                     <div 
                                         key={rec.id}
                                         className="bg-black/40 border border-white/5 hover:border-amber-500/40 rounded-xl p-3 flex items-center justify-between gap-3 group transition-all"

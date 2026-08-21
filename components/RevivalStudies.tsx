@@ -180,7 +180,33 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
         }
     };
 
-    // Group revivals for map rendering (Quantity and %)
+    // Filtered & Sorted Revivals for Map and List
+    const filteredRevivals = useMemo(() => {
+        return revivals.filter(r => {
+            if (selectedLocationFilter !== 'ALL' && r.locationName !== selectedLocationFilter) return false;
+            if (selectedTeamFilter !== 'ALL' && r.teamName !== selectedTeamFilter) return false;
+            if (selectedSafeFilter !== 'ALL' && String(r.safeNumber || 1) !== selectedSafeFilter) return false;
+            if (searchQuery.trim()) {
+                const q = searchQuery.toLowerCase();
+                const matchLoc = r.locationName.toLowerCase().includes(q);
+                const matchTeam = r.teamName?.toLowerCase().includes(q);
+                const matchPlayer = r.playerName?.toLowerCase().includes(q);
+                const matchTime = formatMinutesToMS(r.timeInMinutes).includes(q);
+                const matchSafe = `safe ${r.safeNumber || 1}`.includes(q) || `s${r.safeNumber || 1}`.includes(q);
+                if (!matchLoc && !matchTeam && !matchPlayer && !matchTime && !matchSafe) return false;
+            }
+            return true;
+        }).sort((a, b) => {
+            if (sortBy === 'timeAsc') return a.timeInMinutes - b.timeInMinutes;
+            if (sortBy === 'timeDesc') return b.timeInMinutes - a.timeInMinutes;
+            if (sortBy === 'safeAsc') return (a.safeNumber || 1) - (b.safeNumber || 1);
+            if (sortBy === 'recent') return b.createdAt - a.createdAt;
+            if (sortBy === 'location') return a.locationName.localeCompare(b.locationName);
+            return 0;
+        });
+    }, [revivals, selectedLocationFilter, selectedTeamFilter, selectedSafeFilter, searchQuery, sortBy]);
+
+    // Group revivals for map rendering (Quantity and %) using filtered list so map updates when Safe filter changes
     const groupedRevivals = useMemo(() => {
         const groups: {
             id: string;
@@ -192,9 +218,9 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
             items: RevivalRecord[];
         }[] = [];
 
-        const total = revivals.reduce((acc, r) => acc + (r.revivalCount || 1), 0);
+        const total = filteredRevivals.reduce((acc, r) => acc + (r.revivalCount || 1), 0);
 
-        revivals.forEach(rec => {
+        filteredRevivals.forEach(rec => {
             const qty = rec.revivalCount || 1;
             const existing = groups.find(g => 
                 (rec.locationName && g.locationName.toLowerCase().trim() === rec.locationName.toLowerCase().trim()) ||
@@ -222,7 +248,7 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
         });
 
         return groups;
-    }, [revivals]);
+    }, [filteredRevivals]);
 
     // Map Click Action (Opens modal to specify Safe, Game Time and details)
     const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -242,12 +268,13 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
         if (existingGroup && existingGroup.items.length > 0) {
             handleEditRecord(existingGroup.items[0], existingGroup.items);
         } else {
+            const defaultSafe = selectedSafeFilter !== 'ALL' ? parseInt(selectedSafeFilter) : 1;
             setEditingRecord(null);
             setSelectedGroupRecords([]);
             setClickCoords({ x: xPercent, y: yPercent });
             setFormLocation(locName);
             setFormTimeStr('03:00');
-            setFormSafeNumber(1);
+            setFormSafeNumber(defaultSafe);
             setFormTeam('');
             setFormRevivalCount(1);
             setFormNotes('');
@@ -450,32 +477,6 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
         });
         return Array.from(set).sort();
     }, [revivals]);
-
-    // Filtered & Sorted Revivals for the Lateral List
-    const filteredRevivals = useMemo(() => {
-        return revivals.filter(r => {
-            if (selectedLocationFilter !== 'ALL' && r.locationName !== selectedLocationFilter) return false;
-            if (selectedTeamFilter !== 'ALL' && r.teamName !== selectedTeamFilter) return false;
-            if (selectedSafeFilter !== 'ALL' && String(r.safeNumber || 1) !== selectedSafeFilter) return false;
-            if (searchQuery.trim()) {
-                const q = searchQuery.toLowerCase();
-                const matchLoc = r.locationName.toLowerCase().includes(q);
-                const matchTeam = r.teamName?.toLowerCase().includes(q);
-                const matchPlayer = r.playerName?.toLowerCase().includes(q);
-                const matchTime = formatMinutesToMS(r.timeInMinutes).includes(q);
-                const matchSafe = `safe ${r.safeNumber || 1}`.includes(q) || `s${r.safeNumber || 1}`.includes(q);
-                if (!matchLoc && !matchTeam && !matchPlayer && !matchTime && !matchSafe) return false;
-            }
-            return true;
-        }).sort((a, b) => {
-            if (sortBy === 'timeAsc') return a.timeInMinutes - b.timeInMinutes;
-            if (sortBy === 'timeDesc') return b.timeInMinutes - a.timeInMinutes;
-            if (sortBy === 'safeAsc') return (a.safeNumber || 1) - (b.safeNumber || 1);
-            if (sortBy === 'recent') return b.createdAt - a.createdAt;
-            if (sortBy === 'location') return a.locationName.localeCompare(b.locationName);
-            return 0;
-        });
-    }, [revivals, selectedLocationFilter, selectedTeamFilter, selectedSafeFilter, searchQuery, sortBy]);
 
     // JSON Export / Import
     const handleExportJSON = () => {
@@ -939,6 +940,44 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
                             <button onClick={handleClearAll} className="p-1.5 bg-red-500/10 hover:bg-red-500/20 rounded-lg text-red-400 transition-colors" title="Limpar tudo">
                                 <Trash2 size={16} />
                             </button>
+                        </div>
+                    </div>
+
+                    {/* Safe Zone Quick Filter Bar above Map */}
+                    <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-2 bg-black/60 p-2.5 rounded-2xl border border-white/10 z-20">
+                        <div className="flex items-center gap-2 shrink-0">
+                            <Shield size={16} className="text-yellow-400 shrink-0" />
+                            <span className="text-xs font-black uppercase tracking-wider text-gray-200">
+                                Mostrar no Mapa:
+                            </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto justify-center">
+                            <button
+                                type="button"
+                                onClick={() => setSelectedSafeFilter('ALL')}
+                                className={`px-3 py-1 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
+                                    selectedSafeFilter === 'ALL'
+                                    ? 'bg-yellow-400 text-black shadow-lg shadow-yellow-400/20 font-black'
+                                    : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
+                                }`}
+                            >
+                                Todas Safes
+                            </button>
+                            {[1, 2, 3, 4, 5, 6, 7].map(sNum => (
+                                <button
+                                    key={sNum}
+                                    type="button"
+                                    onClick={() => setSelectedSafeFilter(selectedSafeFilter === String(sNum) ? 'ALL' : String(sNum))}
+                                    className={`px-2.5 py-1 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1 ${
+                                        selectedSafeFilter === String(sNum)
+                                        ? 'bg-yellow-400 text-black shadow-lg shadow-yellow-400/20 ring-2 ring-yellow-400/50'
+                                        : 'bg-white/5 text-gray-300 hover:text-white hover:bg-white/10'
+                                    }`}
+                                >
+                                    <span>Safe</span>
+                                    <span className="font-mono font-black">{sNum}</span>
+                                </button>
+                            ))}
                         </div>
                     </div>
 
