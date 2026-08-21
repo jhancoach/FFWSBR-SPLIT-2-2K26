@@ -266,6 +266,7 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
     // Map Click Action (Opens modal to specify Safe, Game Time and details)
     const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
         if (isDragging) return;
+        if (!isAdmin) { setShowAuthModal(true); return; }
 
         const rect = e.currentTarget.getBoundingClientRect();
         const xPercent = Math.round((((e.clientX - rect.left) / rect.width) * 100) * 10) / 10;
@@ -298,6 +299,7 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
     // Marker Click (Opens modal for viewing and adding records with custom Safe & Game Time)
     const handleMarkerClick = (group: typeof groupedRevivals[0], e: React.MouseEvent) => {
         e.stopPropagation();
+
         handleEditRecord(group.items[0], group.items, e);
     };
 
@@ -305,6 +307,7 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
     const handleMarkerRightClick = (group: typeof groupedRevivals[0], e: React.MouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
+        if (!isAdmin) { setShowAuthModal(true); return; }
 
         const mainRec = group.items[0];
         const currentCount = mainRec.revivalCount || 1;
@@ -338,6 +341,7 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
 
     // Save as a NEW record at the current spot
     const handleSaveAsNewRecord = (e?: React.MouseEvent) => {
+        if (!isAdmin) { setShowAuthModal(true); return; }
         if (e) e.preventDefault();
         const minutes = parseMSToMinutes(formTimeStr);
         if (minutes <= 0) {
@@ -368,6 +372,7 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
 
     // Handle Form Submit
     const handleFormSubmit = (e: React.FormEvent) => {
+        if (!isAdmin) { setShowAuthModal(true); return; }
         e.preventDefault();
         const minutes = parseMSToMinutes(formTimeStr);
         if (minutes <= 0) {
@@ -410,6 +415,7 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
 
     // Delete Record
     const handleDeleteRecord = (id: string, e?: React.MouseEvent) => {
+        if (!isAdmin) { setShowAuthModal(true); return; }
         if (e) e.stopPropagation();
         if (window.confirm("Deseja remover este registro de revivido?")) {
             const filtered = revivals.filter(r => r.id !== id);
@@ -419,6 +425,7 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
 
     // Clear All
     const handleClearAll = () => {
+        if (!isAdmin) { setShowAuthModal(true); return; }
         if (window.confirm(`Tem certeza que deseja apagar TODOS os registros de revividos do mapa ${selectedMap.name}?`)) {
             saveRevivals([]);
         }
@@ -517,6 +524,7 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
     };
 
     const handleImportJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!isAdmin) { setShowAuthModal(true); return; }
         const file = e.target.files?.[0];
         if (!file) return;
 
