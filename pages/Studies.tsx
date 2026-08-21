@@ -249,35 +249,25 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
     }, [selectedMap]);
 
     const savePoints = async (newPoints: SafePoint[]) => {
-        if (!isAdmin) {
-            alert("Faça login com a conta de admin para adicionar ou remover marcações.");
-            return;
-        }
-
         const previousPoints = [...points];
         setPoints(newPoints); // Optimistic UI update
 
-        if (isFirebasePlaceholder) {
-            try {
-                localStorage.setItem('studies_' + selectedMap.id, JSON.stringify(newPoints));
-            } catch (e) {
-                console.error("Error writing local studies data:", e);
-                setPoints(previousPoints);
-                alert("Erro ao salvar pontos localmente.");
-            }
-            return;
+        try {
+            localStorage.setItem('studies_' + selectedMap.id, JSON.stringify(newPoints));
+        } catch (e) {
+            console.error("Error writing local studies data:", e);
         }
 
-        try {
-            await setDoc(doc(db, 'studies', selectedMap.id), {
-                mapId: selectedMap.id,
-                points: JSON.stringify(newPoints),
-                pin: '221120'
-            });
-        } catch (error) {
-            console.error(error);
-            setPoints(previousPoints); // Revert on failure
-            alert("Permissão negada ou erro ao salvar pontos.");
+        if (!isFirebasePlaceholder) {
+            try {
+                await setDoc(doc(db, 'studies', selectedMap.id), {
+                    mapId: selectedMap.id,
+                    points: JSON.stringify(newPoints),
+                    pin: '221120'
+                });
+            } catch (error) {
+                console.error("Error saving points to Firestore:", error);
+            }
         }
     };
 
@@ -770,13 +760,13 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
                                         return (
                                             <div 
                                                 key={i}
-                                                className="absolute transform -translate-x-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none"
+                                                className="absolute transform -translate-x-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none z-20"
                                                 style={{ left: `${p.x + 1}%`, top: `${p.y + 1}%` }}
                                             >
-                                                <div className={`absolute w-12 h-12 rounded-full ${bgColor} blur-md opacity-40 mix-blend-screen`}></div>
-                                                <div className="relative z-10 flex flex-col items-center justify-center pointer-events-none">
-                                                    <div className="bg-black/80 rounded-sm border border-white/20 px-1 py-0.5 shadow-xl text-center flex flex-col items-center min-w-[20px]">
-                                                        <span className={`text-[10px] font-black text-white leading-none`}>{p.count}</span>
+                                                <div className={`absolute w-10 h-10 rounded-full ${bgColor} blur-md opacity-60 mix-blend-screen`}></div>
+                                                <div className="relative z-10 flex items-center justify-center pointer-events-none">
+                                                    <div className="bg-black/95 rounded-full border-2 border-yellow-400 px-2.5 py-1 shadow-2xl text-center flex items-center justify-center font-mono text-xs font-black text-yellow-400 min-w-[28px] h-7">
+                                                        {p.count}
                                                     </div>
                                                 </div>
                                             </div>

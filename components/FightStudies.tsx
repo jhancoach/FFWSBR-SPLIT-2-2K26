@@ -159,38 +159,71 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
 
     // Save Records Helper
     const saveFights = async (newFights: FightRecord[]) => {
-        if (!isAdmin) {
-            alert("Faça login com a conta de admin para adicionar, editar ou remover registros de trocações.");
-            return;
-        }
-
-        const prev = [...fights];
         setFights(newFights);
-
         const storageKey = `studies_fights_${selectedMap.id}`;
 
-        if (isFirebasePlaceholder) {
-            try {
-                localStorage.setItem(storageKey, JSON.stringify(newFights));
-            } catch (e) {
-                console.error("Error writing local fight studies:", e);
-                setFights(prev);
-            }
-            return;
+        try {
+            localStorage.setItem(storageKey, JSON.stringify(newFights));
+        } catch (e) {
+            console.error("Error writing local fight studies:", e);
         }
 
-        try {
-            await setDoc(doc(db, 'studies', `fights_${selectedMap.id}`), {
-                mapId: selectedMap.id,
-                fights: JSON.stringify(newFights),
-                updatedAt: Date.now()
-            });
-        } catch (error) {
-            console.error("Error saving fights to Firestore:", error);
-            setFights(prev);
-            alert("Erro ao salvar registros no banco de dados.");
+        if (!isFirebasePlaceholder) {
+            try {
+                await setDoc(doc(db, 'studies', `fights_${selectedMap.id}`), {
+                    mapId: selectedMap.id,
+                    fights: JSON.stringify(newFights),
+                    updatedAt: Date.now(),
+                    pin: '221120'
+                });
+            } catch (error) {
+                console.error("Error saving fights to Firestore:", error);
+            }
         }
     };
+
+    // Group fights for map rendering (Quantity and %)
+    const groupedFights = useMemo(() => {
+        const groups: {
+            id: string;
+            x: number;
+            y: number;
+            locationName: string;
+            count: number;
+            pct: string;
+            items: FightRecord[];
+        }[] = [];
+
+        const total = fights.length;
+
+        fights.forEach(rec => {
+            const existing = groups.find(g => 
+                (rec.locationName && g.locationName.toLowerCase().trim() === rec.locationName.toLowerCase().trim()) ||
+                (Math.abs(g.x - rec.x) <= 3 && Math.abs(g.y - rec.y) <= 3)
+            );
+
+            if (existing) {
+                existing.count += 1;
+                existing.items.push(rec);
+            } else {
+                groups.push({
+                    id: rec.id,
+                    x: rec.x,
+                    y: rec.y,
+                    locationName: rec.locationName || 'Ponto',
+                    count: 1,
+                    pct: '0',
+                    items: [rec]
+                });
+            }
+        });
+
+        groups.forEach(g => {
+            g.pct = total > 0 ? ((g.count / total) * 100).toFixed(1) : '0';
+        });
+
+        return groups;
+    }, [fights]);
 
     // Open Modal for New Record (Map Click)
     const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -283,10 +316,6 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
 
     // Clear All
     const handleClearAll = () => {
-        if (!isAdmin) {
-            alert("Faça login com a conta de admin para limpar.");
-            return;
-        }
         if (window.confirm(`Tem certeza que deseja apagar TODOS os registros de trocações do mapa ${selectedMap.name}?`)) {
             saveFights([]);
         }
@@ -833,64 +862,52 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
                                 className="absolute inset-0 z-10" 
                                 onClick={handleMapClick}
                             >
-                                {fights.map((rec) => {
-                                    const isHovered = hoveredRecordId === rec.id;
-                                    const logoA = rec.teamA ? findTeamLogo(rec.teamA, data?.teamsReference) : null;
-                                    const logoB = rec.teamB ? findTeamLogo(rec.teamB, data?.teamsReference) : null;
+                                {groupedFights.map((group) => {
+                                    const isHovered = hoveredRecordId === group.id;
 
                                     return (
                                         <div 
-                                            key={rec.id}
-                                            onClick={(e) => handleEditRecord(rec, e)}
-                                            onMouseEnter={() => setHoveredRecordId(rec.id)}
+                                            key={group.id}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleEditRecord(group.items[0], e);
+                                            }}
+                                            onMouseEnter={() => setHoveredRecordId(group.id)}
                                             onMouseLeave={() => setHoveredRecordId(null)}
                                             className={`absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer z-20 group transition-all duration-200 ${
                                                 isHovered ? 'scale-125 z-30' : 'hover:scale-110'
                                             }`}
-                                            style={{ left: `${rec.x}%`, top: `${rec.y}%` }}
+                                            style={{ left: `${group.x}%`, top: `${group.y}%` }}
                                         >
                                             {/* Pulse Aura */}
                                             <div className="absolute -inset-2 rounded-full bg-red-500/30 blur-sm animate-ping pointer-events-none"></div>
 
-                                            {/* Pin Marker */}
-                                            <div className={`relative flex items-center gap-1.5 px-2 py-1 rounded-xl border shadow-xl transition-all ${
+                                            {/* Pin Marker - ONLY QUANTITY AND % */}
+                                            <div className={`relative flex items-center gap-1.5 px-2.5 py-1 rounded-lg border shadow-2xl transition-all ${
                                                 isHovered 
-                                                ? 'bg-red-500 text-white border-white ring-2 ring-red-300' 
-                                                : 'bg-black/90 text-red-400 border-red-500/60 hover:bg-red-950'
+                                                ? 'bg-yellow-500 text-black border-white ring-2 ring-yellow-300' 
+                                                : 'bg-black/90 text-white border-yellow-500/60 hover:bg-black/95'
                                             }`}>
-                                                {logoA || logoB ? (
-                                                    <div className="flex -space-x-1">
-                                                        {logoA && <img src={logoA} alt={rec.teamA} className="w-3.5 h-3.5 object-contain rounded-full bg-black p-0.5 border border-red-500/50" />}
-                                                        {logoB && <img src={logoB} alt={rec.teamB} className="w-3.5 h-3.5 object-contain rounded-full bg-black p-0.5 border border-red-500/50" />}
-                                                    </div>
-                                                ) : (
-                                                    <Swords size={12} className={isHovered ? 'text-white' : 'text-red-400'} />
-                                                )}
-                                                <span className="font-mono text-[10px] font-black tracking-tight">
-                                                    {formatMinutesToMS(rec.timeInMinutes)}
-                                                </span>
-                                                <span className={`text-[8px] font-black px-1 py-0.2 rounded ${
-                                                    isHovered ? 'bg-black text-yellow-300' : 'bg-yellow-400 text-black'
-                                                }`}>
-                                                    S{rec.safeNumber || 1}
-                                                </span>
+                                                <span className="font-mono text-xs font-black text-yellow-400">{group.count}</span>
+                                                <span className="text-gray-500 text-xs font-normal">|</span>
+                                                <span className="font-mono text-xs font-black text-white">{group.pct}%</span>
                                             </div>
 
                                             {/* Tooltip on Hover */}
                                             <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 bg-black/95 border border-red-500/40 p-2.5 rounded-xl text-[10px] text-white whitespace-nowrap shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-40">
                                                 <div className="font-black text-red-400 uppercase italic flex items-center justify-between gap-3">
-                                                    <span>{rec.locationName}</span>
+                                                    <span>{group.locationName}</span>
                                                     <span className="text-black bg-yellow-400 font-black text-[9px] px-1.5 py-0.5 rounded uppercase">
-                                                        SAFE {rec.safeNumber || 1}
+                                                        {group.count} TROCAÇÕES ({group.pct}%)
                                                     </span>
                                                 </div>
-                                                <div className="text-gray-300 font-mono font-bold mt-1">⏱️ {formatMinutesToMS(rec.timeInMinutes)} min</div>
-                                                {(rec.teamA || rec.teamB) && (
-                                                    <div className="text-white font-bold mt-0.5">
-                                                        ⚔️ {rec.teamA || 'Time 1'} vs {rec.teamB || 'Time 2'}
-                                                    </div>
-                                                )}
-                                                {rec.winnerTeam && <div className="text-yellow-400 font-bold mt-0.5">🏆 Vencedor: {rec.winnerTeam}</div>}
+                                                <div className="mt-1 flex flex-col gap-1 max-h-32 overflow-y-auto">
+                                                    {group.items.map((rec, idx) => (
+                                                        <div key={rec.id || idx} className="text-gray-300 font-mono text-[9px] border-t border-white/10 pt-0.5">
+                                                            ⚔️ {rec.teamA || 'Time 1'} vs {rec.teamB || 'Time 2'} {rec.winnerTeam ? `(Vencedor: ${rec.winnerTeam})` : ''} | ⏱️ {formatMinutesToMS(rec.timeInMinutes)}
+                                                        </div>
+                                                    ))}
+                                                </div>
                                             </div>
                                         </div>
                                     );

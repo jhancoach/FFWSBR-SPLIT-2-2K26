@@ -19,7 +19,7 @@ export interface RevivalRecord {
     timeInMinutes: number; // e.g. 3.5 = 3 min 30 s
     safeNumber?: number; // 1, 2, 3, 4, 5, 6, 7
     teamName?: string;
-    playerName?: string;
+    revivalCount?: number;
     notes?: string;
     createdAt: number;
 }
@@ -93,7 +93,7 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
     const [formTimeStr, setFormTimeStr] = useState('03:00');
     const [formSafeNumber, setFormSafeNumber] = useState<number>(1);
     const [formTeam, setFormTeam] = useState('');
-    const [formPlayer, setFormPlayer] = useState('');
+    const [formRevivalCount, setFormRevivalCount] = useState<number>(1);
     const [formNotes, setFormNotes] = useState('');
 
     // Filter & Search Sidebar State
@@ -156,38 +156,72 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
 
     // Save Records Helper
     const saveRevivals = async (newRevivals: RevivalRecord[]) => {
-        if (!isAdmin) {
-            alert("Faça login com a conta de admin para adicionar, editar ou remover registros de revividos.");
-            return;
-        }
-
-        const prev = [...revivals];
         setRevivals(newRevivals);
-
         const storageKey = `studies_revives_${selectedMap.id}`;
 
-        if (isFirebasePlaceholder) {
-            try {
-                localStorage.setItem(storageKey, JSON.stringify(newRevivals));
-            } catch (e) {
-                console.error("Error writing local revival studies:", e);
-                setRevivals(prev);
-            }
-            return;
+        try {
+            localStorage.setItem(storageKey, JSON.stringify(newRevivals));
+        } catch (e) {
+            console.error("Error writing local revival studies:", e);
         }
 
-        try {
-            await setDoc(doc(db, 'studies', `revives_${selectedMap.id}`), {
-                mapId: selectedMap.id,
-                revivals: JSON.stringify(newRevivals),
-                updatedAt: Date.now()
-            });
-        } catch (error) {
-            console.error("Error saving revivals to Firestore:", error);
-            setRevivals(prev);
-            alert("Erro ao salvar registros no banco de dados.");
+        if (!isFirebasePlaceholder) {
+            try {
+                await setDoc(doc(db, 'studies', `revives_${selectedMap.id}`), {
+                    mapId: selectedMap.id,
+                    revivals: JSON.stringify(newRevivals),
+                    updatedAt: Date.now(),
+                    pin: '221120'
+                });
+            } catch (error) {
+                console.error("Error saving revivals to Firestore:", error);
+            }
         }
     };
+
+    // Group revivals for map rendering (Quantity and %)
+    const groupedRevivals = useMemo(() => {
+        const groups: {
+            id: string;
+            x: number;
+            y: number;
+            locationName: string;
+            count: number;
+            pct: string;
+            items: RevivalRecord[];
+        }[] = [];
+
+        const total = revivals.reduce((acc, r) => acc + (r.revivalCount || 1), 0);
+
+        revivals.forEach(rec => {
+            const qty = rec.revivalCount || 1;
+            const existing = groups.find(g => 
+                (rec.locationName && g.locationName.toLowerCase().trim() === rec.locationName.toLowerCase().trim()) ||
+                (Math.abs(g.x - rec.x) <= 3 && Math.abs(g.y - rec.y) <= 3)
+            );
+
+            if (existing) {
+                existing.count += qty;
+                existing.items.push(rec);
+            } else {
+                groups.push({
+                    id: rec.id,
+                    x: rec.x,
+                    y: rec.y,
+                    locationName: rec.locationName || 'Ponto',
+                    count: qty,
+                    pct: '0',
+                    items: [rec]
+                });
+            }
+        });
+
+        groups.forEach(g => {
+            g.pct = total > 0 ? ((g.count / total) * 100).toFixed(1) : '0';
+        });
+
+        return groups;
+    }, [revivals]);
 
     // Open Modal for New Record (Map Click)
     const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -200,12 +234,12 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
         setClickCoords({ x: xPercent, y: yPercent });
         setEditingRecord(null);
 
-        // Try to guess nearest location name or pick popular
+        // Reset form
         setFormLocation('');
         setFormTimeStr('03:00');
         setFormSafeNumber(1);
         setFormTeam('');
-        setFormPlayer('');
+        setFormRevivalCount(1);
         setFormNotes('');
         setShowModal(true);
     };
@@ -219,7 +253,7 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
         setFormTimeStr(formatMinutesToMS(rec.timeInMinutes));
         setFormSafeNumber(rec.safeNumber || 1);
         setFormTeam(rec.teamName || '');
-        setFormPlayer(rec.playerName || '');
+        setFormRevivalCount(rec.revivalCount || 1);
         setFormNotes(rec.notes || '');
         setShowModal(true);
     };
@@ -242,7 +276,7 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
                 timeInMinutes: minutes,
                 safeNumber: formSafeNumber,
                 teamName: formTeam.trim() || undefined,
-                playerName: formPlayer.trim() || undefined,
+                revivalCount: formRevivalCount,
                 notes: formNotes.trim() || undefined,
             } : r);
             saveRevivals(updated);
@@ -256,7 +290,7 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
                 timeInMinutes: minutes,
                 safeNumber: formSafeNumber,
                 teamName: formTeam.trim() || undefined,
-                playerName: formPlayer.trim() || undefined,
+                revivalCount: formRevivalCount,
                 notes: formNotes.trim() || undefined,
                 createdAt: Date.now()
             };
@@ -277,17 +311,15 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
 
     // Clear All
     const handleClearAll = () => {
-        if (!isAdmin) {
-            alert("Faça login com a conta de admin para limpar.");
-            return;
-        }
         if (window.confirm(`Tem certeza que deseja apagar TODOS os registros de revividos do mapa ${selectedMap.name}?`)) {
             saveRevivals([]);
         }
     };
 
     // Calculations & Statistics
-    const totalCount = revivals.length;
+    const totalCount = useMemo(() => {
+        return revivals.reduce((acc, r) => acc + (r.revivalCount || 1), 0);
+    }, [revivals]);
 
     const avgTimeMinutes = useMemo(() => {
         if (totalCount === 0) return 0;
@@ -566,7 +598,7 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
                                 </div>
                             </div>
 
-                            {/* Team & Player Optional Inputs */}
+                            {/* Team & Revival Count Inputs */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
                                     <label className="block text-xs text-gray-400 font-bold uppercase tracking-widest mb-1">
@@ -582,15 +614,34 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
                                 </div>
                                 <div>
                                     <label className="block text-xs text-gray-400 font-bold uppercase tracking-widest mb-1">
-                                        Jogador Revivido (Opcional)
+                                        Quantidade de Revividos
                                     </label>
-                                    <input 
-                                        type="text" 
-                                        value={formPlayer}
-                                        onChange={e => setFormPlayer(e.target.value)}
-                                        placeholder="Ex: Cauan7, Lost..."
-                                        className="w-full bg-black/60 border border-gray-800 rounded-xl px-3 py-2 text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500 text-xs font-semibold"
-                                    />
+                                    <div className="flex items-center gap-2">
+                                        <input 
+                                            type="number" 
+                                            min="1"
+                                            max="50"
+                                            value={formRevivalCount}
+                                            onChange={e => setFormRevivalCount(Math.max(1, parseInt(e.target.value) || 1))}
+                                            className="w-full bg-black/60 border border-gray-800 rounded-xl px-3 py-2 text-emerald-400 font-mono text-sm font-black focus:outline-none focus:border-emerald-500"
+                                        />
+                                        <div className="flex gap-1 shrink-0">
+                                            {[1, 2, 3, 4].map(num => (
+                                                <button
+                                                    key={num}
+                                                    type="button"
+                                                    onClick={() => setFormRevivalCount(num)}
+                                                    className={`px-2.5 py-1.5 rounded-lg text-xs font-black border transition-all ${
+                                                        formRevivalCount === num
+                                                        ? 'bg-emerald-500 text-black border-emerald-400 font-black'
+                                                        : 'bg-black/40 text-gray-400 border-white/5 hover:text-white'
+                                                    }`}
+                                                >
+                                                    {num}x
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
@@ -809,56 +860,52 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
                                 className="absolute inset-0 z-10" 
                                 onClick={handleMapClick}
                             >
-                                {revivals.map((rec) => {
-                                    const isHovered = hoveredRecordId === rec.id;
-                                    const teamLogo = rec.teamName ? findTeamLogo(rec.teamName, data?.teamsReference) : null;
+                                {groupedRevivals.map((group) => {
+                                    const isHovered = hoveredRecordId === group.id;
 
                                     return (
                                         <div 
-                                            key={rec.id}
-                                            onClick={(e) => handleEditRecord(rec, e)}
-                                            onMouseEnter={() => setHoveredRecordId(rec.id)}
+                                            key={group.id}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleEditRecord(group.items[0], e);
+                                            }}
+                                            onMouseEnter={() => setHoveredRecordId(group.id)}
                                             onMouseLeave={() => setHoveredRecordId(null)}
                                             className={`absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer z-20 group transition-all duration-200 ${
                                                 isHovered ? 'scale-125 z-30' : 'hover:scale-110'
                                             }`}
-                                            style={{ left: `${rec.x}%`, top: `${rec.y}%` }}
+                                            style={{ left: `${group.x}%`, top: `${group.y}%` }}
                                         >
                                             {/* Pulse Aura */}
                                             <div className="absolute -inset-2 rounded-full bg-emerald-500/30 blur-sm animate-ping pointer-events-none"></div>
 
-                                            {/* Pin Marker */}
-                                            <div className={`relative flex items-center gap-1.5 px-2 py-1 rounded-xl border shadow-xl transition-all ${
+                                            {/* Pin Marker - ONLY QUANTITY AND % */}
+                                            <div className={`relative flex items-center gap-1.5 px-2.5 py-1 rounded-lg border shadow-2xl transition-all ${
                                                 isHovered 
-                                                ? 'bg-emerald-400 text-black border-white ring-2 ring-emerald-300' 
-                                                : 'bg-black/90 text-emerald-400 border-emerald-500/60 hover:bg-emerald-950'
+                                                ? 'bg-yellow-500 text-black border-white ring-2 ring-yellow-300' 
+                                                : 'bg-black/90 text-white border-yellow-500/60 hover:bg-black/95'
                                             }`}>
-                                                {teamLogo ? (
-                                                    <img src={teamLogo} alt={rec.teamName} className="w-3.5 h-3.5 object-contain rounded-full bg-black p-0.5" />
-                                                ) : (
-                                                    <HeartPulse size={12} className={isHovered ? 'text-black' : 'text-emerald-400'} />
-                                                )}
-                                                <span className="font-mono text-[10px] font-black tracking-tight">
-                                                    {formatMinutesToMS(rec.timeInMinutes)}
-                                                </span>
-                                                <span className={`text-[8px] font-black px-1 py-0.2 rounded ${
-                                                    isHovered ? 'bg-black text-yellow-300' : 'bg-yellow-400 text-black'
-                                                }`}>
-                                                    S{rec.safeNumber || 1}
-                                                </span>
+                                                <span className="font-mono text-xs font-black text-yellow-400">{group.count}</span>
+                                                <span className="text-gray-500 text-xs font-normal">|</span>
+                                                <span className="font-mono text-xs font-black text-white">{group.pct}%</span>
                                             </div>
 
                                             {/* Tooltip on Hover */}
                                             <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 bg-black/95 border border-emerald-500/40 p-2.5 rounded-xl text-[10px] text-white whitespace-nowrap shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-40">
                                                 <div className="font-black text-emerald-400 uppercase italic flex items-center justify-between gap-3">
-                                                    <span>{rec.locationName}</span>
+                                                    <span>{group.locationName}</span>
                                                     <span className="text-black bg-yellow-400 font-black text-[9px] px-1.5 py-0.5 rounded uppercase">
-                                                        SAFE {rec.safeNumber || 1}
+                                                        {group.count} REVIVIDOS ({group.pct}%)
                                                     </span>
                                                 </div>
-                                                <div className="text-gray-300 font-mono font-bold mt-1">⏱️ {formatMinutesToMS(rec.timeInMinutes)} min</div>
-                                                {rec.teamName && <div className="text-yellow-400 font-bold mt-0.5">🛡️ {rec.teamName}</div>}
-                                                {rec.playerName && <div className="text-gray-400 font-medium">👤 {rec.playerName}</div>}
+                                                <div className="mt-1 flex flex-col gap-1 max-h-32 overflow-y-auto">
+                                                    {group.items.map((rec, idx) => (
+                                                        <div key={rec.id || idx} className="text-gray-300 font-mono text-[9px] border-t border-white/10 pt-0.5">
+                                                            ⏱️ {formatMinutesToMS(rec.timeInMinutes)} | Safe {rec.safeNumber || 1} {rec.teamName ? `| 🛡️ ${rec.teamName}` : ''}
+                                                        </div>
+                                                    ))}
+                                                </div>
                                             </div>
                                         </div>
                                     );
@@ -988,7 +1035,7 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
                                         setFormTimeStr('03:00');
                                         setFormSafeNumber(1);
                                         setFormTeam('');
-                                        setFormPlayer('');
+                                        setFormRevivalCount(1);
                                         setFormNotes('');
                                         setShowModal(true);
                                     }}
@@ -1134,11 +1181,9 @@ export const RevivalStudies: React.FC<RevivalStudiesProps> = ({
                                                                 <Shield size={10} /> {rec.teamName}
                                                             </span>
                                                         )}
-                                                        {rec.playerName && (
-                                                            <span className="text-gray-300 font-medium flex items-center gap-1">
-                                                                <User size={10} /> {rec.playerName}
-                                                            </span>
-                                                        )}
+                                                        <span className="text-emerald-400 font-bold flex items-center gap-1 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                                                            <HeartPulse size={10} /> {rec.revivalCount || 1} Revivido{ (rec.revivalCount || 1) > 1 ? 's' : '' }
+                                                        </span>
                                                         {rec.notes && (
                                                             <span className="text-gray-500 italic truncate max-w-[140px]">
                                                                 "{rec.notes}"
