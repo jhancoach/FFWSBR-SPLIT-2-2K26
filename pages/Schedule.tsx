@@ -1,8 +1,95 @@
 import React, { useState } from 'react';
 import { DashboardData } from '../types';
-import { Calendar, Check, X, Star, Filter, Info, Shield, Trophy, Flame } from 'lucide-react';
+import { Calendar, Check, X, Star, Filter, Info, Shield, Trophy, Flame, Activity, Target } from 'lucide-react';
 import { findTeamLogo } from '../utils/teamUtils';
 import { OFFICIAL_SCHEDULE, TeamSchedule } from '../utils/scheduleData';
+
+
+const normalize = (val: string | undefined | number) => String(val || '').trim().toUpperCase();
+
+const getTeamCharacteristic = (percentAbts: number, percentPos: number) => {
+  const diff = Math.abs(percentAbts - percentPos);
+  if (diff <= 5) return { label: 'Equilibrado', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30' }; 
+  if (percentAbts > percentPos) return { label: 'Agressivo', color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/30' }; 
+  return { label: 'Posicional', color: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/30' }; 
+};
+
+const getTeamRoundLiveStyle = (teamName: string, roundNum: number, details: any[]) => {
+    const normName = normalize(teamName);
+    const roundMatches = details.filter((d: any) => {
+        if (!d.RD) return false;
+        const num = parseInt(String(d.RD).replace(/\D/g, ''), 10);
+        const nameMatches = normalize(d.TIME) === normName || normalize(d.TIME).includes(normName) || normName.includes(normalize(d.TIME));
+        return num === roundNum && nameMatches;
+    });
+    
+    if (roundMatches.length === 0) return null;
+    
+    let totalPts = 0;
+    let totalAbates = 0;
+    let totalPtsColocacao = 0;
+    
+    roundMatches.forEach((m: any) => {
+        const abts = typeof m.ABTS === 'number' ? m.ABTS : parseFloat(String(m.ABTS || '0').replace(',', '.'));
+        const ptsc = typeof m.PTSC === 'number' ? m.PTSC : parseFloat(String(m.PTSC || '0').replace(',', '.'));
+        const pts = typeof m.PTS === 'number' ? m.PTS : parseFloat(String(m.PTS || '0').replace(',', '.'));
+        
+        totalAbates += isNaN(abts) ? 0 : abts;
+        totalPtsColocacao += isNaN(ptsc) ? 0 : ptsc;
+        totalPts += isNaN(pts) ? 0 : pts;
+    });
+    
+    const percentAbts = totalPts > 0 ? Math.round((totalAbates / totalPts) * 100) : 0;
+    const percentPos = totalPts > 0 ? Math.round((totalPtsColocacao / totalPts) * 100) : 0;
+    
+    const characteristic = getTeamCharacteristic(percentAbts, percentPos);
+    
+    return {
+        totalMatches: roundMatches.length,
+        totalPts,
+        totalAbates,
+        totalPtsColocacao,
+        percentAbts,
+        percentPos,
+        characteristic
+    };
+};
+
+const getTeamMapStyles = (teamName: string, details: any[]) => {
+    const normName = normalize(teamName);
+    const teamMatches = details.filter((d: any) => normalize(d.TIME) === normName || normalize(d.TIME).includes(normName) || normName.includes(normalize(d.TIME)));
+    const mapsSet = new Set<string>();
+    teamMatches.forEach((m: any) => { if (m.MAPA) mapsSet.add(m.MAPA.trim()); });
+    
+    const sortedMaps = Array.from(mapsSet).sort((a, b) => a.localeCompare(b));
+    
+    return sortedMaps.map(mapName => {
+      const mapFilteredMatches = teamMatches.filter((d: any) => normalize(d.MAPA) === normalize(mapName));
+      let totalPts = 0;
+      let totalAbates = 0;
+      let totalPtsColocacao = 0;
+      
+      mapFilteredMatches.forEach((m: any) => {
+          const abts = typeof m.ABTS === 'number' ? m.ABTS : parseFloat(String(m.ABTS || '0').replace(',', '.'));
+          const ptsc = typeof m.PTSC === 'number' ? m.PTSC : parseFloat(String(m.PTSC || '0').replace(',', '.'));
+          const pts = typeof m.PTS === 'number' ? m.PTS : parseFloat(String(m.PTS || '0').replace(',', '.'));
+          
+          totalAbates += isNaN(abts) ? 0 : abts;
+          totalPtsColocacao += isNaN(ptsc) ? 0 : ptsc;
+          totalPts += isNaN(pts) ? 0 : pts;
+      });
+      
+      const percentAbts = totalPts > 0 ? Math.round((totalAbates / totalPts) * 100) : 0;
+      const percentPos = totalPts > 0 ? Math.round((totalPtsColocacao / totalPts) * 100) : 0;
+      
+      const characteristic = getTeamCharacteristic(percentAbts, percentPos);
+      
+      return {
+          mapName,
+          characteristic
+      };
+    });
+};
 
 interface ScheduleProps {
   data: DashboardData;
@@ -12,35 +99,73 @@ const Schedule: React.FC<ScheduleProps> = ({ data }) => {
   const [selectedRound, setSelectedRound] = useState<number | null>(null);
   const [loudOnly, setLoudOnly] = useState<boolean>(false);
   const [search, setSearch] = useState<string>('');
+  const [selectedScheduleMap, setSelectedScheduleMap] = useState<string>('ALL');
+  const availableMaps = React.useMemo(() => {
+    const maps = new Set<string>();
+    if (data.details) {
+      data.details.forEach(d => {
+        if (d.MAPA) maps.add(normalize(String(d.MAPA)));
+      });
+    }
+    return Array.from(maps).sort();
+  }, [data.details]);
 
   const roundsList = Array.from({ length: 14 }, (_, i) => i + 1);
 
   // Compute round status strictly from fDetalhes (data.details)
   const fDetailsRoundStats = React.useMemo(() => {
-    const stats = new Map<number, { recordsCount: number; quedas: Set<string>; isComplete: boolean; isStarted: boolean }>();
+    const stats = new Map<number, { recordsCount: number; quedas: Set<string>; isComplete: boolean; isStarted: boolean; totalPts: number; totalAbates: number }>();
     for (let r = 1; r <= 14; r++) {
-      stats.set(r, { recordsCount: 0, quedas: new Set<string>(), isComplete: false, isStarted: false });
+      stats.set(r, { recordsCount: 0, quedas: new Set<string>(), isComplete: false, isStarted: false, totalPts: 0, totalAbates: 0 });
     }
 
     if (data.details && Array.isArray(data.details)) {
+      const quedaPoints = new Map<string, number>(); // key: `${rd}_${q}`, val: sum(pts) + sum(abts) + sum(ptsc)
+
       data.details.forEach(d => {
         if (!d || !d.RD) return;
         const num = parseInt(String(d.RD).replace(/\D/g, ''), 10);
         if (!isNaN(num) && num >= 1 && num <= 14) {
           const item = stats.get(num)!;
-          item.recordsCount += 1;
-          item.isStarted = true;
-          if (d.Q) {
-            const qClean = String(d.Q).trim();
-            if (qClean) item.quedas.add(qClean);
+          
+          const abts = typeof d.ABTS === 'number' ? d.ABTS : parseFloat(String(d.ABTS || '0').replace(',', '.'));
+          const ptsc = typeof d.PTSC === 'number' ? d.PTSC : parseFloat(String(d.PTSC || '0').replace(',', '.'));
+          const pts = typeof d.PTS === 'number' ? d.PTS : parseFloat(String(d.PTS || '0').replace(',', '.'));
+          
+          const rowScore = (isNaN(pts) ? 0 : pts) + (isNaN(abts) ? 0 : abts) + (isNaN(ptsc) ? 0 : ptsc);
+
+          if (d.TIME && String(d.TIME).trim() !== '') {
+            item.recordsCount += 1;
+            item.totalPts += isNaN(pts) ? 0 : pts;
+            item.totalAbates += isNaN(abts) ? 0 : abts;
+
+            const qClean = d.Q ? String(d.Q).trim() : '';
+            if (qClean) {
+              const qKey = `${num}_${qClean}`;
+              quedaPoints.set(qKey, (quedaPoints.get(qKey) || 0) + rowScore);
+            }
+          }
+        }
+      });
+
+      // Count only quedas that actually have scores/points registered
+      quedaPoints.forEach((scoreSum, qKey) => {
+        if (scoreSum > 0) {
+          const [rdStr, qClean] = qKey.split('_');
+          const rdNum = parseInt(rdStr, 10);
+          const item = stats.get(rdNum);
+          if (item) {
+            item.quedas.add(qClean);
+            item.isStarted = true;
           }
         }
       });
     }
 
-    // A round is complete if 6 or more quedas are registered in fDetalhes
+    // A round is complete if 6 or more quedas with actual scores are registered in fDetalhes
     stats.forEach((val) => {
-      val.isComplete = val.quedas.size >= 6;
+      val.isComplete = val.quedas.size >= 6 && val.totalPts > 0;
+      val.isStarted = val.quedas.size > 0 || val.totalPts > 0;
     });
 
     return stats;
@@ -77,6 +202,13 @@ const Schedule: React.FC<ScheduleProps> = ({ data }) => {
   // Allow manual selection/override for next round if needed
   const [forcedNextRound, setForcedNextRound] = useState<number | null>(null);
   const nextRound = forcedNextRound !== null ? forcedNextRound : detectedNextRound;
+
+  React.useEffect(() => {
+    if (selectedRound === null) {
+      setSelectedRound(nextRound);
+    }
+  }, [nextRound]);
+
 
   const completedCount = playedRounds.size;
   const remainingCount = 14 - completedCount;
@@ -633,19 +765,85 @@ const Schedule: React.FC<ScheduleProps> = ({ data }) => {
                 <span className="font-black text-emerald-400 uppercase tracking-wider block">
                   ✓ 12 Times que Jogam na R{selectedRound}:
                 </span>
-                <div className="flex flex-wrap gap-1.5">
-                  {OFFICIAL_SCHEDULE.filter(t => t.rounds[selectedRound]).map(t => (
-                    <span 
-                      key={t.name}
-                      className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold uppercase flex items-center gap-1.5 ${
-                        t.isLoud 
-                          ? 'bg-yellow-500/20 border-yellow-400 text-yellow-300 font-black' 
-                          : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-gray-800 mb-2">
+                    <button
+                      onClick={() => setSelectedScheduleMap('ALL')}
+                      className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase whitespace-nowrap transition-all ${
+                        selectedScheduleMap === 'ALL'
+                          ? 'bg-yellow-500 text-black shadow-[0_0_10px_rgba(234,179,8,0.3)]'
+                          : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
                       }`}
                     >
-                      {t.name} {t.isLoud && '★'}
-                    </span>
-                  ))}
+                      Todos os Mapas
+                    </button>
+                    {availableMaps.map(map => (
+                      <button
+                        key={map}
+                        onClick={() => setSelectedScheduleMap(map)}
+                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase whitespace-nowrap transition-all ${
+                          selectedScheduleMap === map
+                            ? 'bg-orange-500 text-white shadow-[0_0_10px_rgba(249,115,22,0.3)]'
+                            : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
+                        }`}
+                      >
+                        {map}
+                      </button>
+                    ))}
+                  </div>
+                  {OFFICIAL_SCHEDULE.filter(t => t.rounds[selectedRound]).map(t => {
+                     let mapStyles = getTeamMapStyles(t.name, data.details);
+                     const liveRoundStats = getTeamRoundLiveStyle(t.name, selectedRound, data.details);
+                     
+                     if (selectedScheduleMap !== 'ALL') {
+                         mapStyles = mapStyles.filter(m => normalize(m.mapName) === selectedScheduleMap);
+                     }
+                     
+                     return (
+                      <div key={t.name} className="flex flex-col gap-2 p-3 bg-black/40 rounded-xl border border-white/5 shadow-md">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                           <span className={`text-[12px] font-black uppercase flex items-center gap-1.5 ${t.isLoud ? 'text-yellow-400 drop-shadow-md' : 'text-emerald-400'}`}>
+                             {t.name} {t.isLoud && '★'}
+                           </span>
+                           {liveRoundStats ? (
+                               <div className={`flex items-center gap-2 px-2 py-1 rounded-lg border ${liveRoundStats.characteristic.bg} ${liveRoundStats.characteristic.border} text-[9px] font-black uppercase tracking-widest ${liveRoundStats.characteristic.color}`}>
+                                  {liveRoundStats.characteristic.label === 'Agressivo' && <Flame size={12} />}
+                                  {liveRoundStats.characteristic.label === 'Equilibrado' && <Activity size={12} />}
+                                  {liveRoundStats.characteristic.label === 'Posicional' && <Target size={12} />}
+                                  <span className="flex items-center gap-1">
+                                      DESEMPENHO ATUAL: {liveRoundStats.characteristic.label} ({liveRoundStats.totalPts} Pts / {liveRoundStats.totalAbates} Kills)
+                                  </span>
+                               </div>
+                           ) : (
+                               <span className="px-2 py-1 rounded-lg border border-gray-800 bg-black/50 text-[9px] text-gray-500 font-bold uppercase tracking-widest">
+                                  Aguardando quedas...
+                               </span>
+                           )}
+                        </div>
+                        
+                        <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">
+                            Histórico de Estilo por Mapa:
+                        </div>
+                        {mapStyles.length > 0 ? (
+                           <div className={`grid ${selectedScheduleMap === 'ALL' ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-1'} gap-2`}>
+                             {mapStyles.map(m => (
+                                <div key={m.mapName} className={`flex ${selectedScheduleMap === 'ALL' ? 'flex-col' : 'items-center justify-between'} gap-1 p-2 rounded-lg border ${m.characteristic.bg} ${m.characteristic.border} bg-opacity-50`}>
+                                   <span className="text-[10px] font-black text-white uppercase tracking-widest truncate">{m.mapName}</span>
+                                   <div className={`flex items-center gap-1 text-[10px] font-black uppercase tracking-widest ${m.characteristic.color}`}>
+                                     {m.characteristic.label === 'Agressivo' && <Flame size={12} />}
+                                     {m.characteristic.label === 'Equilibrado' && <Activity size={12} />}
+                                     {m.characteristic.label === 'Posicional' && <Target size={12} />}
+                                     {m.characteristic.label}
+                                   </div>
+                                </div>
+                             ))}
+                           </div>
+                        ) : (
+                           <span className="text-[9px] text-gray-500 font-bold uppercase italic">Sem dados registrados neste mapa</span>
+                        )}
+                      </div>
+                     );
+                  })}
                 </div>
               </div>
 

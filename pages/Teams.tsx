@@ -1126,6 +1126,49 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
       .sort((a, b) => b.dropCount - a.dropCount);
   }, [data, activeTeamName]);
 
+  const teamMapStylesData = useMemo(() => {
+    if (!selectedTeamName) return [];
+    
+    const teamMatches = filteredData.details.filter(d => normalize(d.TIME) === normalize(selectedTeamName));
+    const mapsSet = new Set<string>();
+    teamMatches.forEach(m => { if (m.MAPA) mapsSet.add(m.MAPA.trim()); });
+    
+    const sortedMaps = Array.from(mapsSet).sort((a, b) => a.localeCompare(b));
+    
+    return sortedMaps.map(mapName => {
+      const mapFilteredMatches = teamMatches.filter(d => normalize(d.MAPA) === normalize(mapName));
+      let totalPts = 0;
+      let totalAbates = 0;
+      let totalPtsColocacao = 0;
+      
+      mapFilteredMatches.forEach(m => {
+          const abts = typeof m.ABTS === 'number' ? m.ABTS : parseFloat(String(m.ABTS || '0').replace(',', '.'));
+          const ptsc = typeof m.PTSC === 'number' ? m.PTSC : parseFloat(String(m.PTSC || '0').replace(',', '.'));
+          const pts = typeof m.PTS === 'number' ? m.PTS : parseFloat(String(m.PTS || '0').replace(',', '.'));
+          
+          totalAbates += isNaN(abts) ? 0 : abts;
+          totalPtsColocacao += isNaN(ptsc) ? 0 : ptsc;
+          totalPts += isNaN(pts) ? 0 : pts;
+      });
+      
+      const percentAbts = totalPts > 0 ? Math.round((totalAbates / totalPts) * 100) : 0;
+      const percentPos = totalPts > 0 ? Math.round((totalPtsColocacao / totalPts) * 100) : 0;
+      
+      const characteristic = getTeamCharacteristic(percentAbts, percentPos);
+      
+      return {
+          mapName,
+          totalMatches: mapFilteredMatches.length,
+          totalPts,
+          totalAbates,
+          totalPtsColocacao,
+          percentAbts,
+          percentPos,
+          characteristic
+      };
+    });
+  }, [filteredData.details, selectedTeamName]);
+
   // Reset local states if team changes and switch tab to gallery if single team selected
   useEffect(() => {
     setSelectedMap(null);
@@ -2931,6 +2974,16 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                         >
                             <LayoutGrid size={15} /> Visão Geral Completa
                         </button>
+                        <button
+                            onClick={() => setTeamProfileSubTab('mapStyles')}
+                            className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                                teamProfileSubTab === 'mapStyles'
+                                     ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20 font-black'
+                                     : 'bg-black/40 text-gray-400 hover:text-white hover:bg-white/5 border border-white/5'
+                            }`}
+                        >
+                            <MapIcon size={15} /> Estilos por Mapa
+                        </button>
 
                         <button
                             onClick={() => setTeamProfileSubTab('zeradas')}
@@ -3020,6 +3073,96 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                         </button>
                     </div>
                 </div>
+
+                {/* NOVO: PERFIL DE ESTILO POR MAPA */}
+                {showTeamDetails && (teamProfileSubTab === 'all' || teamProfileSubTab === 'mapStyles') && teamMapStylesData.length > 0 && (
+                    <div className="bg-[#1a1a1a] p-8 rounded-3xl border border-orange-500/30 shadow-2xl space-y-6">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-4">
+                            <div>
+                                <h3 className="text-2xl font-black uppercase italic tracking-tighter text-white flex items-center gap-3">
+                                    <MapIcon className="text-orange-500" size={28} />
+                                    PERFIL E ESTILO DE JOGO POR MAPA
+                                </h3>
+                                <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">
+                                    CARACTERÍSTICAS DA EQUIPE ({selectedTeamStats?.name}) EM CADA MAPA
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {teamMapStylesData.map((mapData) => {
+                                const char = mapData.characteristic;
+                                const mapConfig = MAPS_CONFIG.find(m => normalize(m.name) === normalize(mapData.mapName));
+                                
+                                return (
+                                    <div key={mapData.mapName} className="bg-black/40 rounded-2xl border border-white/10 overflow-hidden flex flex-col shadow-xl">
+                                        {/* Map Header with Background */}
+                                        <div className="relative h-24 overflow-hidden flex items-center justify-center">
+                                            {mapConfig && (
+                                                <div 
+                                                    className="absolute inset-0 bg-cover bg-center opacity-30 mix-blend-luminosity"
+                                                    style={{ backgroundImage: `url(${mapConfig.url})` }}
+                                                />
+                                            )}
+                                            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" />
+                                            <h4 className="relative z-10 text-2xl font-black italic uppercase tracking-widest text-white drop-shadow-md">
+                                                {mapData.mapName}
+                                            </h4>
+                                        </div>
+                                        
+                                        {/* Characteristic Badge */}
+                                        <div className="px-6 -mt-5 relative z-20 flex justify-center">
+                                            <div className={`flex items-center gap-2 px-4 py-1.5 rounded-full border ${char.bg} ${char.border} ${char.color} text-xs font-black uppercase tracking-widest shadow-lg shadow-black/50 backdrop-blur-md`}>
+                                                {char.icon}
+                                                {char.label}
+                                            </div>
+                                        </div>
+
+                                        {/* Stats */}
+                                        <div className="p-6 space-y-4">
+                                            <div className="grid grid-cols-3 gap-2 text-center divide-x divide-white/5 bg-white/5 p-3 rounded-xl border border-white/5">
+                                                <div>
+                                                    <span className="block text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Partidas</span>
+                                                    <span className="text-lg font-black text-white">{mapData.totalMatches}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="block text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Pontos</span>
+                                                    <span className="text-lg font-black text-yellow-500">{mapData.totalPts}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="block text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Abates</span>
+                                                    <span className="text-lg font-black text-red-500">{mapData.totalAbates}</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Progress Bars */}
+                                            <div className="space-y-3">
+                                                <div>
+                                                    <div className="flex justify-between text-[9px] font-black uppercase tracking-widest mb-1.5">
+                                                        <span className="text-red-500 flex items-center gap-1"><Flame size={10}/> ABATES</span>
+                                                        <span className="text-red-400">{mapData.percentAbts}%</span>
+                                                    </div>
+                                                    <div className="h-1.5 w-full bg-black rounded-full overflow-hidden border border-white/5">
+                                                        <div className="h-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.3)] transition-all duration-1000" style={{ width: `${mapData.percentAbts}%` }}></div>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div className="flex justify-between text-[9px] font-black uppercase tracking-widest mb-1.5">
+                                                        <span className="text-yellow-500 flex items-center gap-1">POSIÇÃO <Target size={10}/></span>
+                                                        <span className="text-yellow-400">{mapData.percentPos}%</span>
+                                                    </div>
+                                                    <div className="h-1.5 w-full bg-black rounded-full overflow-hidden border border-white/5">
+                                                        <div className="h-full bg-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.3)] transition-all duration-1000" style={{ width: `${mapData.percentPos}%` }}></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
 
                 {/* 1. SEÇÃO: QUEDAS ZERADAS DO TIME */}
                 {showTeamDetails && (teamProfileSubTab === 'all' || teamProfileSubTab === 'zeradas') && zeroStatsTeam && (
