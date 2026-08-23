@@ -3,7 +3,7 @@ import {
     MapPin, Plus, Trash2, Edit3, Clock, Search, Filter, Percent, 
     TrendingUp, Swords, Shield, Download, Upload, ZoomIn, ZoomOut, Move,
     X, Check, AlertCircle, RefreshCw, BarChart2, Layers, User, ChevronRight, Info,
-    Flame, Target, Trophy, Users
+    Flame, Target, Trophy, Users, Eye, EyeOff
 } from 'lucide-react';
 import { HeatmapOverlay } from './HeatmapOverlay';
 import { doc, setDoc, onSnapshot } from 'firebase/firestore';
@@ -192,6 +192,7 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
 
     // Hover / Highlighting State
     const [hoveredRecordId, setHoveredRecordId] = useState<string | null>(null);
+    const [showHoverTooltips, setShowHoverTooltips] = useState<boolean>(true);
 
     // Heatmap State
     const [heatmapMode, setHeatmapMode] = useState<'both' | 'heatmap' | 'markers'>('both');
@@ -1253,6 +1254,21 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
                                 </div>
                             </div>
                         )}
+
+                        {/* Hover Tooltips Toggle Button */}
+                        <button
+                            type="button"
+                            onClick={() => setShowHoverTooltips(v => !v)}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 border ml-auto ${
+                                showHoverTooltips 
+                                ? 'bg-white/10 text-gray-200 border-white/20 hover:bg-white/20' 
+                                : 'bg-red-500/15 text-red-400 border-red-500/40 hover:bg-red-500/25 shadow-sm'
+                            }`}
+                            title="Ligar ou desligar os balões ao passar o mouse para facilitar o clique no mapa"
+                        >
+                            {showHoverTooltips ? <Eye size={13} className="text-yellow-400" /> : <EyeOff size={13} />}
+                            <span>Balões Hover: {showHoverTooltips ? 'Ativos' : 'Ocultos'}</span>
+                        </button>
                     </div>
 
                     {/* Interactive Map Canvas Container */}
@@ -1351,64 +1367,53 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
                                                 {group.count}
                                             </div>
 
-                                            {/* Tooltip on Hover */}
-                                            <div className={`absolute left-1/2 -translate-x-1/2 ${
-                                                group.y > 65 ? 'bottom-full mb-2' : 'top-full mt-2'
-                                            } bg-[#111111]/98 backdrop-blur-md border border-red-500/50 p-3 rounded-2xl text-[11px] text-white shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-150 z-50 pointer-events-auto min-w-[240px] max-w-[320px]`}>
-                                                <div className="font-black text-red-400 uppercase italic flex items-center justify-between gap-2 pb-1.5 border-b border-white/10">
-                                                    <span className="truncate">{group.locationName}</span>
-                                                    <span className="text-black bg-yellow-400 font-black text-[9px] px-2 py-0.5 rounded-full uppercase shrink-0 shadow-sm">
-                                                        {group.count} {group.count > 1 ? 'TROCAÇÕES' : 'TROCAÇÃO'}
-                                                    </span>
-                                                </div>
+                                            {/* Tooltip on Hover (pointer-events-none so it NEVER blocks clicks on the map or markers) */}
+                                            {showHoverTooltips && (
+                                                <div className={`absolute left-1/2 -translate-x-1/2 ${
+                                                    group.y > 65 ? 'bottom-full mb-2' : 'top-full mt-2'
+                                                } bg-[#111111]/98 backdrop-blur-md border border-red-500/50 p-2.5 rounded-2xl text-[11px] text-white shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-150 z-50 pointer-events-none min-w-[200px] max-w-[280px]`}>
+                                                    <div className="font-black text-red-400 uppercase italic flex items-center justify-between gap-2 pb-1 border-b border-white/10">
+                                                        <span className="truncate">{group.locationName}</span>
+                                                        <span className="text-black bg-yellow-400 font-black text-[9px] px-1.5 py-0.2 rounded-full uppercase shrink-0 shadow-sm">
+                                                            {group.count} {group.count > 1 ? 'TROCAÇÕES' : 'TROCAÇÃO'}
+                                                        </span>
+                                                    </div>
 
-                                                <div className="mt-1.5 flex flex-col gap-1 max-h-48 overflow-y-auto pr-1 select-text scrollbar-thin">
-                                                    {group.items.map((rec, idx) => (
-                                                        <div 
-                                                            key={rec.id || idx} 
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleEditRecord(rec, group.items, e);
-                                                            }}
-                                                            className="text-gray-300 hover:text-white font-mono text-[10px] bg-white/5 hover:bg-white/10 p-1.5 rounded-lg border border-white/5 cursor-pointer transition-colors flex items-center justify-between gap-1.5"
-                                                            title="Clique para editar este registro"
-                                                        >
-                                                            <div className="flex items-center gap-1.5 truncate">
-                                                                <span className="font-bold text-yellow-400 shrink-0">#{idx + 1}</span>
-                                                                <span className="px-1.5 py-0.2 bg-red-500/20 text-red-400 text-[9px] rounded font-bold shrink-0">Safe {rec.safeNumber || 1}</span>
-                                                                <span className="text-gray-400 shrink-0">{formatMinutesToMS(rec.timeInMinutes)}</span>
-                                                                {rec.teamA && (
-                                                                    <span className="text-white font-sans text-[10px] truncate ml-0.5">
-                                                                        {rec.teamA} {rec.teamB ? `vs ${rec.teamB}` : ''}
+                                                    <div className="mt-1 flex flex-col gap-1 max-h-36 overflow-y-auto pr-1">
+                                                        {group.items.slice(0, 5).map((rec, idx) => (
+                                                            <div 
+                                                                key={rec.id || idx} 
+                                                                className="text-gray-300 font-mono text-[10px] bg-white/5 p-1 rounded-lg border border-white/5 flex items-center justify-between gap-1.5"
+                                                            >
+                                                                <div className="flex items-center gap-1.5 truncate">
+                                                                    <span className="font-bold text-yellow-400 shrink-0">#{idx + 1}</span>
+                                                                    <span className="px-1 py-0.2 bg-red-500/20 text-red-400 text-[8px] rounded font-bold shrink-0">S{rec.safeNumber || 1}</span>
+                                                                    <span className="text-gray-400 shrink-0 text-[9px]">{formatMinutesToMS(rec.timeInMinutes)}</span>
+                                                                    {rec.teamA && (
+                                                                        <span className="text-white font-sans text-[9px] truncate ml-0.5">
+                                                                            {rec.teamA} {rec.teamB ? `x ${rec.teamB}` : ''}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                {rec.winnerTeam && (
+                                                                    <span className="text-[8px] text-green-400 font-sans font-bold shrink-0">
+                                                                        👑 {rec.winnerTeam}
                                                                     </span>
                                                                 )}
                                                             </div>
-                                                            {rec.winnerTeam && (
-                                                                <span className="text-[9px] text-green-400 font-sans font-bold shrink-0" title={`Vencedor: ${rec.winnerTeam}`}>
-                                                                    👑 {rec.winnerTeam}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    ))}
-                                                </div>
+                                                        ))}
+                                                        {group.items.length > 5 && (
+                                                            <div className="text-center text-[9px] text-yellow-400 font-semibold py-0.5">
+                                                                +{group.items.length - 5} outras ocorrências
+                                                            </div>
+                                                        )}
+                                                    </div>
 
-                                                <div className="mt-2.5 border-t border-white/10 pt-2 flex items-center justify-between gap-1.5 text-[10px] font-semibold">
-                                                    <button
-                                                        type="button"
-                                                        onClick={(e) => handleQuickIncrement(group, e)}
-                                                        className="bg-red-600 hover:bg-red-500 text-white font-black px-2.5 py-1 rounded-lg text-[10px] shadow-sm transition-all flex items-center gap-1 shrink-0"
-                                                    >
-                                                        <Plus size={11} /> +1 Rápido
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={(e) => handleMarkerClick(group, e)}
-                                                        className="bg-yellow-400 hover:bg-yellow-300 text-black font-black px-2.5 py-1 rounded-lg text-[10px] shadow-sm transition-all flex items-center gap-1 shrink-0"
-                                                    >
-                                                        📝 Ver / + Trocação
-                                                    </button>
+                                                    <div className="mt-1.5 pt-1 border-t border-white/10 text-center text-[9px] text-gray-400 font-bold">
+                                                        👉 Clique no pino para abrir / editar
+                                                    </div>
                                                 </div>
-                                            </div>
+                                            )}
                                         </div>
                                     );
                                 })}
