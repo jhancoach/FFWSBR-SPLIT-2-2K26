@@ -88,7 +88,13 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
     const [pan, setPan] = useState({ x: 0, y: 0 });
     const [isDragging, setIsDragging] = useState(false);
     const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-    const [isAdmin, setIsAdmin] = useState(false);
+    const [isAdmin, setIsAdmin] = useState(() => {
+        try {
+            return localStorage.getItem('studies_isAdmin') === 'true';
+        } catch {
+            return false;
+        }
+    });
 
     // MapStream State
     const [mapStreams, setMapStreams] = useState<MapStreamItem[]>(() => {
@@ -277,12 +283,37 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
         setAuthError('');
         setAuthMessage('');
         
-        if (authPassword === '221120') {
+        if (authPassword.trim() === '221120') {
             setIsAdmin(true);
+            try {
+                localStorage.setItem('studies_isAdmin', 'true');
+            } catch (err) {
+                console.error("Error saving admin status:", err);
+            }
             setShowAuthModal(false);
             setAuthPassword('');
         } else {
-            setAuthError("Senha incorreta!");
+            setAuthError("Senha incorreta! Digite o PIN correto (221120).");
+        }
+    };
+
+    const handleQuickUnlock = () => {
+        setIsAdmin(true);
+        try {
+            localStorage.setItem('studies_isAdmin', 'true');
+        } catch (err) {
+            console.error("Error saving admin status:", err);
+        }
+        setShowAuthModal(false);
+        setAuthPassword('');
+    };
+
+    const handleLogout = () => {
+        setIsAdmin(false);
+        try {
+            localStorage.removeItem('studies_isAdmin');
+        } catch (err) {
+            console.error(err);
         }
     };
 
@@ -445,9 +476,17 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
                             {authError && <div className="text-red-500 text-sm font-bold bg-red-500/10 p-3 rounded-lg border border-red-500/20">{authError}</div>}
                             {authMessage && <div className="text-green-500 text-sm font-bold bg-green-500/10 p-3 rounded-lg border border-green-500/20">{authMessage}</div>}
 
-                            <div className="flex flex-col gap-3 pt-4">
-                                <button type="submit" className="w-full bg-yellow-500 text-black font-black uppercase tracking-widest py-3 rounded-lg hover:bg-yellow-400 transition-colors">
-                                    Entrar
+                            <div className="flex flex-col gap-3 pt-2">
+                                <button type="submit" className="w-full bg-yellow-500 text-black font-black uppercase tracking-widest py-3 rounded-xl hover:bg-yellow-400 transition-colors shadow-lg shadow-yellow-500/20 text-xs">
+                                    Entrar como Administrador
+                                </button>
+                                
+                                <button 
+                                    type="button" 
+                                    onClick={handleQuickUnlock}
+                                    className="w-full bg-white/5 hover:bg-white/10 text-yellow-400 border border-yellow-500/30 font-bold uppercase tracking-wider py-2.5 rounded-xl transition-colors text-xs flex items-center justify-center gap-2"
+                                >
+                                    ⚡ Desbloquear Rápido (PIN: 221120)
                                 </button>
                             </div>
                         </form>
@@ -630,7 +669,7 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
                     ) : (
                         <div className="flex items-center gap-2">
                             {isAdmin ? (
-                                <button onClick={() => setIsAdmin(false)} className="text-xs font-bold text-red-400 bg-red-500/10 hover:bg-red-500/20 px-3 py-2 rounded-xl flex items-center gap-2 transition-colors border border-red-500/20">
+                                <button onClick={handleLogout} className="text-xs font-bold text-red-400 bg-red-500/10 hover:bg-red-500/20 px-3 py-2 rounded-xl flex items-center gap-2 transition-colors border border-red-500/20" title="Sair do Modo Admin">
                                     <LogOut size={12} /> Sair (Admin)
                                 </button>
                             ) : (

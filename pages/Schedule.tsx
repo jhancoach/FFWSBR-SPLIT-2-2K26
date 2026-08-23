@@ -20,7 +20,12 @@ const getTeamRoundLiveStyle = (teamName: string, roundNum: number, details: any[
         if (!d.RD) return false;
         const num = parseInt(String(d.RD).replace(/\D/g, ''), 10);
         const nameMatches = normalize(d.TIME) === normName || normalize(d.TIME).includes(normName) || normName.includes(normalize(d.TIME));
-        return num === roundNum && nameMatches;
+        const abts = typeof d.ABTS === 'number' ? d.ABTS : parseFloat(String(d.ABTS || '0').replace(',', '.'));
+        const ptsc = typeof d.PTSC === 'number' ? d.PTSC : parseFloat(String(d.PTSC || '0').replace(',', '.'));
+        const pts = typeof d.PTS === 'number' ? d.PTS : parseFloat(String(d.PTS || '0').replace(',', '.'));
+        const pos = typeof d.POS === 'number' ? d.POS : parseFloat(String(d.POS || '0').replace(',', '.'));
+        const hasScoreOrMap = (isNaN(pts) ? 0 : pts) > 0 || (isNaN(abts) ? 0 : abts) > 0 || (isNaN(ptsc) ? 0 : ptsc) > 0 || (isNaN(pos) ? 0 : pos) > 0 || (d.MAPA && d.MAPA.trim().length > 1);
+        return num === roundNum && nameMatches && hasScoreOrMap;
     });
     
     if (roundMatches.length === 0) return null;
@@ -38,6 +43,8 @@ const getTeamRoundLiveStyle = (teamName: string, roundNum: number, details: any[
         totalPtsColocacao += isNaN(ptsc) ? 0 : ptsc;
         totalPts += isNaN(pts) ? 0 : pts;
     });
+    
+    if (totalPts === 0 && totalAbates === 0) return null;
     
     const percentAbts = totalPts > 0 ? Math.round((totalAbates / totalPts) * 100) : 0;
     const percentPos = totalPts > 0 ? Math.round((totalPtsColocacao / totalPts) * 100) : 0;
@@ -57,7 +64,13 @@ const getTeamRoundLiveStyle = (teamName: string, roundNum: number, details: any[
 
 const getTeamMapStyles = (teamName: string, details: any[]) => {
     const normName = normalize(teamName);
-    const teamMatches = details.filter((d: any) => normalize(d.TIME) === normName || normalize(d.TIME).includes(normName) || normName.includes(normalize(d.TIME)));
+    const teamMatches = details.filter((d: any) => {
+      const nameMatches = normalize(d.TIME) === normName || normalize(d.TIME).includes(normName) || normName.includes(normalize(d.TIME));
+      const abts = typeof d.ABTS === 'number' ? d.ABTS : parseFloat(String(d.ABTS || '0').replace(',', '.'));
+      const pts = typeof d.PTS === 'number' ? d.PTS : parseFloat(String(d.PTS || '0').replace(',', '.'));
+      const hasScoreOrMap = (isNaN(pts) ? 0 : pts) > 0 || (isNaN(abts) ? 0 : abts) > 0 || (d.MAPA && d.MAPA.trim().length > 1);
+      return nameMatches && hasScoreOrMap;
+    });
     const mapsSet = new Set<string>();
     teamMatches.forEach((m: any) => { if (m.MAPA) mapsSet.add(m.MAPA.trim()); });
     
@@ -131,10 +144,12 @@ const Schedule: React.FC<ScheduleProps> = ({ data }) => {
           const abts = typeof d.ABTS === 'number' ? d.ABTS : parseFloat(String(d.ABTS || '0').replace(',', '.'));
           const ptsc = typeof d.PTSC === 'number' ? d.PTSC : parseFloat(String(d.PTSC || '0').replace(',', '.'));
           const pts = typeof d.PTS === 'number' ? d.PTS : parseFloat(String(d.PTS || '0').replace(',', '.'));
-          
-          const rowScore = (isNaN(pts) ? 0 : pts) + (isNaN(abts) ? 0 : abts) + (isNaN(ptsc) ? 0 : ptsc);
+          const pos = typeof d.POS === 'number' ? d.POS : parseFloat(String(d.POS || '0').replace(',', '.'));
+          const mapa = d.MAPA ? String(d.MAPA).trim() : '';
 
-          if (d.TIME && String(d.TIME).trim() !== '') {
+          const hasScore = (isNaN(pts) ? 0 : pts) > 0 || (isNaN(abts) ? 0 : abts) > 0 || (isNaN(ptsc) ? 0 : ptsc) > 0 || (isNaN(pos) ? 0 : pos) > 0 || mapa.length > 1;
+
+          if (d.TIME && String(d.TIME).trim() !== '' && hasScore) {
             item.recordsCount += 1;
             item.totalPts += isNaN(pts) ? 0 : pts;
             item.totalAbates += isNaN(abts) ? 0 : abts;
@@ -142,7 +157,7 @@ const Schedule: React.FC<ScheduleProps> = ({ data }) => {
             const qClean = d.Q ? String(d.Q).trim() : '';
             if (qClean) {
               const qKey = `${num}_${qClean}`;
-              quedaPoints.set(qKey, (quedaPoints.get(qKey) || 0) + rowScore);
+              quedaPoints.set(qKey, (quedaPoints.get(qKey) || 0) + (isNaN(pts) ? 0 : pts) + (isNaN(abts) ? 0 : abts) + 1);
             }
           }
         }

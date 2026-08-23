@@ -36,6 +36,87 @@ const POPULAR_LOCATIONS: Record<string, string[]> = {
     SOL: ['Aurora', 'Solar Center', 'Oasis', 'Prism', 'Horizon', 'Helios', 'Vanguard', 'Eclipse']
 };
 
+const LOCATION_PRESETS: Record<string, Record<string, { x: number; y: number }>> = {
+    BER: {
+        'Peak': { x: 48, y: 49 },
+        'Bimasakti': { x: 52, y: 60 },
+        'Pochinok': { x: 41, y: 70 },
+        'Clock Tower': { x: 34, y: 57 },
+        'Hangar': { x: 32, y: 46 },
+        'Observatory': { x: 18, y: 36 },
+        'Mill': { x: 77, y: 38 },
+        'Plantation': { x: 33, y: 36 },
+        'Shipyard': { x: 48, y: 20 },
+        'Katulistiwa': { x: 44, y: 38 },
+        'Cape Town': { x: 86, y: 75 },
+        'Graveyard': { x: 30, y: 27 },
+        'Rim Nam Village': { x: 14, y: 65 }
+    },
+    PUR: {
+        'Brasilia': { x: 51, y: 48 },
+        'Central': { x: 50, y: 72 },
+        'Forge': { x: 66, y: 65 },
+        'Moathouse': { x: 75, y: 32 },
+        'Marbleworks': { x: 33, y: 36 },
+        'Fields': { x: 38, y: 55 },
+        'Quarry': { x: 24, y: 65 },
+        'Fire Brigade': { x: 68, y: 48 },
+        'Campsite': { x: 60, y: 23 },
+        'Ski Lodge': { x: 78, y: 20 },
+        'Lumber Mill': { x: 82, y: 54 },
+        'Mt. Villa': { x: 22, y: 85 }
+    },
+    KAL: {
+        'Refinery': { x: 51, y: 47 },
+        'Command Post': { x: 45, y: 36 },
+        'The Sub': { x: 32, y: 56 },
+        'Bayfront': { x: 68, y: 52 },
+        'Confinement': { x: 35, y: 32 },
+        'Mammoth': { x: 68, y: 30 },
+        'Foundation': { x: 50, y: 75 },
+        'Santa Catarina': { x: 22, y: 45 },
+        'Stone Ridge': { x: 70, y: 72 },
+        'Old Settlement': { x: 32, y: 72 }
+    },
+    NT: {
+        'Plaza Pastora': { x: 49, y: 48 },
+        'Grav Labs': { x: 65, y: 35 },
+        'Museum': { x: 35, y: 65 },
+        'Decathlon': { x: 65, y: 65 },
+        'Zipway': { x: 35, y: 35 },
+        'Intellect Center': { x: 50, y: 25 },
+        'Farmtopia': { x: 25, y: 50 },
+        'Turbine': { x: 75, y: 50 },
+        'Rust Town': { x: 50, y: 75 }
+    },
+    SOL: {
+        'Aurora': { x: 48, y: 48 },
+        'Solar Center': { x: 50, y: 30 },
+        'Oasis': { x: 30, y: 65 },
+        'Prism': { x: 70, y: 65 },
+        'Horizon': { x: 30, y: 35 },
+        'Helios': { x: 70, y: 35 },
+        'Vanguard': { x: 50, y: 70 },
+        'Eclipse': { x: 20, y: 50 }
+    }
+};
+
+const findNearestLocationName = (x: number, y: number, mapId: string): string | null => {
+    const presets = LOCATION_PRESETS[mapId];
+    if (!presets) return null;
+    let closestName: string | null = null;
+    let minDistance = 8; // within 8% distance threshold
+
+    for (const [name, coord] of Object.entries(presets)) {
+        const dist = Math.sqrt(Math.pow(coord.x - x, 2) + Math.pow(coord.y - y, 2));
+        if (dist < minDistance) {
+            minDistance = dist;
+            closestName = name;
+        }
+    }
+    return closestName;
+};
+
 interface MapItem {
     id: string;
     name: string;
@@ -268,7 +349,7 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
         }));
     }, [groupedFights]);
 
-    // Map Click Action (Opens modal to specify Safe, Game Time and details)
+    // Map Click Action (Opens modal to add new fight at clicked coordinate)
     const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
         if (isDragging) return;
         if (!isAdmin) { setShowAuthModal(true); return; }
@@ -277,36 +358,77 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
         const xPercent = Math.round((((e.clientX - rect.left) / rect.width) * 100) * 10) / 10;
         const yPercent = Math.round((((e.clientY - rect.top) / rect.height) * 100) * 10) / 10;
 
-        const locName = `Ponto ${Math.round(xPercent)},${Math.round(yPercent)}`;
-
-        // Find existing group nearby
+        // Check if there is an existing nearby group
         const existingGroup = groupedFights.find(g => 
-            Math.abs(g.x - xPercent) <= 4 && Math.abs(g.y - yPercent) <= 4
+            Math.abs(g.x - xPercent) <= 3.5 && Math.abs(g.y - yPercent) <= 3.5
         );
 
         if (existingGroup && existingGroup.items.length > 0) {
-            handleEditRecord(existingGroup.items[0], existingGroup.items);
+            handleMarkerClick(existingGroup, e);
         } else {
-            const defaultSafe = selectedSafeFilter !== 'ALL' ? parseInt(selectedSafeFilter) : 1;
-            setEditingRecord(null);
-            setSelectedGroupRecords([]);
-            setClickCoords({ x: xPercent, y: yPercent });
-            setFormLocation(locName);
-            setFormTimeStr('04:00');
-            setFormSafeNumber(defaultSafe);
-            setFormTeamA('');
-            setFormTeamB('');
-            setFormWinner('');
-            setFormNotes('');
-            setShowModal(true);
+            handleOpenNewFightModal({ x: xPercent, y: yPercent });
         }
     };
 
-    // Marker Click (Opens modal for viewing and adding records with custom Safe & Game Time)
+    // Open Modal to Register a NEW fight
+    const handleOpenNewFightModal = (coords?: { x: number; y: number }, defaultLocation?: string, groupItems?: FightRecord[]) => {
+        if (!isAdmin) { setShowAuthModal(true); return; }
+        const targetCoords = coords || { x: 50, y: 50 };
+        setEditingRecord(null);
+        setSelectedGroupRecords(Array.isArray(groupItems) ? groupItems : []);
+        setClickCoords(targetCoords);
+
+        const suggestedName = defaultLocation || findNearestLocationName(targetCoords.x, targetCoords.y, selectedMap.id) || `Ponto ${Math.round(targetCoords.x)},${Math.round(targetCoords.y)}`;
+        setFormLocation(suggestedName);
+
+        const defaultSafe = selectedSafeFilter !== 'ALL' ? parseInt(selectedSafeFilter) : 1;
+        setFormSafeNumber(defaultSafe);
+        setFormTimeStr('04:00');
+        setFormTeamA('');
+        setFormTeamB('');
+        setFormWinner('');
+        setFormNotes('');
+        setShowModal(true);
+    };
+
+    // Marker Click (Opens modal with group records and quick action to add more or edit)
     const handleMarkerClick = (group: typeof groupedFights[0], e: React.MouseEvent) => {
         e.stopPropagation();
+        if (!isAdmin) { setShowAuthModal(true); return; }
 
-        handleEditRecord(group.items[0], group.items, e);
+        setClickCoords({ x: group.x, y: group.y });
+        setSelectedGroupRecords(group.items);
+        
+        // Default to adding another fight at this point or editing if 1 item
+        if (group.items.length === 1) {
+            handleEditRecord(group.items[0], group.items, e);
+        } else {
+            // Open in group view with first record loaded, ready to add new or edit
+            handleEditRecord(group.items[0], group.items, e);
+        }
+    };
+
+    // Quick Increment (+1 occurrence at existing group)
+    const handleQuickIncrement = (group: typeof groupedFights[0], e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!isAdmin) { setShowAuthModal(true); return; }
+
+        const baseRec = group.items[0];
+        const newRec: FightRecord = {
+            id: 'fight_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+            mapId: selectedMap.id,
+            x: group.x,
+            y: group.y,
+            locationName: group.locationName,
+            timeInMinutes: baseRec ? baseRec.timeInMinutes : 4.0,
+            safeNumber: baseRec ? (baseRec.safeNumber || 1) : 1,
+            teamA: baseRec?.teamA,
+            teamB: baseRec?.teamB,
+            winnerTeam: baseRec?.winnerTeam,
+            notes: baseRec?.notes ? `Ocorrência adicional em ${group.locationName}` : undefined,
+            createdAt: Date.now()
+        };
+        saveFights([...fights, newRec]);
     };
 
     // Marker Right Click (-1 or delete)
@@ -315,26 +437,31 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
         e.stopPropagation();
         if (!isAdmin) { setShowAuthModal(true); return; }
 
-        const mainRec = group.items[0];
-        const currentCount = mainRec.count || 1;
-
-        if (currentCount > 1) {
-            const updated = fights.map(r => r.id === mainRec.id ? {
-                ...r,
-                count: currentCount - 1
-            } : r);
+        if (group.items.length > 1) {
+            // Remove the last record in this group
+            const lastItem = group.items[group.items.length - 1];
+            const updated = fights.filter(r => r.id !== lastItem.id);
             saveFights(updated);
-        } else {
-            const updated = fights.filter(r => r.id !== mainRec.id);
-            saveFights(updated);
+        } else if (group.items.length === 1) {
+            const mainRec = group.items[0];
+            const currentCount = mainRec.count || 1;
+            if (currentCount > 1) {
+                const updated = fights.map(r => r.id === mainRec.id ? { ...r, count: currentCount - 1 } : r);
+                saveFights(updated);
+            } else {
+                const updated = fights.filter(r => r.id !== mainRec.id);
+                saveFights(updated);
+            }
         }
     };
 
     // Open Modal for Editing Record / Viewing Group Records
     const handleEditRecord = (rec: FightRecord, groupItems?: FightRecord[], e?: React.MouseEvent) => {
-        if (e) e.stopPropagation();
+        if (e && typeof e.stopPropagation === 'function') {
+            e.stopPropagation();
+        }
         setEditingRecord(rec);
-        setSelectedGroupRecords(groupItems && groupItems.length > 0 ? groupItems : [rec]);
+        setSelectedGroupRecords(Array.isArray(groupItems) && groupItems.length > 0 ? groupItems : (rec ? [rec] : []));
         setClickCoords({ x: rec.x, y: rec.y });
         setFormLocation(rec.locationName || '');
         setFormTimeStr(formatMinutesToMS(rec.timeInMinutes));
@@ -356,25 +483,25 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
             return;
         }
 
-        const locName = formLocation.trim() || 'Zona ' + (clickCoords ? `${Math.round(clickCoords.x)},${Math.round(clickCoords.y)}` : 'Geral');
+        const locName = formLocation.trim() || (clickCoords ? `Ponto ${Math.round(clickCoords.x)},${Math.round(clickCoords.y)}` : 'Geral');
+        const targetX = clickCoords ? clickCoords.x : 50;
+        const targetY = clickCoords ? clickCoords.y : 50;
 
-        if (clickCoords) {
-            const newRec: FightRecord = {
-                id: 'fight_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
-                mapId: selectedMap.id,
-                x: clickCoords.x,
-                y: clickCoords.y,
-                locationName: locName,
-                timeInMinutes: minutes,
-                safeNumber: formSafeNumber,
-                teamA: formTeamA.trim() || undefined,
-                teamB: formTeamB.trim() || undefined,
-                winnerTeam: formWinner.trim() || undefined,
-                notes: formNotes.trim() || undefined,
-                createdAt: Date.now()
-            };
-            saveFights([...fights, newRec]);
-        }
+        const newRec: FightRecord = {
+            id: 'fight_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+            mapId: selectedMap.id,
+            x: targetX,
+            y: targetY,
+            locationName: locName,
+            timeInMinutes: minutes,
+            safeNumber: formSafeNumber,
+            teamA: formTeamA.trim() || undefined,
+            teamB: formTeamB.trim() || undefined,
+            winnerTeam: formWinner.trim() || undefined,
+            notes: formNotes.trim() || undefined,
+            createdAt: Date.now()
+        };
+        saveFights([...fights, newRec]);
         setShowModal(false);
     };
 
@@ -388,7 +515,9 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
             return;
         }
 
-        const locName = formLocation.trim() || 'Zona ' + (clickCoords ? `${Math.round(clickCoords.x)},${Math.round(clickCoords.y)}` : 'Geral');
+        const locName = formLocation.trim() || (clickCoords ? `Ponto ${Math.round(clickCoords.x)},${Math.round(clickCoords.y)}` : 'Geral');
+        const targetX = clickCoords ? clickCoords.x : 50;
+        const targetY = clickCoords ? clickCoords.y : 50;
 
         if (editingRecord) {
             const updated = fights.map(r => r.id === editingRecord.id ? {
@@ -402,12 +531,12 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
                 notes: formNotes.trim() || undefined,
             } : r);
             saveFights(updated);
-        } else if (clickCoords) {
+        } else {
             const newRec: FightRecord = {
                 id: 'fight_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
                 mapId: selectedMap.id,
-                x: clickCoords.x,
-                y: clickCoords.y,
+                x: targetX,
+                y: targetY,
                 locationName: locName,
                 timeInMinutes: minutes,
                 safeNumber: formSafeNumber,
@@ -597,8 +726,32 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
                             <div className="bg-black/40 p-3 rounded-2xl border border-white/10 mb-4 space-y-2">
                                 <div className="flex items-center justify-between text-xs font-bold text-gray-400">
                                     <span>Trocações neste local ({selectedGroupRecords.length}):</span>
+                                    <span className="text-[10px] text-yellow-400 font-normal">
+                                        {editingRecord ? 'Selecione abaixo para alternar ou criar nova' : 'Cadastrando nova ocorrência'}
+                                    </span>
                                 </div>
                                 <div className="flex flex-wrap gap-1.5">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setEditingRecord(null);
+                                            setFormTimeStr('04:00');
+                                            const defaultSafe = selectedSafeFilter !== 'ALL' ? parseInt(selectedSafeFilter) : 1;
+                                            setFormSafeNumber(defaultSafe);
+                                            setFormTeamA('');
+                                            setFormTeamB('');
+                                            setFormWinner('');
+                                            setFormNotes('');
+                                        }}
+                                        className={`text-[10px] font-bold px-3 py-1.5 rounded-lg border transition-all flex items-center gap-1.5 ${
+                                            editingRecord === null
+                                            ? 'bg-yellow-400 text-black border-yellow-300 font-black shadow-md'
+                                            : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/40 hover:bg-yellow-500/20'
+                                        }`}
+                                    >
+                                        <Plus size={12} /> + Nova Trocação Aqui
+                                    </button>
+
                                     {selectedGroupRecords.map((r, i) => (
                                         <button
                                             key={r.id}
@@ -613,34 +766,15 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
                                                 setFormWinner(r.winnerTeam || '');
                                                 setFormNotes(r.notes || '');
                                             }}
-                                            className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg border transition-all ${
+                                            className={`text-[10px] font-mono font-bold px-2.5 py-1.5 rounded-lg border transition-all ${
                                                 editingRecord?.id === r.id
-                                                ? 'bg-red-500 text-white border-red-400 font-black'
+                                                ? 'bg-red-500 text-white border-red-400 font-black shadow-md'
                                                 : 'bg-black/80 text-red-400 border-red-500/30 hover:border-red-500'
                                             }`}
                                         >
                                             #{i + 1} S{r.safeNumber || 1} ({formatMinutesToMS(r.timeInMinutes)})
                                         </button>
                                     ))}
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setEditingRecord(null);
-                                            setFormTimeStr('04:00');
-                                            setFormSafeNumber(1);
-                                            setFormTeamA('');
-                                            setFormTeamB('');
-                                            setFormWinner('');
-                                            setFormNotes('');
-                                        }}
-                                        className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1 ${
-                                            editingRecord === null
-                                            ? 'bg-yellow-400 text-black border-yellow-300 font-black'
-                                            : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/40 hover:bg-yellow-500/20'
-                                        }`}
-                                    >
-                                        <Plus size={12} /> + Adicionar Outro Registro
-                                    </button>
                                 </div>
                             </div>
                         )}
@@ -648,9 +782,16 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
                         <form onSubmit={handleFormSubmit} className="space-y-4">
                             {/* Location Name Input & Shortcuts */}
                             <div>
-                                <label className="block text-xs text-gray-400 font-bold uppercase tracking-widest mb-1.5">
-                                    Localização / Ponto no Mapa
-                                </label>
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <label className="block text-xs text-gray-400 font-bold uppercase tracking-widest">
+                                        Localização / Ponto no Mapa
+                                    </label>
+                                    {clickCoords && (
+                                        <span className="text-[10px] font-mono text-gray-500">
+                                            Coords: {Math.round(clickCoords.x)}%, {Math.round(clickCoords.y)}%
+                                        </span>
+                                    )}
+                                </div>
                                 <input 
                                     type="text" 
                                     value={formLocation}
@@ -661,15 +802,21 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
                                 />
                                 {POPULAR_LOCATIONS[selectedMap.id] && (
                                     <div className="flex flex-wrap gap-1.5 mt-2">
-                                        <span className="text-[10px] text-gray-500 font-bold uppercase py-0.5 mr-1">Sugestões:</span>
-                                        {POPULAR_LOCATIONS[selectedMap.id].slice(0, 8).map(loc => (
+                                        <span className="text-[10px] text-gray-500 font-bold uppercase py-0.5 mr-1">Sugestões Rápidas:</span>
+                                        {POPULAR_LOCATIONS[selectedMap.id].slice(0, 10).map(loc => (
                                             <button
                                                 key={loc}
                                                 type="button"
-                                                onClick={() => setFormLocation(loc)}
+                                                onClick={() => {
+                                                    setFormLocation(loc);
+                                                    const preset = LOCATION_PRESETS[selectedMap.id]?.[loc];
+                                                    if (preset) {
+                                                        setClickCoords(preset);
+                                                    }
+                                                }}
                                                 className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border transition-all ${
-                                                    formLocation === loc 
-                                                    ? 'bg-red-500 text-white border-red-400 font-black' 
+                                                    formLocation.toLowerCase() === loc.toLowerCase()
+                                                    ? 'bg-red-500 text-white border-red-400 font-black shadow-sm' 
                                                     : 'bg-black/40 text-gray-400 border-white/5 hover:text-white hover:bg-white/10'
                                                 }`}
                                             >
@@ -807,21 +954,63 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
                                 />
                             </div>
 
-                            {/* Buttons */}
-                            <div className="flex gap-3 pt-4">
-                                <button 
-                                    type="button" 
-                                    onClick={() => setShowModal(false)}
-                                    className="flex-1 bg-white/5 hover:bg-white/10 text-gray-400 font-bold uppercase tracking-widest py-3 rounded-xl transition-colors text-xs"
-                                >
-                                    Cancelar
-                                </button>
-                                <button 
-                                    type="submit" 
-                                    className="flex-1 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-widest py-3 rounded-xl transition-colors text-xs shadow-lg shadow-red-600/20"
-                                >
-                                    {editingRecord ? 'Atualizar Registro' : 'Salvar Trocação'}
-                                </button>
+                            {/* Action Buttons in Modal */}
+                            <div className="space-y-2 pt-3">
+                                {editingRecord ? (
+                                    <>
+                                        <div className="flex gap-2">
+                                            <button 
+                                                type="submit" 
+                                                className="flex-1 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-widest py-3 rounded-xl transition-all text-xs shadow-lg shadow-red-600/20 flex items-center justify-center gap-1.5"
+                                            >
+                                                <Check size={14} /> Atualizar Este Registro
+                                            </button>
+                                            
+                                            <button 
+                                                type="button" 
+                                                onClick={handleSaveAsNewRecord}
+                                                className="flex-1 bg-yellow-500 hover:bg-yellow-400 text-black font-black uppercase tracking-widest py-3 rounded-xl transition-all text-xs shadow-lg shadow-yellow-500/20 flex items-center justify-center gap-1.5"
+                                                title="Adiciona como uma nova ocorrência neste mesmo local sem alterar o registro anterior"
+                                            >
+                                                <Plus size={14} /> + Salvar Como Nova Trocação
+                                            </button>
+                                        </div>
+
+                                        <div className="flex gap-2">
+                                            <button 
+                                                type="button" 
+                                                onClick={() => handleDeleteRecord(editingRecord.id)}
+                                                className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 font-bold uppercase tracking-widest py-2.5 px-4 rounded-xl transition-colors text-xs flex items-center justify-center gap-1.5"
+                                            >
+                                                <Trash2 size={14} /> Excluir Registro
+                                            </button>
+
+                                            <button 
+                                                type="button" 
+                                                onClick={() => setShowModal(false)}
+                                                className="flex-1 bg-white/5 hover:bg-white/10 text-gray-400 font-bold uppercase tracking-widest py-2.5 rounded-xl transition-colors text-xs"
+                                            >
+                                                Fechar
+                                            </button>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="flex gap-2">
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setShowModal(false)}
+                                            className="flex-1 bg-white/5 hover:bg-white/10 text-gray-400 font-bold uppercase tracking-widest py-3 rounded-xl transition-colors text-xs"
+                                        >
+                                            Cancelar
+                                        </button>
+                                        <button 
+                                            type="submit" 
+                                            className="flex-2 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-widest py-3 px-6 rounded-xl transition-all text-xs shadow-lg shadow-red-600/20 flex items-center justify-center gap-1.5"
+                                        >
+                                            <Plus size={16} /> Salvar Trocação (+1)
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         </form>
                     </div>
@@ -1116,6 +1305,17 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
                                 opacity={0.8}
                             />
 
+                            {/* Target Coords Indicator when Modal is open */}
+                            {showModal && clickCoords && (
+                                <div 
+                                    className="absolute transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-30 flex items-center justify-center"
+                                    style={{ left: `${clickCoords.x}%`, top: `${clickCoords.y}%` }}
+                                >
+                                    <div className="w-10 h-10 rounded-full border-2 border-yellow-400 animate-ping opacity-75"></div>
+                                    <div className="w-3.5 h-3.5 rounded-full bg-yellow-400 border-2 border-black absolute shadow-lg"></div>
+                                </div>
+                            )}
+
                             {/* Click layer */}
                             <div 
                                 className="absolute inset-0 z-10" 
@@ -1137,7 +1337,7 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
                                                 isHovered ? 'scale-125 z-30' : 'hover:scale-110'
                                             }`}
                                             style={{ left: `${group.x}%`, top: `${group.y}%` }}
-                                            title="Clique para +1 | Botão Direito para -1 | Shift+Clique para Editar"
+                                            title="Clique para Ver/Adicionar | Botão Direito para -1"
                                         >
                                             {/* Pulse Aura */}
                                             <div className="absolute -inset-2 rounded-full bg-red-500/30 blur-sm animate-ping pointer-events-none"></div>
@@ -1152,28 +1352,60 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
                                             </div>
 
                                             {/* Tooltip on Hover */}
-                                            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 bg-black/95 border border-red-500/40 p-2.5 rounded-xl text-[10px] text-white whitespace-nowrap shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-40">
-                                                <div className="font-black text-red-400 uppercase italic flex items-center justify-between gap-3">
-                                                    <span>{group.locationName}</span>
-                                                    <span className="text-black bg-yellow-400 font-black text-[9px] px-1.5 py-0.5 rounded uppercase">
-                                                        {group.count} TROCAÇÃO{group.count > 1 ? 'ÕES' : 'ÃO'}
+                                            <div className={`absolute left-1/2 -translate-x-1/2 ${
+                                                group.y > 65 ? 'bottom-full mb-2' : 'top-full mt-2'
+                                            } bg-[#111111]/98 backdrop-blur-md border border-red-500/50 p-3 rounded-2xl text-[11px] text-white shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-150 z-50 pointer-events-auto min-w-[240px] max-w-[320px]`}>
+                                                <div className="font-black text-red-400 uppercase italic flex items-center justify-between gap-2 pb-1.5 border-b border-white/10">
+                                                    <span className="truncate">{group.locationName}</span>
+                                                    <span className="text-black bg-yellow-400 font-black text-[9px] px-2 py-0.5 rounded-full uppercase shrink-0 shadow-sm">
+                                                        {group.count} {group.count > 1 ? 'TROCAÇÕES' : 'TROCAÇÃO'}
                                                     </span>
                                                 </div>
-                                                <div className="mt-1 flex flex-col gap-1 max-h-32 overflow-y-auto">
+
+                                                <div className="mt-1.5 flex flex-col gap-1 max-h-48 overflow-y-auto pr-1 select-text scrollbar-thin">
                                                     {group.items.map((rec, idx) => (
-                                                        <div key={rec.id || idx} className="text-gray-300 font-mono text-[9px] border-t border-white/10 pt-0.5">
-                                                            ⚔️ {rec.teamA || 'Time 1'} vs {rec.teamB || 'Time 2'} {rec.winnerTeam ? `(Vencedor: ${rec.winnerTeam})` : ''} | ⏱️ {formatMinutesToMS(rec.timeInMinutes)}
+                                                        <div 
+                                                            key={rec.id || idx} 
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleEditRecord(rec, group.items, e);
+                                                            }}
+                                                            className="text-gray-300 hover:text-white font-mono text-[10px] bg-white/5 hover:bg-white/10 p-1.5 rounded-lg border border-white/5 cursor-pointer transition-colors flex items-center justify-between gap-1.5"
+                                                            title="Clique para editar este registro"
+                                                        >
+                                                            <div className="flex items-center gap-1.5 truncate">
+                                                                <span className="font-bold text-yellow-400 shrink-0">#{idx + 1}</span>
+                                                                <span className="px-1.5 py-0.2 bg-red-500/20 text-red-400 text-[9px] rounded font-bold shrink-0">Safe {rec.safeNumber || 1}</span>
+                                                                <span className="text-gray-400 shrink-0">{formatMinutesToMS(rec.timeInMinutes)}</span>
+                                                                {rec.teamA && (
+                                                                    <span className="text-white font-sans text-[10px] truncate ml-0.5">
+                                                                        {rec.teamA} {rec.teamB ? `vs ${rec.teamB}` : ''}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            {rec.winnerTeam && (
+                                                                <span className="text-[9px] text-green-400 font-sans font-bold shrink-0" title={`Vencedor: ${rec.winnerTeam}`}>
+                                                                    👑 {rec.winnerTeam}
+                                                                </span>
+                                                            )}
                                                         </div>
                                                     ))}
                                                 </div>
-                                                <div className="mt-2 border-t border-white/10 pt-1.5 flex items-center justify-between gap-2 text-[9px] font-semibold text-gray-400">
-                                                    <span>⚡ Clique: +1 | 🖱️ Dir: -1</span>
+
+                                                <div className="mt-2.5 border-t border-white/10 pt-2 flex items-center justify-between gap-1.5 text-[10px] font-semibold">
                                                     <button
                                                         type="button"
-                                                        onClick={(e) => handleEditRecord(group.items[0], e)}
-                                                        className="text-yellow-400 hover:underline font-bold"
+                                                        onClick={(e) => handleQuickIncrement(group, e)}
+                                                        className="bg-red-600 hover:bg-red-500 text-white font-black px-2.5 py-1 rounded-lg text-[10px] shadow-sm transition-all flex items-center gap-1 shrink-0"
                                                     >
-                                                        ⚙️ Editar
+                                                        <Plus size={11} /> +1 Rápido
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => handleMarkerClick(group, e)}
+                                                        className="bg-yellow-400 hover:bg-yellow-300 text-black font-black px-2.5 py-1 rounded-lg text-[10px] shadow-sm transition-all flex items-center gap-1 shrink-0"
+                                                    >
+                                                        📝 Ver / + Trocação
                                                     </button>
                                                 </div>
                                             </div>
@@ -1189,9 +1421,9 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
                         <span className="flex items-center gap-1.5">
                             <Info size={14} className="text-red-400 shrink-0" />
                             <span>
-                                <strong className="text-white">Clique Esquerdo:</strong> +1 no local &nbsp;|&nbsp; 
-                                <strong className="text-white"> Botão Direito:</strong> -1 &nbsp;|&nbsp; 
-                                <strong className="text-white"> Shift + Clique:</strong> Detalhes
+                                <strong className="text-white">Clique no Mapa:</strong> Registrar nova trocação &nbsp;|&nbsp; 
+                                <strong className="text-white"> Clique no Pino:</strong> Adicionar ocorrência / Editar &nbsp;|&nbsp; 
+                                <strong className="text-white"> Botão Direito:</strong> -1
                             </span>
                         </span>
                         <span className="font-mono text-red-400 font-bold shrink-0">
@@ -1302,19 +1534,8 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
                                     </h3>
                                 </div>
                                 <button
-                                    onClick={() => {
-                                        setEditingRecord(null);
-                                        setClickCoords({ x: 50, y: 50 });
-                                        setFormLocation('');
-                                        setFormTimeStr('04:00');
-                                        setFormSafeNumber(1);
-                                        setFormTeamA('');
-                                        setFormTeamB('');
-                                        setFormWinner('');
-                                        setFormNotes('');
-                                        setShowModal(true);
-                                    }}
-                                    className="bg-red-600 hover:bg-red-500 text-white font-black text-[10px] px-3 py-1.5 rounded-xl uppercase tracking-wider flex items-center gap-1 shadow-md transition-all"
+                                    onClick={() => handleOpenNewFightModal()}
+                                    className="bg-red-600 hover:bg-red-500 text-white font-black text-[10px] px-3 py-1.5 rounded-xl uppercase tracking-wider flex items-center gap-1 shadow-md transition-all cursor-pointer"
                                 >
                                     <Plus size={12} /> Registrar Trocação
                                 </button>

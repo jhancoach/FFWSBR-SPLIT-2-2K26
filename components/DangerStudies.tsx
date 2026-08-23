@@ -680,25 +680,55 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
                                                 {group.count}
                                             </div>
 
-                                            {/* Tooltip on Hover (pointer-events-none so it doesn't block map clicks) */}
-                                            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 bg-black/95 border border-amber-500/40 p-2.5 rounded-xl text-[10px] text-white whitespace-nowrap shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-40 min-w-[180px]">
-                                                <div className="font-black text-amber-400 uppercase italic flex items-center justify-between gap-3">
-                                                    <span>{group.locationName}</span>
-                                                    <span className="text-black bg-amber-400 font-black text-[9px] px-1.5 py-0.5 rounded uppercase">
-                                                        {group.count} DANGER{group.count > 1 ? 'S' : ''}
+                                            {/* Tooltip on Hover */}
+                                            <div className={`absolute left-1/2 -translate-x-1/2 ${
+                                                group.y > 65 ? 'bottom-full mb-2' : 'top-full mt-2'
+                                            } bg-[#111111]/98 backdrop-blur-md border border-amber-500/50 p-3 rounded-2xl text-[11px] text-white shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-150 z-50 pointer-events-auto min-w-[240px] max-w-[320px]`}>
+                                                <div className="font-black text-amber-400 uppercase italic flex items-center justify-between gap-2 pb-1.5 border-b border-white/10">
+                                                    <span className="truncate">{group.locationName}</span>
+                                                    <span className="text-black bg-amber-400 font-black text-[9px] px-2 py-0.5 rounded-full uppercase shrink-0 shadow-sm">
+                                                        {group.count} {group.count > 1 ? 'DANGERS' : 'DANGER'}
                                                     </span>
                                                 </div>
-                                                <div className="mt-1 flex flex-col gap-1 max-h-32 overflow-y-auto">
+
+                                                <div className="mt-1.5 flex flex-col gap-1 max-h-48 overflow-y-auto pr-1 select-text scrollbar-thin">
                                                     {group.items.map((rec, idx) => (
-                                                        <div key={rec.id || idx} className="text-gray-300 font-mono text-[9px] border-t border-white/10 pt-0.5 flex justify-between">
-                                                            <span>⏱️ {formatMinutesToMS(rec.timeInMinutes)} | Safe {rec.safeNumber}</span>
-                                                            <span className="text-amber-400">x{rec.count || 1}</span>
+                                                        <div 
+                                                            key={rec.id || idx} 
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleEditRecord(rec, e);
+                                                            }}
+                                                            className="text-gray-300 hover:text-white font-mono text-[10px] bg-white/5 hover:bg-white/10 p-1.5 rounded-lg border border-white/5 cursor-pointer transition-colors flex items-center justify-between gap-1.5"
+                                                            title="Clique para editar este registro"
+                                                        >
+                                                            <div className="flex items-center gap-1.5 truncate">
+                                                                <span className="font-bold text-amber-400 shrink-0">#{idx + 1}</span>
+                                                                <span className="px-1.5 py-0.2 bg-amber-500/20 text-amber-400 text-[9px] rounded font-bold shrink-0">Safe {rec.safeNumber || 1}</span>
+                                                                <span className="text-gray-400 shrink-0">{formatMinutesToMS(rec.timeInMinutes)}</span>
+                                                            </div>
+                                                            <span className="text-[9px] text-amber-400 font-mono font-bold shrink-0">
+                                                                x{rec.count || 1}
+                                                            </span>
                                                         </div>
                                                     ))}
                                                 </div>
-                                                <div className="mt-2 border-t border-white/10 pt-1.5 flex items-center justify-between gap-2 text-[9px] font-semibold text-gray-400">
-                                                    <span>⚡ Clique: +1 | 🖱️ Dir: -1</span>
-                                                    <span className="text-amber-400 font-bold">Shift+Clique Editar</span>
+
+                                                <div className="mt-2.5 border-t border-white/10 pt-2 flex items-center justify-between gap-1.5 text-[10px] font-semibold">
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => handleMarkerClick(group, e)}
+                                                        className="bg-amber-500 hover:bg-amber-400 text-black font-black px-2.5 py-1 rounded-lg text-[10px] shadow-sm transition-all flex items-center gap-1 shrink-0"
+                                                    >
+                                                        <Plus size={11} /> +1 Rápido
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => handleEditRecord(group.items[0], e)}
+                                                        className="bg-white/10 hover:bg-white/20 text-amber-400 font-black px-2.5 py-1 rounded-lg text-[10px] shadow-sm transition-all flex items-center gap-1 shrink-0"
+                                                    >
+                                                        📝 Ver / Editar
+                                                    </button>
                                                 </div>
                                             </div>
                                         </div>
