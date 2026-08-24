@@ -34,7 +34,8 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
   const [mapKingsSubTab, setMapKingsSubTab] = useState<"maps" | "drops">("maps");
   const [instagramPost, setInstagramPost] = useState<{ group: any; type: "map" | "drop" } | null>(null);
   const [rankingSubTab, setRankingSubTab] = useState<'general' | 'maps' | 'safes'>('general');
-  const [activeRole, setActiveRole] = useState<string>('');
+  const [activeRole, setActiveRole] = useState<string>('TODAS AS FUNÇÕES');
+  const [roleSearch, setRoleSearch] = useState<string>('');
   const [roleSort, setRoleSort] = useState<{ field: string, direction: 'asc' | 'desc' }>({ field: 'kills', direction: 'desc' });
   const [rankingSort, setRankingSort] = useState<{ field: string, direction: 'asc' | 'desc' }>({ field: 'kills', direction: 'desc' });
   const [comparePlayers, setComparePlayers] = useState<{p1: string, p1Hab: string, p2: string, p2Hab: string}>({p1: '', p1Hab: 'All', p2: '', p2Hab: 'All'});
@@ -428,7 +429,8 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
         const stats = rankingData.find(r => normalize(r.name) === normalize(d.Name));
         const basePlayer = {
             name: d.Name,
-            img: d.IMG,
+            img: d.IMG || findDimImg(data.playersDimension, d.Name),
+            teamImg: stats?.teamImg || findTeamLogo(stats?.team || '', data.teamsReference),
             team: stats?.team || 'N/A',
             kills: stats?.kills || 0,
             diff: stats?.diff || 0,
@@ -444,7 +446,13 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             gelosDestruidos: stats?.gelosDestruidos || 0,
             reviveu: stats?.reviveu || 0,
             aliadosRevividos: stats?.aliadosRevividos || 0,
-            mvp: stats?.mvp || 0
+            mvp: stats?.mvp || 0,
+            killContributionPct: stats?.killContributionPct || '0.0',
+            deaths: stats?.deaths || 0,
+            kd: stats?.kd || '0.00',
+            zeroKills: stats?.zeroKills || 0,
+            withKills: stats?.withKills || 0,
+            loadout: stats?.loadout
         };
 
         const role1 = d.Funcao?.trim().toUpperCase();
@@ -461,45 +469,91 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
         }
     });
 
-    const roles = Array.from(new Set(playersWithRoles.map(r => r.funcao))).sort();
+    const sortFn = (a: any, b: any) => {
+        const field = roleSort.field;
+        const valA = a[field];
+        const valB = b[field];
+
+        if (typeof valA === 'string' && typeof valB === 'string') {
+            const numA = parseFloat(valA);
+            const numB = parseFloat(valB);
+            if (!isNaN(numA) && !isNaN(numB)) {
+                return roleSort.direction === 'asc' ? numA - numB : numB - numA;
+            }
+            return roleSort.direction === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        }
+
+        const numA = (valA ?? 0) as number;
+        const numB = (valB ?? 0) as number;
+
+        return roleSort.direction === 'asc' ? numA - numB : numB - numA;
+    };
+
+    const getTopMetric = (list: any[], key: string, isStringNum = false) => {
+        return [...list].sort((a, b) => {
+            const valA = isStringNum ? parseFloat(a[key] || 0) : (a[key] || 0);
+            const valB = isStringNum ? parseFloat(b[key] || 0) : (b[key] || 0);
+            return valB - valA;
+        })[0] || null;
+    };
+
+    // Unicidade para "TODAS AS FUNÇÕES"
+    const uniquePlayersMap = new Map<string, any>();
+    playersWithRoles.forEach(p => {
+        if (!uniquePlayersMap.has(p.name)) {
+            uniquePlayersMap.set(p.name, p);
+        }
+    });
+    const allRolePlayers = Array.from(uniquePlayersMap.values());
+    const sortedAllPlayers = [...allRolePlayers].sort(sortFn);
+
+    const allRolesGroup = {
+        role: 'TODAS AS FUNÇÕES',
+        bestKills: getTopMetric(allRolePlayers, 'kills'),
+        bestDamage: getTopMetric(allRolePlayers, 'damage'),
+        bestAvgKills: getTopMetric(allRolePlayers, 'avg', true),
+        bestAssists: getTopMetric(allRolePlayers, 'assists'),
+        bestHS: getTopMetric(allRolePlayers, 'hs'),
+        bestKnocks: getTopMetric(allRolePlayers, 'knocks'),
+        bestAvgKnocks: getTopMetric(allRolePlayers, 'avgKnocks', true),
+        bestGelos: getTopMetric(allRolePlayers, 'gelos'),
+        bestGelosDestruidos: getTopMetric(allRolePlayers, 'gelosDestruidos'),
+        bestReviveu: getTopMetric(allRolePlayers, 'reviveu'),
+        bestAliadosRevividos: getTopMetric(allRolePlayers, 'aliadosRevividos'),
+        bestMVP: getTopMetric(allRolePlayers, 'mvp'),
+        bestDiff: getTopMetric(allRolePlayers, 'diff'),
+        bestContrib: getTopMetric(allRolePlayers, 'killContributionPct', true),
+        players: sortedAllPlayers
+    };
+
+    const roles = Array.from(new Set(playersWithRoles.map(r => r.funcao))).filter(r => r !== 'N/A').sort();
     
     const bestsByRole = roles.map(role => {
         const rolePlayers = playersWithRoles.filter(p => p.funcao === role);
-        
-        // Sort players based on roleSort state
-        const sortedPlayers = [...rolePlayers].sort((a, b) => {
-            const valA = a[roleSort.field];
-            const valB = b[roleSort.field];
-            
-            // Handle numeric strings (like avg stats)
-            const numA = typeof valA === 'string' ? parseFloat(valA) : valA;
-            const numB = typeof valB === 'string' ? parseFloat(valB) : valB;
-            
-            if (roleSort.direction === 'asc') {
-                return numA - numB;
-            } else {
-                return numB - numA;
-            }
-        });
+        const sortedPlayers = [...rolePlayers].sort(sortFn);
 
         return {
             role,
-            bestKills: [...rolePlayers].sort((a,b) => b.kills - a.kills)[0],
-            bestDamage: [...rolePlayers].sort((a,b) => b.damage - a.damage)[0],
-            bestAssists: [...rolePlayers].sort((a,b) => b.assists - a.assists)[0],
-            bestHS: [...rolePlayers].sort((a,b) => b.hs - a.hs)[0],
-            bestKnocks: [...rolePlayers].sort((a,b) => b.knocks - a.knocks)[0],
-            bestGelos: [...rolePlayers].sort((a,b) => b.gelos - a.gelos)[0],
-            bestGelosDestruidos: [...rolePlayers].sort((a,b) => b.gelosDestruidos - a.gelosDestruidos)[0],
-            bestReviveu: [...rolePlayers].sort((a,b) => b.reviveu - a.reviveu)[0],
-            bestAliadosRevividos: [...rolePlayers].sort((a,b) => b.aliadosRevividos - a.aliadosRevividos)[0],
-            bestMVP: [...rolePlayers].sort((a,b) => b.mvp - a.mvp)[0],
+            bestKills: getTopMetric(rolePlayers, 'kills'),
+            bestDamage: getTopMetric(rolePlayers, 'damage'),
+            bestAvgKills: getTopMetric(rolePlayers, 'avg', true),
+            bestAssists: getTopMetric(rolePlayers, 'assists'),
+            bestHS: getTopMetric(rolePlayers, 'hs'),
+            bestKnocks: getTopMetric(rolePlayers, 'knocks'),
+            bestAvgKnocks: getTopMetric(rolePlayers, 'avgKnocks', true),
+            bestGelos: getTopMetric(rolePlayers, 'gelos'),
+            bestGelosDestruidos: getTopMetric(rolePlayers, 'gelosDestruidos'),
+            bestReviveu: getTopMetric(rolePlayers, 'reviveu'),
+            bestAliadosRevividos: getTopMetric(rolePlayers, 'aliadosRevividos'),
+            bestMVP: getTopMetric(rolePlayers, 'mvp'),
+            bestDiff: getTopMetric(rolePlayers, 'diff'),
+            bestContrib: getTopMetric(rolePlayers, 'killContributionPct', true),
             players: sortedPlayers
         };
     });
 
-    return { players: playersWithRoles, bestsByRole };
-  }, [data.playersDimension, rankingData, activeTab, roleSort]);
+    return { players: playersWithRoles, bestsByRole: [allRolesGroup, ...bestsByRole] };
+  }, [data.playersDimension, data.teamsReference, rankingData, activeTab, roleSort]);
 
   const auditData = useMemo(() => {
     if (activeTab !== 'auditoria') return [];
@@ -3112,203 +3166,692 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
 
           {activeTab === 'roles' && (
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-6">
-                  {/* Seleção de Função */}
-                  <div className="flex flex-wrap gap-2 p-1 bg-black/20 rounded-xl border border-white/5">
-                      {rolesData.bestsByRole.map(group => (
-                          <button
-                              key={group.role}
-                              onClick={() => setActiveRole(group.role)}
-                              className={`px-6 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${
-                                  (activeRole === group.role || (!activeRole && rolesData.bestsByRole[0]?.role === group.role))
-                                      ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 scale-105'
-                                      : 'text-gray-500 hover:text-white hover:bg-white/5'
-                              }`}
-                          >
-                              {group.role}
-                          </button>
-                      ))}
+                  {/* Seleção de Função & Barra de Busca */}
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#141414] p-4 rounded-2xl border border-white/5 shadow-xl">
+                      <div className="flex flex-wrap gap-2">
+                          {rolesData.bestsByRole.map(group => {
+                              const isSelected = (activeRole === group.role || (!activeRole && rolesData.bestsByRole[0]?.role === group.role));
+                              return (
+                                  <button
+                                      key={group.role}
+                                      onClick={() => setActiveRole(group.role)}
+                                      className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
+                                          isSelected
+                                              ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 scale-105'
+                                              : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 border border-white/5'
+                                      }`}
+                                  >
+                                      {group.role === 'TODAS AS FUNÇÕES' ? (
+                                          <Users size={14} className={isSelected ? 'text-black' : 'text-yellow-500'} />
+                                      ) : (
+                                          <Crown size={14} className={isSelected ? 'text-black' : 'text-yellow-500'} />
+                                      )}
+                                      <span>{group.role}</span>
+                                      <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono ${isSelected ? 'bg-black/20 text-black' : 'bg-black/40 text-gray-500'}`}>
+                                          {group.players.length}
+                                      </span>
+                                  </button>
+                              );
+                          })}
+                      </div>
+
+                      {/* Busca dentro da Função */}
+                      <div className="relative min-w-[240px]">
+                          <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                          <input
+                              type="text"
+                              value={roleSearch}
+                              onChange={(e) => setRoleSearch(e.target.value)}
+                              placeholder="Buscar jogador ou equipe..."
+                              className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50 transition-colors"
+                          />
+                          {roleSearch && (
+                              <button
+                                  onClick={() => setRoleSearch('')}
+                                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+                              >
+                                  <X size={12} />
+                              </button>
+                          )}
+                      </div>
+                  </div>
+
+                  {/* Atalhos de Filtro / Ordenação Rápida do Ranking */}
+                  <div className="bg-[#181818] p-4 rounded-2xl border border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-lg">
+                      <div className="flex items-center gap-2">
+                          <Trophy size={16} className="text-yellow-500" />
+                          <span className="text-xs font-black uppercase text-white tracking-wider">Filtrar Ranking por Métrica:</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                          {[
+                              { label: 'Abates (Kills)', field: 'kills', icon: Skull },
+                              { label: 'Dano Total', field: 'damage', icon: Flame },
+                              { label: 'Média Kills', field: 'avg', icon: Target },
+                              { label: 'Knocks (Deitados)', field: 'knocks', icon: Zap },
+                              { label: 'MVP', field: 'mvp', icon: AwardIcon => <Crown size={12} /> },
+                              { label: 'Assistências', field: 'assists', icon: Users },
+                              { label: 'Headshots', field: 'hs', icon: Crosshair },
+                              { label: 'Gelos', field: 'gelos', icon: Shield },
+                              { label: 'Revives', field: 'reviveu', icon: Activity },
+                              { label: 'Saldo (Diff)', field: 'diff', icon: Scale },
+                              { label: '% Contribuição', field: 'killContributionPct', icon: BarChart2 }
+                          ].map(metric => {
+                              const isSorted = roleSort.field === metric.field;
+                              return (
+                                  <button
+                                      key={metric.field}
+                                      onClick={() => handleRoleSort(metric.field)}
+                                      className={`px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                                          isSorted
+                                              ? 'bg-yellow-500 text-black shadow-md shadow-yellow-500/20 font-black'
+                                              : 'bg-black/40 text-gray-400 hover:text-white hover:bg-white/5 border border-white/5'
+                                      }`}
+                                  >
+                                      {typeof metric.icon === 'function' ? metric.icon() : <metric.icon size={12} />}
+                                      <span>{metric.label}</span>
+                                      {isSorted && (
+                                          roleSort.direction === 'desc' ? <ChevronDown size={12} className="stroke-[3]" /> : <ChevronUp size={12} className="stroke-[3]" />
+                                      )}
+                                  </button>
+                              );
+                          })}
+                      </div>
                   </div>
 
                   <div className="grid grid-cols-1 gap-8">
                       {/* Agrupamento por Função */}
                       {rolesData.bestsByRole
                         .filter(group => !activeRole ? group.role === rolesData.bestsByRole[0]?.role : group.role === activeRole)
-                        .map(group => (
-                          <div key={group.role} className="bg-[#1a1a1a] rounded-3xl border border-gray-800 overflow-hidden shadow-2xl flex flex-col">
-                              <div className="bg-gradient-to-r from-black/60 to-transparent px-8 py-5 border-b border-white/5 flex items-center justify-between">
+                        .map(group => {
+                          const filteredPlayers = group.players.filter(p => {
+                              if (!roleSearch.trim()) return true;
+                              const q = roleSearch.toLowerCase();
+                              return (
+                                  p.name.toLowerCase().includes(q) ||
+                                  (p.team && p.team.toLowerCase().includes(q)) ||
+                                  (p.funcao && p.funcao.toLowerCase().includes(q))
+                              );
+                          });
+
+                          return (
+                          <div key={group.role} className="bg-[#161616] rounded-3xl border border-gray-800 overflow-hidden shadow-2xl flex flex-col">
+                              {/* Header da Função */}
+                              <div className="bg-gradient-to-r from-black/80 via-black/40 to-transparent px-8 py-5 border-b border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                   <div className="flex items-center gap-3">
-                                      <div className={`w-2 h-8 rounded-full shadow-[0_0_15px_rgba(234,179,8,0.5)] ${group.role === 'CPT' ? 'bg-yellow-500' : 'bg-gray-500'}`}></div>
-                                      <h3 className="text-lg font-black text-white uppercase tracking-widest italic">{group.role}</h3>
-                                  </div>
-                                  <div className="flex flex-col items-end">
-                                      <span className="text-[10px] font-black text-yellow-500 tracking-widest uppercase">Efetivo Total</span>
-                                      <span className="text-xl font-black text-white italic leading-none">{group.players.length}</span>
-                                  </div>
-                              </div>
-
-                              {/* Melhores da Função */}
-                              <div className="bg-black/20 p-6 grid grid-cols-2 sm:grid-cols-5 gap-4 border-b border-white/5">
-                                  {[
-                                      { label: 'Kills', best: group.bestKills, val: group.bestKills?.kills, color: 'text-red-500' },
-                                      { label: 'Dano', best: group.bestDamage, val: group.bestDamage?.damage, color: 'text-gray-400' },
-                                      { label: 'Assists', best: group.bestAssists, val: group.bestAssists?.assists, color: 'text-blue-400' },
-                                      { label: 'HS', best: group.bestHS, val: group.bestHS?.hs, color: 'text-yellow-500' },
-                                      { label: 'MVP', best: group.bestMVP, val: group.bestMVP?.mvp, color: 'text-yellow-500' }
-                                  ].map((b, i) => (
-                                      <div key={i} className="flex flex-col items-center text-center p-2 rounded-xl bg-white/5 border border-white/5">
-                                          <span className="text-[8px] font-black text-gray-500 uppercase tracking-widest mb-1">{b.label}</span>
-                                          <span className={`text-xs font-black italic ${b.color}`}>{b.val}</span>
-                                          <span className="text-[7px] font-bold text-gray-600 uppercase truncate w-full mt-1">{b.best?.name}</span>
+                                      <div className={`w-2.5 h-9 rounded-full shadow-[0_0_15px_rgba(234,179,8,0.5)] ${group.role === 'TODAS AS FUNÇÕES' ? 'bg-yellow-400' : 'bg-yellow-500'}`}></div>
+                                      <div>
+                                          <div className="flex items-center gap-2">
+                                              <h3 className="text-xl font-black text-white uppercase tracking-widest italic">{group.role}</h3>
+                                              <span className="bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 text-[10px] font-black uppercase px-2 py-0.5 rounded-full">
+                                                  Ranking Oficial
+                                              </span>
+                                          </div>
+                                          <p className="text-[11px] text-gray-400 mt-0.5">
+                                              Clique em qualquer coluna abaixo para reordenar o ranking instantaneamente.
+                                          </p>
                                       </div>
-                                  ))}
+                                  </div>
+                                  <div className="flex items-center gap-4">
+                                      <div className="bg-black/40 px-4 py-2 rounded-xl border border-white/5 flex flex-col items-end">
+                                          <span className="text-[9px] font-black text-yellow-500 tracking-widest uppercase">Efetivo Filtrado</span>
+                                          <span className="text-lg font-black text-white italic leading-none">{filteredPlayers.length} / {group.players.length}</span>
+                                      </div>
+                                      <div className="bg-black/40 px-4 py-2 rounded-xl border border-white/5 flex flex-col items-end">
+                                          <span className="text-[9px] font-black text-gray-400 tracking-widest uppercase">Ordenação Atual</span>
+                                          <span className="text-xs font-black text-yellow-400 uppercase leading-none mt-0.5">
+                                              {roleSort.field.toUpperCase()} ({roleSort.direction === 'desc' ? 'MAIOR' : 'MENOR'})
+                                          </span>
+                                      </div>
+                                  </div>
                               </div>
 
-                              <div className="p-2 overflow-x-auto custom-scrollbar">
-                                  <table className="w-full text-left border-separate border-spacing-y-1">
-                                      <thead>
-                                          <tr className="text-[8px] font-black text-gray-500 uppercase tracking-widest">
-                                              <th className="px-3 py-2 cursor-pointer hover:text-white transition-colors" onClick={() => handleRoleSort('name')}>
-                                                  <div className="flex items-center gap-1">
-                                                      Jogador
-                                                      {roleSort.field === 'name' && (roleSort.direction === 'desc' ? <ChevronDown size={8} /> : <ChevronUp size={8} />)}
-                                                  </div>
-                                              </th>
-                                              <th className="px-1 py-2 text-center cursor-pointer hover:text-white transition-colors" onClick={() => handleRoleSort('kills')}>
-                                                  <div className="flex items-center justify-center gap-1">
-                                                      K
-                                                      {roleSort.field === 'kills' && (roleSort.direction === 'desc' ? <ChevronDown size={8} /> : <ChevronUp size={8} />)}
-                                                  </div>
-                                              </th>
-                                              <th className="px-1 py-2 text-center cursor-pointer hover:text-white transition-colors" onClick={() => handleRoleSort('diff')}>
-                                                  <div className="flex items-center justify-center gap-1">
-                                                      S
-                                                      {roleSort.field === 'diff' && (roleSort.direction === 'desc' ? <ChevronDown size={8} /> : <ChevronUp size={8} />)}
-                                                  </div>
-                                              </th>
-                                              <th className="px-1 py-2 text-center text-yellow-500 cursor-pointer hover:text-yellow-400 transition-colors" onClick={() => handleRoleSort('avg')}>
-                                                  <div className="flex items-center justify-center gap-1">
-                                                      AVG K
-                                                      {roleSort.field === 'avg' && (roleSort.direction === 'desc' ? <ChevronDown size={8} /> : <ChevronUp size={8} />)}
-                                                  </div>
-                                              </th>
-                                              <th className="px-1 py-2 text-center cursor-pointer hover:text-white transition-colors" onClick={() => handleRoleSort('damage')}>
-                                                  <div className="flex items-center justify-center gap-1">
-                                                      DMG
-                                                      {roleSort.field === 'damage' && (roleSort.direction === 'desc' ? <ChevronDown size={8} /> : <ChevronUp size={8} />)}
-                                                  </div>
-                                              </th>
-                                              <th className="px-1 py-2 text-center text-yellow-500 cursor-pointer hover:text-yellow-400 transition-colors" onClick={() => handleRoleSort('avgDmg')}>
-                                                  <div className="flex items-center justify-center gap-1">
-                                                      AVG D
-                                                      {roleSort.field === 'avgDmg' && (roleSort.direction === 'desc' ? <ChevronDown size={8} /> : <ChevronUp size={8} />)}
-                                                  </div>
-                                              </th>
-                                              <th className="px-1 py-2 text-center cursor-pointer hover:text-white transition-colors" onClick={() => handleRoleSort('assists')}>
-                                                  <div className="flex items-center justify-center gap-1">
-                                                      AST
-                                                      {roleSort.field === 'assists' && (roleSort.direction === 'desc' ? <ChevronDown size={8} /> : <ChevronUp size={8} />)}
-                                                  </div>
-                                              </th>
-                                              <th className="px-1 py-2 text-center cursor-pointer hover:text-white transition-colors" onClick={() => handleRoleSort('hs')}>
-                                                  <div className="flex items-center justify-center gap-1">
-                                                      HS
-                                                      {roleSort.field === 'hs' && (roleSort.direction === 'desc' ? <ChevronDown size={8} /> : <ChevronUp size={8} />)}
-                                                  </div>
-                                              </th>
-                                              <th className="px-1 py-2 text-center cursor-pointer hover:text-white transition-colors" onClick={() => handleRoleSort('knocks')}>
-                                                  <div className="flex items-center justify-center gap-1">
-                                                      KNK
-                                                      {roleSort.field === 'knocks' && (roleSort.direction === 'desc' ? <ChevronDown size={8} /> : <ChevronUp size={8} />)}
-                                                  </div>
-                                              </th>
-                                              <th className="px-1 py-2 text-center text-yellow-500 cursor-pointer hover:text-yellow-400 transition-colors" onClick={() => handleRoleSort('avgKnocks')}>
-                                                  <div className="flex items-center justify-center gap-1">
-                                                      AVG KNK
-                                                      {roleSort.field === 'avgKnocks' && (roleSort.direction === 'desc' ? <ChevronDown size={8} /> : <ChevronUp size={8} />)}
-                                                  </div>
-                                              </th>
-                                              <th className="px-1 py-2 text-center cursor-pointer hover:text-white transition-colors" onClick={() => handleRoleSort('matches')}>
-                                                  <div className="flex items-center justify-center gap-1">
-                                                      PJ
-                                                      {roleSort.field === 'matches' && (roleSort.direction === 'desc' ? <ChevronDown size={8} /> : <ChevronUp size={8} />)}
-                                                  </div>
-                                              </th>
-                                              <th className="px-1 py-2 text-center cursor-pointer hover:text-white transition-colors" onClick={() => handleRoleSort('gelos')}>
-                                                  <div className="flex items-center justify-center gap-1">
-                                                      GLO
-                                                      {roleSort.field === 'gelos' && (roleSort.direction === 'desc' ? <ChevronDown size={8} /> : <ChevronUp size={8} />)}
-                                                  </div>
-                                              </th>
-                                              <th className="px-1 py-2 text-center cursor-pointer hover:text-white transition-colors" onClick={() => handleRoleSort('gelosDestruidos')}>
-                                                  <div className="flex items-center justify-center gap-1">
-                                                      DES
-                                                      {roleSort.field === 'gelosDestruidos' && (roleSort.direction === 'desc' ? <ChevronDown size={8} /> : <ChevronUp size={8} />)}
-                                                  </div>
-                                              </th>
-                                              <th className="px-1 py-2 text-center cursor-pointer hover:text-white transition-colors" onClick={() => handleRoleSort('reviveu')}>
-                                                  <div className="flex items-center justify-center gap-1">
-                                                      REV
-                                                      {roleSort.field === 'reviveu' && (roleSort.direction === 'desc' ? <ChevronDown size={8} /> : <ChevronUp size={8} />)}
-                                                  </div>
-                                              </th>
-                                              <th className="px-1 py-2 text-center cursor-pointer hover:text-white transition-colors" onClick={() => handleRoleSort('aliadosRevividos')}>
-                                                  <div className="flex items-center justify-center gap-1">
-                                                      ALR
-                                                      {roleSort.field === 'aliadosRevividos' && (roleSort.direction === 'desc' ? <ChevronDown size={8} /> : <ChevronUp size={8} />)}
-                                                  </div>
-                                              </th>
-                                              <th className="px-1 py-2 text-center text-yellow-500 cursor-pointer hover:text-yellow-400 transition-colors" onClick={() => handleRoleSort('mvp')}>
-                                                  <div className="flex items-center justify-center gap-1">
-                                                      MVP
-                                                      {roleSort.field === 'mvp' && (roleSort.direction === 'desc' ? <ChevronDown size={8} /> : <ChevronUp size={8} />)}
-                                                  </div>
-                                              </th>
-                                          </tr>
-                                      </thead>
-                                      <tbody>
-                                          {group.players.map(p => {
-                                              return (
-                                                  <tr key={`${group.role}-${p.name}`} onClick={() => { setFilters(prev => ({...prev, players: [p.name]})); setActiveTab('report'); }} className="bg-black/40 hover:bg-white/5 transition-all cursor-pointer group rounded-lg">
-                                                      <td className="px-3 py-2 rounded-l-lg">
-                                                          <div className="flex items-center gap-2">
-                                                              <div className="w-6 h-6 rounded-full bg-black border border-white/10 overflow-hidden flex-shrink-0">
-                                                                  {p.img ? (
-                                                                      <img src={p.img} className="w-full h-full object-cover" alt={p.name} referrerPolicy="no-referrer" />
-                                                                  ) : (
-                                                                      <div className="w-full h-full flex items-center justify-center text-gray-700 bg-black"><User size={12} /></div>
+                              {/* Destaques da Função (Cards Clicáveis para Ordenar) */}
+                              <div className="bg-black/30 p-5 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-10 gap-2.5 border-b border-white/5">
+                                  {[
+                                      { label: 'Top Kills', field: 'kills', best: group.bestKills, val: group.bestKills?.kills, color: 'text-red-500', icon: Skull },
+                                      { label: 'Top Dano', field: 'damage', best: group.bestDamage, val: group.bestDamage?.damage?.toLocaleString(), color: 'text-orange-400', icon: Flame },
+                                      { label: 'Top AVG K', field: 'avg', best: group.bestAvgKills, val: group.bestAvgKills?.avg, color: 'text-yellow-400', icon: Target },
+                                      { label: 'Top Knocks', field: 'knocks', best: group.bestKnocks, val: group.bestKnocks?.knocks, color: 'text-amber-500', icon: Zap },
+                                      { label: 'Top Assists', field: 'assists', best: group.bestAssists, val: group.bestAssists?.assists, color: 'text-blue-400', icon: Users },
+                                      { label: 'Top HS', field: 'hs', best: group.bestHS, val: group.bestHS?.hs, color: 'text-purple-400', icon: Crosshair },
+                                      { label: 'Top MVP', field: 'mvp', best: group.bestMVP, val: group.bestMVP?.mvp, color: 'text-yellow-500', icon: Crown },
+                                      { label: 'Top Gelos', field: 'gelos', best: group.bestGelos, val: group.bestGelos?.gelos, color: 'text-cyan-400', icon: Shield },
+                                      { label: 'Top Revives', field: 'reviveu', best: group.bestReviveu, val: group.bestReviveu?.reviveu, color: 'text-emerald-400', icon: Activity },
+                                      { label: 'Top Saldo', field: 'diff', best: group.bestDiff, val: group.bestDiff?.diff > 0 ? `+${group.bestDiff?.diff}` : group.bestDiff?.diff, color: 'text-green-400', icon: Scale }
+                                  ].map((b, i) => {
+                                      const isCurrentSort = roleSort.field === b.field;
+                                      return (
+                                          <div
+                                              key={i}
+                                              onClick={() => handleRoleSort(b.field)}
+                                              title={`Clique para ordenar o ranking por ${b.label}`}
+                                              className={`flex flex-col items-center text-center p-2.5 rounded-xl cursor-pointer transition-all border ${
+                                                  isCurrentSort
+                                                      ? 'bg-yellow-500/10 border-yellow-500/50 shadow-md shadow-yellow-500/10 scale-105'
+                                                      : 'bg-white/5 border-white/5 hover:bg-white/10 hover:border-yellow-500/30'
+                                              }`}
+                                          >
+                                              <div className="flex items-center gap-1 mb-1">
+                                                  <b.icon size={10} className={isCurrentSort ? 'text-yellow-400' : 'text-gray-500'} />
+                                                  <span className={`text-[8px] font-black uppercase tracking-wider ${isCurrentSort ? 'text-yellow-400 font-black' : 'text-gray-400'}`}>
+                                                      {b.label}
+                                                  </span>
+                                              </div>
+                                              <span className={`text-sm font-black italic tracking-tight ${b.color}`}>
+                                                  {b.val ?? '-'}
+                                              </span>
+                                              <span className="text-[8px] font-bold text-gray-400 uppercase truncate w-full mt-0.5">
+                                                  {b.best?.name || 'N/A'}
+                                              </span>
+                                          </div>
+                                      );
+                                  })}
+                              </div>
+
+                              {/* Tabela de Ranking da Função */}
+                              <div className="p-3 overflow-x-auto custom-scrollbar">
+                                  {filteredPlayers.length === 0 ? (
+                                      <div className="py-12 text-center text-gray-500">
+                                          <Search size={32} className="mx-auto mb-2 opacity-40" />
+                                          <p className="text-sm font-bold">Nenhum jogador encontrado para a busca "{roleSearch}".</p>
+                                      </div>
+                                  ) : (
+                                      <table className="w-full text-left border-separate border-spacing-y-1.5">
+                                          <thead>
+                                              <tr className="text-[9px] font-black text-gray-400 uppercase tracking-wider select-none bg-black/40">
+                                                  {/* Posição / Ranking */}
+                                                  <th
+                                                      className={`px-3 py-3 rounded-l-xl text-center cursor-pointer transition-colors ${
+                                                          roleSort.field === 'kills' ? 'text-yellow-400 font-black' : 'hover:text-white'
+                                                      }`}
+                                                      onClick={() => handleRoleSort('kills')}
+                                                      title="Clique para ordenar por Abates / Rank"
+                                                  >
+                                                      <div className="flex items-center justify-center gap-1">
+                                                          <Trophy size={11} className={roleSort.field === 'kills' ? 'text-yellow-400' : 'text-gray-500'} />
+                                                          <span>#</span>
+                                                      </div>
+                                                  </th>
+
+                                                  {/* Jogador */}
+                                                  <th
+                                                      className={`px-3 py-3 cursor-pointer transition-colors ${
+                                                          roleSort.field === 'name' ? 'text-yellow-400 font-black' : 'hover:text-white'
+                                                      }`}
+                                                      onClick={() => handleRoleSort('name')}
+                                                      title="Clique para ordenar por Nome"
+                                                  >
+                                                      <div className="flex items-center gap-1">
+                                                          <span>Jogador</span>
+                                                          {roleSort.field === 'name' && (roleSort.direction === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)}
+                                                      </div>
+                                                  </th>
+
+                                                  {/* Equipe */}
+                                                  <th
+                                                      className={`px-3 py-3 cursor-pointer transition-colors ${
+                                                          roleSort.field === 'team' ? 'text-yellow-400 font-black' : 'hover:text-white'
+                                                      }`}
+                                                      onClick={() => handleRoleSort('team')}
+                                                      title="Clique para ordenar por Equipe"
+                                                  >
+                                                      <div className="flex items-center gap-1">
+                                                          <span>Equipe</span>
+                                                          {roleSort.field === 'team' && (roleSort.direction === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)}
+                                                      </div>
+                                                  </th>
+
+                                                  {/* Função */}
+                                                  <th
+                                                      className={`px-2 py-3 text-center cursor-pointer transition-colors ${
+                                                          roleSort.field === 'funcao' ? 'text-yellow-400 font-black' : 'hover:text-white'
+                                                      }`}
+                                                      onClick={() => handleRoleSort('funcao')}
+                                                      title="Clique para ordenar por Função"
+                                                  >
+                                                      <div className="flex items-center justify-center gap-1">
+                                                          <span>Função</span>
+                                                          {roleSort.field === 'funcao' && (roleSort.direction === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)}
+                                                      </div>
+                                                  </th>
+
+                                                  {/* Abates (K) */}
+                                                  <th
+                                                      className={`px-2 py-3 text-center cursor-pointer transition-colors ${
+                                                          roleSort.field === 'kills' ? 'text-yellow-400 bg-yellow-500/10 rounded-md font-black' : 'hover:text-white'
+                                                      }`}
+                                                      onClick={() => handleRoleSort('kills')}
+                                                      title="Clique para ordenar por Abates (Kills)"
+                                                  >
+                                                      <div className="flex items-center justify-center gap-1">
+                                                          <span>K</span>
+                                                          {roleSort.field === 'kills' && (roleSort.direction === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)}
+                                                      </div>
+                                                  </th>
+
+                                                  {/* Saldo (S / Diff) */}
+                                                  <th
+                                                      className={`px-2 py-3 text-center cursor-pointer transition-colors ${
+                                                          roleSort.field === 'diff' ? 'text-yellow-400 bg-yellow-500/10 rounded-md font-black' : 'hover:text-white'
+                                                      }`}
+                                                      onClick={() => handleRoleSort('diff')}
+                                                      title="Clique para ordenar por Saldo (Kills - Quedas)"
+                                                  >
+                                                      <div className="flex items-center justify-center gap-1">
+                                                          <span>S</span>
+                                                          {roleSort.field === 'diff' && (roleSort.direction === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)}
+                                                      </div>
+                                                  </th>
+
+                                                  {/* % Contribuição */}
+                                                  <th
+                                                      className={`px-2 py-3 text-center cursor-pointer transition-colors ${
+                                                          roleSort.field === 'killContributionPct' ? 'text-yellow-400 bg-yellow-500/10 rounded-md font-black' : 'hover:text-white'
+                                                      }`}
+                                                      onClick={() => handleRoleSort('killContributionPct')}
+                                                      title="Clique para ordenar por % de Contribuição de Abates do Time"
+                                                  >
+                                                      <div className="flex items-center justify-center gap-1">
+                                                          <span>% C</span>
+                                                          {roleSort.field === 'killContributionPct' && (roleSort.direction === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)}
+                                                      </div>
+                                                  </th>
+
+                                                  {/* Média Kills (AVG K) */}
+                                                  <th
+                                                      className={`px-2 py-3 text-center cursor-pointer transition-colors ${
+                                                          roleSort.field === 'avg' ? 'text-yellow-400 bg-yellow-500/10 rounded-md font-black' : 'text-yellow-500/80 hover:text-yellow-400'
+                                                      }`}
+                                                      onClick={() => handleRoleSort('avg')}
+                                                      title="Clique para ordenar por Média de Abates por Queda"
+                                                  >
+                                                      <div className="flex items-center justify-center gap-1">
+                                                          <span>AVG K</span>
+                                                          {roleSort.field === 'avg' && (roleSort.direction === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)}
+                                                      </div>
+                                                  </th>
+
+                                                  {/* Dano (DMG) */}
+                                                  <th
+                                                      className={`px-2 py-3 text-center cursor-pointer transition-colors ${
+                                                          roleSort.field === 'damage' ? 'text-yellow-400 bg-yellow-500/10 rounded-md font-black' : 'hover:text-white'
+                                                      }`}
+                                                      onClick={() => handleRoleSort('damage')}
+                                                      title="Clique para ordenar por Dano Total"
+                                                  >
+                                                      <div className="flex items-center justify-center gap-1">
+                                                          <span>DMG</span>
+                                                          {roleSort.field === 'damage' && (roleSort.direction === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)}
+                                                      </div>
+                                                  </th>
+
+                                                  {/* Média Dano (AVG D) */}
+                                                  <th
+                                                      className={`px-2 py-3 text-center cursor-pointer transition-colors ${
+                                                          roleSort.field === 'avgDmg' ? 'text-yellow-400 bg-yellow-500/10 rounded-md font-black' : 'text-yellow-500/80 hover:text-yellow-400'
+                                                      }`}
+                                                      onClick={() => handleRoleSort('avgDmg')}
+                                                      title="Clique para ordenar por Média de Dano por Queda"
+                                                  >
+                                                      <div className="flex items-center justify-center gap-1">
+                                                          <span>AVG D</span>
+                                                          {roleSort.field === 'avgDmg' && (roleSort.direction === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)}
+                                                      </div>
+                                                  </th>
+
+                                                  {/* Assistências (AST) */}
+                                                  <th
+                                                      className={`px-2 py-3 text-center cursor-pointer transition-colors ${
+                                                          roleSort.field === 'assists' ? 'text-yellow-400 bg-yellow-500/10 rounded-md font-black' : 'hover:text-white'
+                                                      }`}
+                                                      onClick={() => handleRoleSort('assists')}
+                                                      title="Clique para ordenar por Assistências"
+                                                  >
+                                                      <div className="flex items-center justify-center gap-1">
+                                                          <span>AST</span>
+                                                          {roleSort.field === 'assists' && (roleSort.direction === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)}
+                                                      </div>
+                                                  </th>
+
+                                                  {/* Headshots (HS) */}
+                                                  <th
+                                                      className={`px-2 py-3 text-center cursor-pointer transition-colors ${
+                                                          roleSort.field === 'hs' ? 'text-yellow-400 bg-yellow-500/10 rounded-md font-black' : 'hover:text-white'
+                                                      }`}
+                                                      onClick={() => handleRoleSort('hs')}
+                                                      title="Clique para ordenar por Headshots (HS)"
+                                                  >
+                                                      <div className="flex items-center justify-center gap-1">
+                                                          <span>HS</span>
+                                                          {roleSort.field === 'hs' && (roleSort.direction === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)}
+                                                      </div>
+                                                  </th>
+
+                                                  {/* Knocks (KNK) */}
+                                                  <th
+                                                      className={`px-2 py-3 text-center cursor-pointer transition-colors ${
+                                                          roleSort.field === 'knocks' ? 'text-yellow-400 bg-yellow-500/10 rounded-md font-black' : 'hover:text-white'
+                                                      }`}
+                                                      onClick={() => handleRoleSort('knocks')}
+                                                      title="Clique para ordenar por Inimigos Deitados (Knocks)"
+                                                  >
+                                                      <div className="flex items-center justify-center gap-1">
+                                                          <span>KNK</span>
+                                                          {roleSort.field === 'knocks' && (roleSort.direction === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)}
+                                                      </div>
+                                                  </th>
+
+                                                  {/* Média Knocks (AVG KNK) */}
+                                                  <th
+                                                      className={`px-2 py-3 text-center cursor-pointer transition-colors ${
+                                                          roleSort.field === 'avgKnocks' ? 'text-yellow-400 bg-yellow-500/10 rounded-md font-black' : 'text-yellow-500/80 hover:text-yellow-400'
+                                                      }`}
+                                                      onClick={() => handleRoleSort('avgKnocks')}
+                                                      title="Clique para ordenar por Média de Knocks"
+                                                  >
+                                                      <div className="flex items-center justify-center gap-1">
+                                                          <span>AVG KNK</span>
+                                                          {roleSort.field === 'avgKnocks' && (roleSort.direction === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)}
+                                                      </div>
+                                                  </th>
+
+                                                  {/* Partidas Jogadas (PJ) */}
+                                                  <th
+                                                      className={`px-2 py-3 text-center cursor-pointer transition-colors ${
+                                                          roleSort.field === 'matches' ? 'text-yellow-400 bg-yellow-500/10 rounded-md font-black' : 'hover:text-white'
+                                                      }`}
+                                                      onClick={() => handleRoleSort('matches')}
+                                                      title="Clique para ordenar por Partidas / Quedas Jogadas"
+                                                  >
+                                                      <div className="flex items-center justify-center gap-1">
+                                                          <span>PJ</span>
+                                                          {roleSort.field === 'matches' && (roleSort.direction === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)}
+                                                      </div>
+                                                  </th>
+
+                                                  {/* Gelos Usados (GLO) */}
+                                                  <th
+                                                      className={`px-2 py-3 text-center cursor-pointer transition-colors ${
+                                                          roleSort.field === 'gelos' ? 'text-yellow-400 bg-yellow-500/10 rounded-md font-black' : 'hover:text-white'
+                                                      }`}
+                                                      onClick={() => handleRoleSort('gelos')}
+                                                      title="Clique para ordenar por Paredes de Gelo Usadas"
+                                                  >
+                                                      <div className="flex items-center justify-center gap-1">
+                                                          <span>GLO</span>
+                                                          {roleSort.field === 'gelos' && (roleSort.direction === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)}
+                                                      </div>
+                                                  </th>
+
+                                                  {/* Gelos Destruídos (DES) */}
+                                                  <th
+                                                      className={`px-2 py-3 text-center cursor-pointer transition-colors ${
+                                                          roleSort.field === 'gelosDestruidos' ? 'text-yellow-400 bg-yellow-500/10 rounded-md font-black' : 'hover:text-white'
+                                                      }`}
+                                                      onClick={() => handleRoleSort('gelosDestruidos')}
+                                                      title="Clique para ordenar por Paredes de Gelo Destruídas"
+                                                  >
+                                                      <div className="flex items-center justify-center gap-1">
+                                                          <span>DES</span>
+                                                          {roleSort.field === 'gelosDestruidos' && (roleSort.direction === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)}
+                                                      </div>
+                                                  </th>
+
+                                                  {/* Reviveu (REV) */}
+                                                  <th
+                                                      className={`px-2 py-3 text-center cursor-pointer transition-colors ${
+                                                          roleSort.field === 'reviveu' ? 'text-yellow-400 bg-yellow-500/10 rounded-md font-black' : 'hover:text-white'
+                                                      }`}
+                                                      onClick={() => handleRoleSort('reviveu')}
+                                                      title="Clique para ordenar por Vezes que Reviveu Aliados"
+                                                  >
+                                                      <div className="flex items-center justify-center gap-1">
+                                                          <span>REV</span>
+                                                          {roleSort.field === 'reviveu' && (roleSort.direction === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)}
+                                                      </div>
+                                                  </th>
+
+                                                  {/* Aliados Revividos (ALR) */}
+                                                  <th
+                                                      className={`px-2 py-3 text-center cursor-pointer transition-colors ${
+                                                          roleSort.field === 'aliadosRevividos' ? 'text-yellow-400 bg-yellow-500/10 rounded-md font-black' : 'hover:text-white'
+                                                      }`}
+                                                      onClick={() => handleRoleSort('aliadosRevividos')}
+                                                      title="Clique para ordenar por Total de Aliados Revividos"
+                                                  >
+                                                      <div className="flex items-center justify-center gap-1">
+                                                          <span>ALR</span>
+                                                          {roleSort.field === 'aliadosRevividos' && (roleSort.direction === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)}
+                                                      </div>
+                                                  </th>
+
+                                                  {/* MVP */}
+                                                  <th
+                                                      className={`px-3 py-3 rounded-r-xl text-center cursor-pointer transition-colors ${
+                                                          roleSort.field === 'mvp' ? 'text-yellow-400 bg-yellow-500/10 font-black' : 'text-yellow-500/80 hover:text-yellow-400'
+                                                      }`}
+                                                      onClick={() => handleRoleSort('mvp')}
+                                                      title="Clique para ordenar por Quantidade de MVPs"
+                                                  >
+                                                      <div className="flex items-center justify-center gap-1">
+                                                          <span>MVP</span>
+                                                          {roleSort.field === 'mvp' && (roleSort.direction === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)}
+                                                      </div>
+                                                  </th>
+                                              </tr>
+                                          </thead>
+                                          <tbody>
+                                              {filteredPlayers.map((p, idx) => {
+                                                  const rank = idx + 1;
+                                                  return (
+                                                      <tr
+                                                          key={`${group.role}-${p.name}-${idx}`}
+                                                          onClick={() => {
+                                                              setFilters(prev => ({ ...prev, players: [p.name] }));
+                                                              setActiveTab('report');
+                                                          }}
+                                                          className="bg-black/40 hover:bg-white/10 transition-all cursor-pointer group rounded-xl border border-transparent hover:border-yellow-500/30"
+                                                      >
+                                                          {/* Rank Badge */}
+                                                          <td className="px-3 py-2.5 rounded-l-xl text-center">
+                                                              {rank === 1 ? (
+                                                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-yellow-500/20 text-yellow-400 border border-yellow-500/50 font-black text-xs shadow-sm">
+                                                                      <Crown size={12} className="text-yellow-400" />
+                                                                      #1
+                                                                  </span>
+                                                              ) : rank === 2 ? (
+                                                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-400/20 text-slate-200 border border-slate-400/40 font-black text-xs">
+                                                                      #2
+                                                                  </span>
+                                                              ) : rank === 3 ? (
+                                                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-700/20 text-amber-400 border border-amber-600/40 font-black text-xs">
+                                                                      #3
+                                                                  </span>
+                                                              ) : (
+                                                                  <span className="font-mono text-gray-500 font-bold text-xs">
+                                                                      #{rank}
+                                                                  </span>
+                                                              )}
+                                                          </td>
+
+                                                          {/* Jogador */}
+                                                          <td className="px-3 py-2.5">
+                                                              <div className="flex items-center gap-2.5">
+                                                                  <div className="w-8 h-8 rounded-full bg-black border border-white/10 overflow-hidden flex-shrink-0 relative group-hover:border-yellow-500/50 transition-colors">
+                                                                      {p.img ? (
+                                                                          <img src={p.img} className="w-full h-full object-cover" alt={p.name} referrerPolicy="no-referrer" />
+                                                                      ) : (
+                                                                          <div className="w-full h-full flex items-center justify-center text-gray-600 bg-black"><User size={14} /></div>
+                                                                      )}
+                                                                  </div>
+                                                                  <div className="flex flex-col min-w-0">
+                                                                      <span className="text-xs font-black text-white uppercase italic truncate group-hover:text-yellow-400 transition-colors">
+                                                                          {p.name}
+                                                                      </span>
+                                                                      <span className="text-[8px] font-bold text-gray-500 uppercase truncate">
+                                                                          {p.team}
+                                                                      </span>
+                                                                  </div>
+                                                              </div>
+                                                          </td>
+
+                                                          {/* Equipe */}
+                                                          <td className="px-3 py-2.5">
+                                                              <div className="flex items-center gap-2">
+                                                                  {p.teamImg && (
+                                                                      <img src={p.teamImg} alt={p.team} className="w-4 h-4 object-contain" referrerPolicy="no-referrer" />
+                                                                  )}
+                                                                  <span className="text-[11px] font-bold text-gray-300 uppercase truncate max-w-[100px]">
+                                                                      {p.team}
+                                                                  </span>
+                                                              </div>
+                                                          </td>
+
+                                                          {/* Função */}
+                                                          <td className="px-2 py-2.5 text-center">
+                                                              <div className="flex items-center justify-center gap-1 flex-wrap">
+                                                                  <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${
+                                                                      p.funcao === 'CPT'
+                                                                          ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/40'
+                                                                          : p.funcao === 'RUSH'
+                                                                          ? 'bg-red-500/20 text-red-400 border-red-500/40'
+                                                                          : p.funcao === 'SUPORTE'
+                                                                          ? 'bg-blue-500/20 text-blue-400 border-blue-500/40'
+                                                                          : p.funcao === 'GRANADEIRO'
+                                                                          ? 'bg-orange-500/20 text-orange-400 border-orange-500/40'
+                                                                          : 'bg-gray-800 text-gray-400 border-gray-700'
+                                                                  }`}>
+                                                                      {p.funcao}
+                                                                  </span>
+                                                                  {p.funcao2 && p.funcao2 !== 'N/A' && (
+                                                                      <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 rounded bg-white/5 text-gray-500 border border-white/5">
+                                                                          {p.funcao2}
+                                                                      </span>
                                                                   )}
                                                               </div>
-                                                              <div className="flex flex-col min-w-0">
-                                                                  <span className="text-[10px] font-black text-white uppercase italic truncate group-hover:text-yellow-500 transition-colors">{p.name}</span>
-                                                                  <span className="text-[7px] font-black text-gray-600 uppercase truncate">{p.team}</span>
-                                                              </div>
-                                                          </div>
-                                                      </td>
-                                                      <td className="px-1 py-2 text-center text-[10px] font-black text-red-500 italic">{p.kills}</td>
-                                                      <td className={`px-1 py-2 text-center text-[10px] font-black italic ${p.diff > 0 ? 'text-green-500' : p.diff < 0 ? 'text-red-600' : 'text-gray-500'}`}>
-                                                          {p.diff > 0 ? `+${p.diff}` : p.diff}
-                                                      </td>
-                                                      <td className="px-1 py-2 text-center text-[9px] font-black text-yellow-500 italic bg-yellow-500/5">{p.avg}</td>
-                                                      <td className="px-1 py-2 text-center text-[9px] font-mono text-gray-400">{p.damage}</td>
-                                                      <td className="px-1 py-2 text-center text-[9px] font-black text-yellow-500 italic bg-yellow-500/5">{p.avgDmg}</td>
-                                                      <td className="px-1 py-2 text-center text-[9px] font-black text-blue-400">{p.assists}</td>
-                                                      <td className="px-1 py-2 text-center text-[9px] font-mono text-yellow-500/70">{p.hs}</td>
-                                                      <td className="px-1 py-2 text-center text-[9px] font-black text-orange-500">{p.knocks}</td>
-                                                      <td className="px-1 py-2 text-center text-[9px] font-black text-yellow-500 italic bg-yellow-500/5">{p.avgKnocks}</td>
-                                                      <td className="px-1 py-2 text-center text-[9px] font-black text-white">{p.matches}</td>
-                                                      <td className="px-1 py-2 text-center text-[9px] font-mono text-cyan-400">{p.gelos}</td>
-                                                      <td className="px-1 py-2 text-center text-[9px] font-mono text-purple-400">{p.gelosDestruidos}</td>
-                                                      <td className="px-1 py-2 text-center text-[9px] font-mono text-green-400">{p.reviveu}</td>
-                                                      <td className="px-1 py-2 text-center text-[9px] font-mono text-emerald-400">{p.aliadosRevividos}</td>
-                                                      <td className="px-1 py-2 text-center text-[10px] font-black text-yellow-500 italic rounded-r-lg bg-yellow-500/5">{p.mvp}</td>
-                                                  </tr>
-                                              );
-                                          })}
-                                      </tbody>
-                                  </table>
+                                                          </td>
+
+                                                          {/* Abates (K) */}
+                                                          <td className={`px-2 py-2.5 text-center text-xs font-black italic ${
+                                                              roleSort.field === 'kills' ? 'text-yellow-300 bg-yellow-500/10 font-black' : 'text-red-500'
+                                                          }`}>
+                                                              {p.kills}
+                                                          </td>
+
+                                                          {/* Saldo (S / Diff) */}
+                                                          <td className={`px-2 py-2.5 text-center text-xs font-black italic ${
+                                                              roleSort.field === 'diff' ? 'bg-yellow-500/10' : ''
+                                                          } ${p.diff > 0 ? 'text-green-400' : p.diff < 0 ? 'text-red-500' : 'text-gray-500'}`}>
+                                                              {p.diff > 0 ? `+${p.diff}` : p.diff}
+                                                          </td>
+
+                                                          {/* % Contribuição */}
+                                                          <td className={`px-2 py-2.5 text-center text-[10px] font-mono ${
+                                                              roleSort.field === 'killContributionPct' ? 'text-yellow-300 bg-yellow-500/10 font-black' : 'text-gray-300'
+                                                          }`}>
+                                                              {p.killContributionPct}%
+                                                          </td>
+
+                                                          {/* AVG Kills */}
+                                                          <td className={`px-2 py-2.5 text-center text-[10px] font-black italic ${
+                                                              roleSort.field === 'avg' ? 'text-yellow-300 bg-yellow-500/15 font-black' : 'text-yellow-500 bg-yellow-500/5'
+                                                          }`}>
+                                                              {p.avg}
+                                                          </td>
+
+                                                          {/* Dano (DMG) */}
+                                                          <td className={`px-2 py-2.5 text-center text-[10px] font-mono ${
+                                                              roleSort.field === 'damage' ? 'text-yellow-300 bg-yellow-500/10 font-black' : 'text-gray-300'
+                                                          }`}>
+                                                              {p.damage?.toLocaleString()}
+                                                          </td>
+
+                                                          {/* AVG Dano */}
+                                                          <td className={`px-2 py-2.5 text-center text-[10px] font-black italic ${
+                                                              roleSort.field === 'avgDmg' ? 'text-yellow-300 bg-yellow-500/15 font-black' : 'text-yellow-500 bg-yellow-500/5'
+                                                          }`}>
+                                                              {p.avgDmg}
+                                                          </td>
+
+                                                          {/* Assistências (AST) */}
+                                                          <td className={`px-2 py-2.5 text-center text-[10px] font-black ${
+                                                              roleSort.field === 'assists' ? 'text-yellow-300 bg-yellow-500/10 font-black' : 'text-blue-400'
+                                                          }`}>
+                                                              {p.assists}
+                                                          </td>
+
+                                                          {/* Headshots (HS) */}
+                                                          <td className={`px-2 py-2.5 text-center text-[10px] font-mono ${
+                                                              roleSort.field === 'hs' ? 'text-yellow-300 bg-yellow-500/10 font-black' : 'text-purple-400'
+                                                          }`}>
+                                                              {p.hs}
+                                                          </td>
+
+                                                          {/* Knocks (KNK) */}
+                                                          <td className={`px-2 py-2.5 text-center text-[10px] font-black ${
+                                                              roleSort.field === 'knocks' ? 'text-yellow-300 bg-yellow-500/10 font-black' : 'text-orange-400'
+                                                          }`}>
+                                                              {p.knocks}
+                                                          </td>
+
+                                                          {/* AVG Knocks */}
+                                                          <td className={`px-2 py-2.5 text-center text-[10px] font-black italic ${
+                                                              roleSort.field === 'avgKnocks' ? 'text-yellow-300 bg-yellow-500/15 font-black' : 'text-yellow-500 bg-yellow-500/5'
+                                                          }`}>
+                                                              {p.avgKnocks}
+                                                          </td>
+
+                                                          {/* Partidas (PJ) */}
+                                                          <td className={`px-2 py-2.5 text-center text-[10px] font-black ${
+                                                              roleSort.field === 'matches' ? 'text-yellow-300 bg-yellow-500/10 font-black' : 'text-white'
+                                                          }`}>
+                                                              {p.matches}
+                                                          </td>
+
+                                                          {/* Gelos (GLO) */}
+                                                          <td className={`px-2 py-2.5 text-center text-[10px] font-mono ${
+                                                              roleSort.field === 'gelos' ? 'text-yellow-300 bg-yellow-500/10 font-black' : 'text-cyan-400'
+                                                          }`}>
+                                                              {p.gelos}
+                                                          </td>
+
+                                                          {/* Gelos Destruídos (DES) */}
+                                                          <td className={`px-2 py-2.5 text-center text-[10px] font-mono ${
+                                                              roleSort.field === 'gelosDestruidos' ? 'text-yellow-300 bg-yellow-500/10 font-black' : 'text-purple-400'
+                                                          }`}>
+                                                              {p.gelosDestruidos}
+                                                          </td>
+
+                                                          {/* Reviveu (REV) */}
+                                                          <td className={`px-2 py-2.5 text-center text-[10px] font-mono ${
+                                                              roleSort.field === 'reviveu' ? 'text-yellow-300 bg-yellow-500/10 font-black' : 'text-emerald-400'
+                                                          }`}>
+                                                              {p.reviveu}
+                                                          </td>
+
+                                                          {/* Aliados Revividos (ALR) */}
+                                                          <td className={`px-2 py-2.5 text-center text-[10px] font-mono ${
+                                                              roleSort.field === 'aliadosRevividos' ? 'text-yellow-300 bg-yellow-500/10 font-black' : 'text-green-400'
+                                                          }`}>
+                                                              {p.aliadosRevividos}
+                                                          </td>
+
+                                                          {/* MVP */}
+                                                          <td className={`px-3 py-2.5 rounded-r-xl text-center text-xs font-black italic ${
+                                                              roleSort.field === 'mvp' ? 'text-yellow-300 bg-yellow-500/20 font-black' : 'text-yellow-400 bg-yellow-500/5'
+                                                          }`}>
+                                                              {p.mvp}
+                                                          </td>
+                                                      </tr>
+                                                  );
+                                              })}
+                                          </tbody>
+                                      </table>
+                                  )}
                               </div>
                           </div>
-                      ))}
+                          );
+                        })}
                   </div>
               </div>
           )}
