@@ -2,7 +2,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { DashboardData, PlayerData, CharacterData } from '../types';
-import { Trophy, Crown, User, Users, Swords, Zap, BarChart2, Scale, Map as MapIcon, Skull, ChevronRight, ChevronDown, ChevronUp, Sparkles, X, Activity, Info, Crosshair, Shield, ShieldAlert, ArrowLeft, Disc, Flame, Target, AlertCircle, LayoutGrid, MapPin, Hash, Target as TargetIcon, CheckCircle2, AlertTriangle, Search, Star, ListOrdered, Eye, EyeOff } from 'lucide-react';
+import { Trophy, Crown, User, Users, Swords, Zap, BarChart2, Scale, Map as MapIcon, Skull, ChevronRight, ChevronDown, ChevronUp, Sparkles, X, Activity, Info, Crosshair, Shield, ShieldAlert, ArrowLeft, Disc, Flame, Target, AlertCircle, LayoutGrid, MapPin, Hash, Target as TargetIcon, CheckCircle2, AlertTriangle, Search, Star, ListOrdered, Eye, EyeOff, Gamepad2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, LabelList, Cell, YAxis, CartesianGrid, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts';
 import FilterBar from '../components/FilterBar';
 import InstagramPostModal from '../components/InstagramPostModal';
@@ -5501,64 +5501,186 @@ const PlayerProfile = ({ data, playerName, filters, characters }: any) => {
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-col md:flex-row justify-between items-center gap-6 bg-gradient-to-br from-[#1a1a1a] to-black p-8 rounded-3xl border border-white/5 shadow-2xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none">
-                     <User size={200} className="text-yellow-500" />
+            <div className="bg-[#121215] p-6 lg:p-8 rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden">
+                {/* Background ambient lighting */}
+                <div className="absolute top-0 right-0 w-96 h-96 bg-yellow-500/5 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+                <div className="absolute bottom-0 left-0 w-80 h-80 bg-red-500/5 rounded-full blur-3xl pointer-events-none -ml-20 -mb-20" />
+                <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none hidden xl:block">
+                     <User size={220} className="text-yellow-500" />
                 </div>
-                <div className="flex items-center gap-6 relative z-10">
-                    <div className="w-24 h-24 rounded-full bg-black border-4 border-yellow-500/50 flex items-center justify-center overflow-hidden p-1 shadow-lg flex-shrink-0">
-                        {stats.playerImg ? (
-                            <img src={stats.playerImg} className="w-full h-full object-cover rounded-full" alt={playerName}/>
-                        ) : stats.teamImg ? (
-                            <img src={stats.teamImg} className="w-full h-full object-contain" alt={stats.team}/>
-                        ) : (
-                            <User className="text-gray-500" size={40} />
-                        )}
-                    </div>
-                    <div>
-                        <div className="flex items-center gap-3">
-                            <h2 className="text-4xl font-black italic text-white uppercase leading-none tracking-tighter">{playerName}</h2>
-                            {stats.funcao !== 'N/A' && (
-                                <div className={`px-3 py-1 rounded-lg border text-[10px] font-black uppercase tracking-widest ${stats.funcao === 'CPT' ? 'bg-yellow-500/10 border-yellow-500/30 text-yellow-500' : 'bg-white/5 border-white/10 text-gray-400'}`}>
-                                    {stats.funcao}
+
+                <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6 lg:gap-8 relative z-10">
+                    {/* Identidade do Jogador & Equipe */}
+                    <div className="flex flex-col sm:flex-row items-center sm:items-start xl:items-center gap-5 sm:gap-6 min-w-[260px] lg:min-w-[320px]">
+                        {/* Avatar com Borda Dourada e Logo Flutuante da Equipe */}
+                        <div className="relative group flex-shrink-0">
+                            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-gradient-to-b from-yellow-500/20 via-black to-black p-1 border-2 border-yellow-500/40 shadow-[0_0_30px_rgba(234,179,8,0.2)] flex items-center justify-center overflow-hidden">
+                                {stats.playerImg ? (
+                                    <img src={stats.playerImg} className="w-full h-full object-cover rounded-xl" alt={playerName} referrerPolicy="no-referrer" />
+                                ) : stats.teamImg ? (
+                                    <img src={stats.teamImg} className="w-full h-full object-contain p-2" alt={stats.team} referrerPolicy="no-referrer" />
+                                ) : (
+                                    <User className="text-gray-600" size={48} />
+                                )}
+                            </div>
+
+                            {/* Badge Flutuante da Logo da Equipe */}
+                            {stats.teamImg && (
+                                <div className="absolute -bottom-2 -right-2 w-10 h-10 rounded-xl bg-[#141416] border-2 border-yellow-500/70 shadow-xl p-1 flex items-center justify-center bg-black/90 backdrop-blur-md" title={`Equipe: ${stats.team}`}>
+                                    <img src={stats.teamImg} alt={stats.team} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
                                 </div>
                             )}
                         </div>
-                        <div className="flex items-center gap-2 mt-2">
-                             <Shield size={14} className="text-yellow-500" />
-                             <span className="text-yellow-500 font-black uppercase tracking-[0.2em] text-xs block">{stats.team}</span>
-                             {stats.funcao2 !== 'N/A' && (
-                                <>
-                                    <span className="text-gray-700 mx-1">•</span>
-                                    <span className="text-gray-500 font-bold uppercase tracking-widest text-[10px] italic">{stats.funcao2}</span>
-                                </>
-                            )}
+
+                        {/* Nome, Funções, Equipe e % de Participação */}
+                        <div className="flex flex-col items-center sm:items-start text-center sm:text-left min-w-0">
+                            {/* Nome + Funções */}
+                            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5">
+                                <h2 className="text-3xl sm:text-4xl font-black italic text-white uppercase tracking-tight truncate">
+                                    {playerName}
+                                </h2>
+                                {stats.funcao !== 'N/A' && (
+                                    <span className={`px-2.5 py-1 rounded-lg border text-[10px] font-black uppercase tracking-wider flex items-center gap-1 ${
+                                        stats.funcao === 'CPT' 
+                                            ? 'bg-yellow-500/15 border-yellow-500/40 text-yellow-400 shadow-sm shadow-yellow-500/10' 
+                                            : 'bg-white/10 border-white/15 text-gray-200'
+                                    }`}>
+                                        {stats.funcao === 'CPT' ? <Crown size={11} className="text-yellow-400" /> : <Shield size={11} className="text-gray-400" />}
+                                        <span>{stats.funcao}</span>
+                                    </span>
+                                )}
+                                {stats.funcao2 !== 'N/A' && (
+                                    <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[9px] font-bold text-gray-400 uppercase tracking-wider">
+                                        {stats.funcao2}
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* Barra da Equipe com Logo e Nome */}
+                            <div className="mt-2.5 flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                                <div className="flex items-center gap-2 bg-black/60 border border-white/10 px-3 py-1.5 rounded-xl shadow-inner">
+                                    {stats.teamImg ? (
+                                        <img src={stats.teamImg} alt={stats.team} className="w-5 h-5 object-contain" referrerPolicy="no-referrer" />
+                                    ) : (
+                                        <Shield size={14} className="text-yellow-500" />
+                                    )}
+                                    <span className="text-xs font-black text-yellow-400 uppercase tracking-widest">{stats.team}</span>
+                                </div>
+
+                                {parseFloat(stats.killContributionPct) > 0 && (
+                                    <div className="flex items-center gap-1.5 bg-yellow-500/10 border border-yellow-500/20 px-2.5 py-1.5 rounded-xl text-[10px] font-black text-yellow-400 uppercase tracking-wider" title="Participação do atleta no total de abates da sua equipe">
+                                        <Zap size={11} className="text-yellow-400" />
+                                        <span>{stats.killContributionPct}% Kills Time</span>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div className="flex flex-wrap justify-center gap-4 relative z-10">
-                    <MetricCard label="Abates" value={stats.kills} color="text-red-500" />
-                    <MetricCard label="Salas" value={stats.matches} color="text-blue-400" />
-                    <MetricCard 
-                        label="Q. C/ Kill" 
-                        value={`${stats.withKillsMatches} (${stats.withKillsPct}%)`} 
-                        color="text-green-500" 
-                    />
-                    <MetricCard 
-                        label="Q. Zerada" 
-                        value={`${stats.zeroKillsMatches} (${stats.zeroKillsPct}%)`} 
-                        color="text-red-500" 
-                    />
-                    <MetricCard 
-                        label="Saldo" 
-                        value={stats.diff > 0 ? `+${stats.diff}` : stats.diff} 
-                        color={stats.diff > 0 ? "text-green-500" : stats.diff < 0 ? "text-red-600" : "text-gray-400"} 
-                    />
-                    <MetricCard label="Dano" value={stats.damage} color="text-gray-300" />
-                    <MetricCard label="HS" value={stats.hs} color="text-yellow-500" />
-                    <MetricCard label="Deitados" value={stats.knocks} color="text-orange-500" />
-                    <MetricCard label="Assist." value={stats.assists} color="text-blue-400" />
-                    <MetricCard label="Média" value={stats.avg} color="text-yellow-500" />
+
+                    {/* Matriz Estatística Organizada (Grade Perfeita e Proporcional) */}
+                    <div className="flex-1 w-full grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 lg:gap-3">
+                        {/* 1. Abates */}
+                        <MetricCard 
+                            icon={Skull}
+                            label="Abates" 
+                            value={stats.kills} 
+                            color="text-red-500" 
+                            subtext={`Média ${stats.avg}/Q`}
+                            subColor="text-red-400/80"
+                            highlight="red"
+                        />
+
+                        {/* 2. Salas / Partidas */}
+                        <MetricCard 
+                            icon={Gamepad2}
+                            label="Salas" 
+                            value={stats.matches} 
+                            color="text-sky-400" 
+                            subtext="Quedas disputadas"
+                            subColor="text-sky-400/70"
+                        />
+
+                        {/* 3. Quedas com Abate */}
+                        <MetricCard 
+                            icon={CheckCircle2}
+                            label="Q. C/ Kill" 
+                            value={stats.withKillsMatches} 
+                            color="text-emerald-400" 
+                            subtext={`${stats.withKillsPct}% frequência`}
+                            subColor="text-emerald-400/80"
+                        />
+
+                        {/* 4. Quedas Zeradas */}
+                        <MetricCard 
+                            icon={AlertTriangle}
+                            label="Q. Zerada" 
+                            value={stats.zeroKillsMatches} 
+                            color="text-rose-500" 
+                            subtext={`${stats.zeroKillsPct}% sem abates`}
+                            subColor="text-rose-400/80"
+                        />
+
+                        {/* 5. Saldo (Diff) */}
+                        <MetricCard 
+                            icon={Scale}
+                            label="Saldo (S)" 
+                            value={stats.diff > 0 ? `+${stats.diff}` : stats.diff} 
+                            color={stats.diff > 0 ? "text-emerald-400" : stats.diff < 0 ? "text-rose-500" : "text-gray-400"} 
+                            subtext="Kills - Quedas"
+                            subColor="text-gray-400"
+                        />
+
+                        {/* 6. Dano Total */}
+                        <MetricCard 
+                            icon={Flame}
+                            label="Dano Total" 
+                            value={typeof stats.damage === 'number' ? stats.damage.toLocaleString('pt-BR') : stats.damage} 
+                            color="text-gray-100" 
+                            subtext={`Média ${stats.avgDmg}/Q`}
+                            subColor="text-orange-400/80"
+                        />
+
+                        {/* 7. Headshots */}
+                        <MetricCard 
+                            icon={Crosshair}
+                            label="Headshots" 
+                            value={stats.hs} 
+                            color="text-amber-400" 
+                            subtext={`${stats.kills > 0 ? ((stats.hs / stats.kills) * 100).toFixed(1) : '0.0'}% taxa HS`}
+                            subColor="text-amber-400/80"
+                        />
+
+                        {/* 8. Deitados (Knocks) */}
+                        <MetricCard 
+                            icon={Zap}
+                            label="Deitados" 
+                            value={stats.knocks} 
+                            color="text-orange-500" 
+                            subtext={`Média ${(stats.knocks / (stats.matches || 1)).toFixed(2)}/Q`}
+                            subColor="text-orange-400/80"
+                        />
+
+                        {/* 9. Assistências */}
+                        <MetricCard 
+                            icon={Users}
+                            label="Assistências" 
+                            value={stats.assists} 
+                            color="text-blue-400" 
+                            subtext={`Média ${(stats.assists / (stats.matches || 1)).toFixed(2)}/Q`}
+                            subColor="text-blue-400/80"
+                        />
+
+                        {/* 10. Média de Kills */}
+                        <MetricCard 
+                            icon={Target}
+                            label="Média Kills" 
+                            value={stats.avg} 
+                            color="text-yellow-400" 
+                            subtext="Kills por Queda"
+                            subColor="text-yellow-400/80"
+                            highlight="yellow"
+                        />
+                    </div>
                 </div>
             </div>
 
@@ -6301,11 +6423,45 @@ const PlayerProfile = ({ data, playerName, filters, characters }: any) => {
     );
 };
 
-const MetricCard = ({ label, value, color }: any) => (
-    <div className="text-center px-6 py-4 rounded-2xl bg-black/60 border border-white/5 shadow-inner min-w-[110px] flex flex-col justify-center">
-        <span className={`block text-3xl font-black ${color} italic leading-none`}>{value}</span>
-        <span className="text-[10px] text-gray-500 uppercase font-black tracking-widest mt-2">{label}</span>
-    </div>
-);
+const MetricCard = ({ icon: Icon, label, value, color = "text-white", subtext, subColor = "text-gray-400", highlight }: any) => {
+    const borderClass = highlight === 'red'
+        ? 'border-red-500/30 hover:border-red-500/50 bg-red-950/20'
+        : highlight === 'yellow'
+        ? 'border-yellow-500/30 hover:border-yellow-500/50 bg-yellow-950/20'
+        : 'border-white/5 hover:border-white/15 bg-black/50';
+
+    const valStr = String(value ?? '');
+    const isLongVal = valStr.length > 5;
+
+    return (
+        <div className={`p-2.5 sm:p-3 rounded-2xl border ${borderClass} shadow-inner flex flex-col justify-between transition-all duration-200 group hover:scale-[1.02] min-h-[90px]`}>
+            <div className="flex items-center justify-between gap-1">
+                <span className="text-[9.5px] sm:text-[10px] font-black uppercase text-gray-400 tracking-wider whitespace-nowrap overflow-hidden">
+                    {label}
+                </span>
+                {Icon && <Icon size={12} className="text-gray-500 group-hover:text-yellow-400 transition-colors flex-shrink-0" />}
+            </div>
+            <div className="my-1 overflow-hidden">
+                <span 
+                    title={valStr}
+                    className={`block ${
+                        isLongVal 
+                            ? 'text-lg sm:text-xl md:text-[22px] lg:text-[24px]' 
+                            : 'text-2xl sm:text-2xl md:text-3xl lg:text-[28px]'
+                    } font-black italic tracking-tight ${color} leading-none whitespace-nowrap`}
+                >
+                    {value}
+                </span>
+            </div>
+            {subtext ? (
+                <span className={`text-[8.5px] sm:text-[9px] font-bold ${subColor} uppercase tracking-tight block truncate`} title={subtext}>
+                    {subtext}
+                </span>
+            ) : (
+                <div className="h-2" />
+            )}
+        </div>
+    );
+};
 
 export default Players;
