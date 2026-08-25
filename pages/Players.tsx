@@ -149,8 +149,8 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
     });
   }, [data.killFeed]);
 
-  // Ranking com Filtragem Estrita (RD AND Q)
-  const rankingData = useMemo(() => {
+  // Ranking de Todos os Jogadores (calculado com filtros de Grupo, Rodada, Queda e Mapa)
+  const allRankingData = useMemo(() => {
     if (activeTab !== 'ranking' && activeTab !== 'auditoria' && activeTab !== 'stats' && activeTab !== 'roles' && activeTab !== 'compare' && activeTab !== 'report') return [];
 
     const teamGroupMap = new Map<string, string>();
@@ -160,7 +160,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
 
     const filtered = data.players.filter(p => {
         if (filters.team.length > 0 && !filters.team.includes(p.TIME)) return false;
-        if (filters.players.length > 0 && !filters.players.some(fp => normalize(fp) === normalize(p.PLAYER))) return false;
+        // Não filtra por filters.players aqui para permitir ranking global e comparativos relativos
         if (filters.map.length > 0 && !filters.map.some(m => normalize(m) === normalize(p.MAPA))) return false;
         
         // Filtro de Grupo
@@ -397,6 +397,12 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
     });
   }, [data.players, data.playersDimension, data.killFeed, filters, activeTab, charactersMap, rankingSort, allSafeNames]);
 
+  // Ranking Filtrado por Jogador para a Tabela de Visualização
+  const rankingData = useMemo(() => {
+    if (filters.players.length === 0) return allRankingData;
+    return allRankingData.filter(p => filters.players.some(fp => normalize(fp) === normalize(p.name)));
+  }, [allRankingData, filters.players]);
+
   const handleRoleSort = (field: string) => {
     setRoleSort(prev => ({
       field,
@@ -426,7 +432,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
     const playersWithRoles: any[] = [];
     
     data.playersDimension.forEach(d => {
-        const stats = rankingData.find(r => normalize(r.name) === normalize(d.Name));
+        const stats = allRankingData.find(r => normalize(r.name) === normalize(d.Name));
         const safeKillsMap = stats?.safeKills || {};
         const safeFields: Record<string, number> = {};
         allSafeNames.forEach(s => {
@@ -562,7 +568,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
     });
 
     return { players: playersWithRoles, bestsByRole: [allRolesGroup, ...bestsByRole] };
-  }, [data.playersDimension, data.teamsReference, rankingData, activeTab, roleSort, allSafeNames]);
+  }, [data.playersDimension, data.teamsReference, allRankingData, activeTab, roleSort, allSafeNames]);
 
   const auditData = useMemo(() => {
     if (activeTab !== 'auditoria') return [];
@@ -4019,7 +4025,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                           <h3 className="text-xs font-black text-white uppercase tracking-widest italic">Top Dano Total</h3>
                       </div>
                       <div className="space-y-3">
-                          {rankingData.sort((a,b) => b.damage - a.damage).slice(0, 10).map((p, i) => (
+                          {[...allRankingData].sort((a,b) => b.damage - a.damage).slice(0, 10).map((p, i) => (
                               <div key={p.name} className="flex items-center justify-between p-3 bg-black/40 rounded-xl border border-white/5 hover:border-red-500/30 transition-all group">
                                   <div className="flex items-center gap-3">
                                       <span className="text-[10px] font-black text-gray-600 w-4">#{i+1}</span>
@@ -4038,7 +4044,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                           <h3 className="text-xs font-black text-white uppercase tracking-widest italic">Top Headshots</h3>
                       </div>
                       <div className="space-y-3">
-                          {rankingData.sort((a,b) => b.hs - a.hs).slice(0, 10).map((p, i) => (
+                          {[...allRankingData].sort((a,b) => b.hs - a.hs).slice(0, 10).map((p, i) => (
                               <div key={p.name} className="flex items-center justify-between p-3 bg-black/40 rounded-xl border border-white/5 hover:border-yellow-500/30 transition-all group">
                                   <div className="flex items-center gap-3">
                                       <span className="text-[10px] font-black text-gray-600 w-4">#{i+1}</span>
@@ -4057,7 +4063,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                           <h3 className="text-xs font-black text-white uppercase tracking-widest italic">Top Média de Kills</h3>
                       </div>
                       <div className="space-y-3">
-                          {rankingData.sort((a,b) => parseFloat(b.avg) - parseFloat(a.avg)).slice(0, 10).map((p, i) => (
+                          {[...allRankingData].sort((a,b) => parseFloat(b.avg) - parseFloat(a.avg)).slice(0, 10).map((p, i) => (
                               <div key={p.name} className="flex items-center justify-between p-3 bg-black/40 rounded-xl border border-white/5 hover:border-blue-500/30 transition-all group">
                                   <div className="flex items-center gap-3">
                                       <span className="text-[10px] font-black text-gray-600 w-4">#{i+1}</span>
@@ -4076,7 +4082,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                           <h3 className="text-xs font-black text-white uppercase tracking-widest italic">Top Abates em Safes</h3>
                       </div>
                       <div className="space-y-3">
-                          {rankingData.sort((a,b) => b.totalSafeKills - a.totalSafeKills).slice(0, 10).map((p, i) => (
+                          {[...allRankingData].sort((a,b) => b.totalSafeKills - a.totalSafeKills).slice(0, 10).map((p, i) => (
                               <div key={p.name} className="flex items-center justify-between p-3 bg-black/40 rounded-xl border border-white/5 hover:border-emerald-500/30 transition-all group">
                                   <div className="flex items-center gap-3">
                                       <span className="text-[10px] font-black text-gray-600 w-4">#{i+1}</span>
@@ -4785,7 +4791,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                            <button onClick={() => { setFilters(prev => ({...prev, players: []})); setActiveTab('ranking'); }} className="text-xs text-yellow-500 hover:text-yellow-400 flex items-center gap-1 font-black uppercase tracking-widest bg-white/5 px-4 py-2 rounded-lg border border-white/5 transition-colors">
                                <ArrowLeft size={14}/> Voltar para Ranking
                            </button>
-                           <PlayerProfile data={data} playerName={filters.players[0]} filters={filters} characters={data.characters} rankingData={rankingData} />
+                           <PlayerProfile data={data} playerName={filters.players[0]} filters={filters} characters={data.characters} rankingData={allRankingData} />
                       </div>
                   ) : (
                       <div className="bg-[#1a1a1a] rounded-2xl p-24 text-center border border-gray-800 shadow-inner">
@@ -5261,39 +5267,74 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
 
     
     const rankings = useMemo(() => {
-        if (!rankingData) return null;
+        if (!rankingData || rankingData.length === 0) return null;
         
         const normalize = (val: string | undefined) => (val || '').trim().toUpperCase();
         const pName = normalize(playerName);
         
-        // Find player's team and role
+        // Find player's data, team and role
         const pData = rankingData.find((p: any) => normalize(p.name) === pName);
         if (!pData) return null;
         
-        const team = normalize(pData.team);
-        const role = normalize(pData.role);
+        const pDim = (data?.playersDimension || []).find((d: any) => normalize(d.Name) === pName);
+        const team = normalize(pData.team || pDim?.Time || '');
+        const role = normalize(pData.funcao || pDim?.Funcao || '');
+        const role2 = normalize(pData.funcao2 || pDim?.Funcao2 || '');
         
-        // Helper to get rank
+        // Helper to get rank with standard tournament tiebreakers
         const getRanks = (field: string) => {
-            const sortedDesc = [...rankingData].sort((a,b) => b[field] - a[field]);
+            const sortedDesc = [...rankingData].sort((a: any, b: any) => {
+                const valA = Number(a[field]) || 0;
+                const valB = Number(b[field]) || 0;
+                const diff = valB - valA;
+                if (diff !== 0) return diff;
+                
+                // Tiebreakers
+                if (field === 'kills') {
+                    const dmgDiff = (Number(b.damage) || 0) - (Number(a.damage) || 0);
+                    if (dmgDiff !== 0) return dmgDiff;
+                    return (Number(b.hs) || 0) - (Number(a.hs) || 0);
+                }
+                if (field === 'damage') {
+                    return (Number(b.kills) || 0) - (Number(a.kills) || 0);
+                }
+                if (field === 'hs') {
+                    return (Number(b.kills) || 0) - (Number(a.kills) || 0);
+                }
+                if (field === 'knocks') {
+                    return (Number(b.damage) || 0) - (Number(a.damage) || 0);
+                }
+                if (field === 'assists') {
+                    return (Number(b.damage) || 0) - (Number(a.damage) || 0);
+                }
+                return 0;
+            });
             
-            const overallRank = sortedDesc.findIndex(p => normalize(p.name) === pName) + 1;
+            // Overall Rank
+            const overallRank = sortedDesc.findIndex((p: any) => normalize(p.name) === pName) + 1;
             
-            const roleSorted = sortedDesc.filter(p => normalize(p.role) === role);
-            const roleRank = roleSorted.findIndex(p => normalize(p.name) === pName) + 1;
+            // Role Rank (match primary or secondary role)
+            const roleSorted = sortedDesc.filter((p: any) => {
+                if (!role || role === 'N/A' || role === 'SEM FUNÇÃO') return true;
+                const pRole1 = normalize(p.funcao || p.role);
+                const pRole2 = normalize(p.funcao2);
+                return pRole1 === role || pRole2 === role || (role2 && (pRole1 === role2 || pRole2 === role2));
+            });
+            const roleRank = roleSorted.findIndex((p: any) => normalize(p.name) === pName) + 1;
             const roleTotal = roleSorted.length;
             
-            const teamSorted = sortedDesc.filter(p => normalize(p.team) === team);
-            const teamRank = teamSorted.findIndex(p => normalize(p.name) === pName) + 1;
+            // Team Rank
+            const teamSorted = sortedDesc.filter((p: any) => normalize(p.team) === team);
+            const teamRank = teamSorted.findIndex((p: any) => normalize(p.name) === pName) + 1;
             const teamTotal = teamSorted.length;
             
             return {
-                overall: overallRank,
+                overall: overallRank > 0 ? overallRank : 1,
                 overallTotal: rankingData.length,
-                role: roleRank,
-                roleTotal,
-                team: teamRank,
-                teamTotal,
+                role: roleRank > 0 ? roleRank : 1,
+                roleTotal: roleTotal > 0 ? roleTotal : 1,
+                team: teamRank > 0 ? teamRank : 1,
+                teamTotal: teamTotal > 0 ? teamTotal : 1,
                 value: pData[field]
             };
         };
@@ -5303,9 +5344,11 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
             damage: getRanks('damage'),
             hs: getRanks('hs'),
             knocks: getRanks('knocks'),
-            assists: getRanks('assists')
+            assists: getRanks('assists'),
+            playerRole: role && role !== 'N/A' ? role : 'Sem Função',
+            playerTeam: pData.team || 'Sem Equipe'
         };
-    }, [rankingData, playerName]);
+    }, [rankingData, playerName, data.playersDimension]);
 
     const stats = useMemo(() => {
         const records = data.players.filter((p: PlayerData) => {
@@ -5988,9 +6031,16 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                 <div className="bg-gradient-to-br from-[#1a1a1a] to-[#121215] p-6 rounded-3xl border border-yellow-500/20 shadow-2xl space-y-6 relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-64 h-64 bg-yellow-500/5 rounded-full blur-3xl pointer-events-none -mr-10 -mt-10" />
                     
-                    <div className="flex items-center gap-3 border-b border-white/5 pb-4">
-                        <Trophy size={20} className="text-yellow-500" />
-                        <h3 className="text-lg font-black text-white uppercase italic tracking-tight">Classificações do Jogador no Campeonato</h3>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/5 pb-4">
+                        <div className="flex items-center gap-3">
+                            <Trophy size={20} className="text-yellow-500 flex-shrink-0" />
+                            <div>
+                                <h3 className="text-lg font-black text-white uppercase italic tracking-tight">Classificações do Jogador no Campeonato</h3>
+                                <p className="text-[11px] text-gray-400 font-bold uppercase tracking-wider">
+                                    Posicionamento oficial no ranking Geral ({rankings.kills.overallTotal} atletas), na Função {rankings.playerRole} ({rankings.kills.roleTotal} atletas) e na Equipe {rankings.playerTeam} ({rankings.kills.teamTotal} atletas)
+                                </p>
+                            </div>
+                        </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
@@ -6003,9 +6053,12 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                         ].map(stat => (
                             <div key={stat.label} className="bg-black/60 p-4 rounded-2xl border border-white/5 flex flex-col items-center relative overflow-hidden">
                                 <div className={`absolute top-0 left-0 w-full h-1 ${stat.bg}`} />
-                                <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest mb-3">{stat.label}</span>
+                                <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest mb-1">{stat.label}</span>
+                                <span className={`text-sm font-black italic mb-2.5 ${stat.color}`}>
+                                    {typeof stat.data.value === 'number' ? stat.data.value.toLocaleString() : stat.data.value}
+                                </span>
                                 
-                                <div className="w-full space-y-2">
+                                <div className="w-full space-y-2 pt-2 border-t border-white/5">
                                     <div className="flex justify-between items-center text-xs">
                                         <span className="text-gray-500 font-bold">Geral</span>
                                         <div className="flex items-center gap-1">
