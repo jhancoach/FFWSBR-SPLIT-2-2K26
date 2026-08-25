@@ -87,7 +87,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
       ...data.characters.map(c => c.Confronto),
       ...data.players.map(p => p.CONFRONTO)
     ].filter(Boolean))).sort(),
-    grupos: Array.from(new Set(data.teamsReference.map(t => t.GRUPO))).filter(Boolean).sort() as string[],
+    grupos: Array.from(new Set((Array.isArray(data?.teamsReference) ? data.teamsReference : []).map(t => t.GRUPO))).filter(Boolean).sort() as string[],
   }), [data.details, data.teamsReference, data.confrontationsDimension, data.killFeed, data.characters, data.players]);
 
   const normalize = (val: string | undefined) => (val || '').trim().toUpperCase();

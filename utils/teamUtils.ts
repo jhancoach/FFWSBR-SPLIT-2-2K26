@@ -49,8 +49,10 @@ export const findTeamLogo = (teamName: string, teamsReference: Array<{ TIME?: st
 
   if (!targetNorm) return '';
 
+  const safeRefs = Array.isArray(teamsReference) ? teamsReference : [];
+
   // 1. Direct match in reference
-  for (const ref of (teamsReference || [])) {
+  for (const ref of safeRefs) {
     const refName = (ref.TIME || ref.Time || ref.Name || ref.Equipe || ref.team || '') as string;
     const refImg = (ref.IMG || ref.Img || ref.LOGO || ref.Logo || ref.Image || ref.image || ref.url || '') as string;
     if (!refName || !refImg) continue;
@@ -59,7 +61,7 @@ export const findTeamLogo = (teamName: string, teamsReference: Array<{ TIME?: st
   }
 
   // 2. Normalized / Contains match in reference
-  for (const ref of (teamsReference || [])) {
+  for (const ref of safeRefs) {
     const refName = (ref.TIME || ref.Time || ref.Name || ref.Equipe || ref.team || '') as string;
     const refImg = (ref.IMG || ref.Img || ref.LOGO || ref.Logo || ref.Image || ref.image || ref.url || '') as string;
     if (!refName || !refImg) continue;

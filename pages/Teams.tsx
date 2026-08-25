@@ -54,7 +54,7 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
   const [selectedMap, setSelectedMap] = useState<string | null>(null);
   const [selectedDrop, setSelectedDrop] = useState<string | null>(null);
   const [selectedPosition, setSelectedPosition] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'gallery' | 'positions' | 'mapRanking' | 'bottomRanking' | 'mapAnalysis' | 'safeAnalysis' | 'comparison' | 'pointsTable' | 'teamRounds' | 'mapStats'>('gallery');
+  const [activeTab, setActiveTab] = useState<'gallery' | 'positions' | 'mapRanking' | 'bottomRanking' | 'mapAnalysis' | 'safeAnalysis' | 'comparison' | 'pointsTable' | 'teamRounds' | 'mapStats' | 'activeSkills'>('gallery');
   const [positionTabFilter, setPositionTabFilter] = useState<number | 'ALL'>('ALL');
   const [positionSortConfig, setPositionSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'pos1', direction: 'desc' });
   const [expandedPositionTeam, setExpandedPositionTeam] = useState<string | null>(null);
@@ -71,10 +71,18 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
   const [showAllTeamsMap, setShowAllTeamsMap] = useState<boolean>(false);
   const [mapStatsSort, setMapStatsSort] = useState<{ field: 'totalKills' | 'avgKillsPerMatch' | 'totalMatches' | 'mapName'; direction: 'asc' | 'desc' }>({ field: 'totalKills', direction: 'desc' });
   const [mapRoundViewMode, setMapRoundViewMode] = useState<'matrix' | 'cards'>('matrix');
-  const [teamProfileSubTab, setTeamProfileSubTab] = useState<'all' | 'zeradas' | 'rounds' | 'mapKills' | 'safes' | 'lineups' | 'killfeedPhases'>('all');
+  const [teamProfileSubTab, setTeamProfileSubTab] = useState<'all' | 'zeradas' | 'rounds' | 'mapKills' | 'safes' | 'lineups' | 'killfeedPhases' | 'activeSkills'>('all');
   const [teamKillFeedPhaseFilter, setTeamKillFeedPhaseFilter] = useState<'ALL' | 'EARLY' | 'MID' | 'LATE'>('ALL');
   const [teamKillFeedEventType, setTeamKillFeedEventType] = useState<'all' | 'kills' | 'deaths'>('all');
   const [compareSubTab, setCompareSubTab] = useState<'all' | 'overview' | 'combat' | 'zeradas' | 'mapKills' | 'safeKills' | 'safes'>('all');
+
+  // Active Skills Analysis States
+  const [selectedActiveSkillFilter, setSelectedActiveSkillFilter] = useState<string>('ALL');
+  const [activeSkillMapFilter, setActiveSkillMapFilter] = useState<string>('ALL');
+  const [activeSkillSearch, setActiveSkillSearch] = useState<string>('');
+  const [activeSkillMinUsageFilter, setActiveSkillMinUsageFilter] = useState<boolean>(true);
+  const [activeSkillViewMode, setActiveSkillViewMode] = useState<'cards' | 'table' | 'chart'>('cards');
+  const [activeSkillSort, setActiveSkillSort] = useState<{ field: 'count' | 'avgPerDrop' | 'pctSlots' | 'pctDrops' | 'teamName'; direction: 'asc' | 'desc' }>({ field: 'count', direction: 'desc' });
   const [showTeamDetails, setShowTeamDetails] = useState<boolean>(true);
   const [showTeamSectionMenu, setShowTeamSectionMenu] = useState<boolean>(false);
   const [teamVisibleSections, setTeamVisibleSections] = useState({
@@ -258,7 +266,7 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
     });
 
     const teamDimMap = new Map<string, { img?: string; grupo?: string }>();
-    (data.teamsReference || []).forEach(t => {
+    (Array.isArray(data.teamsReference) ? data.teamsReference : []).forEach(t => {
       if (t.TIME) teamDimMap.set(normalize(t.TIME), { img: t.IMG, grupo: t.GRUPO });
     });
 
@@ -493,6 +501,251 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
       }
     };
   }, [filteredData.killFeed, filteredData.players, filters.team, compareTeamB, data.playersDimension, data.teamsReference, data.players]);
+
+  // Análise Avançada de Habilidades Ativas das Equipes
+  const activeSkillsAnalysis = useMemo(() => {
+    if (!data || !data.characters) return {
+      allActiveSkills: [],
+      teamsList: [],
+      allTeamsRaw: [],
+      kpis: {
+        topSkill: null,
+        topTeam: null,
+        avgActivesPerDrop: '0.00',
+        totalEntries: 0
+      }
+    };
+
+    const charsArr = Array.isArray(data?.characters) ? data.characters : [];
+    const teamsRef = Array.isArray(data?.teamsReference) ? data.teamsReference : [];
+    const normMapFilter = activeSkillMapFilter !== 'ALL' ? normalize(activeSkillMapFilter) : null;
+    const normSkillFilter = selectedActiveSkillFilter !== 'ALL' ? normalize(selectedActiveSkillFilter) : null;
+
+    // 1. Obter lista global de habilidades ativas mapeadas
+    const globalSkillCountMap: Record<string, { originalName: string; count: number }> = {};
+    charsArr.forEach(c => {
+      if (c && c.Hab1 && c.Hab1.trim()) {
+        const name = c.Hab1.trim();
+        const normKey = normalize(name);
+        if (!globalSkillCountMap[normKey]) {
+          globalSkillCountMap[normKey] = { originalName: name, count: 0 };
+        }
+        globalSkillCountMap[normKey].count += 1;
+      }
+    });
+
+    const allActiveSkills = Object.entries(globalSkillCountMap)
+      .sort((a, b) => b[1].count - a[1].count)
+      .map(([normKey, item]) => ({
+        key: normKey,
+        name: item.originalName,
+        count: item.count,
+        img: findDimImg(data.hab1, item.originalName)
+      }));
+
+    // 2. Filtrar dados de personagens com base nos filtros globais (mapa, rodada, queda, confronto)
+    const filteredChars = charsArr.filter(c => {
+      if (!c) return false;
+      if (normMapFilter && c.Mapa && normalize(c.Mapa) !== normMapFilter && !normalize(c.Mapa).includes(normMapFilter) && !normMapFilter.includes(normalize(c.Mapa))) {
+        return false;
+      }
+      if (filters.rodada.length > 0 && c.Rd && !filters.rodada.some(r => normalize(r) === normalize(c.Rd || (c as any).RD))) return false;
+      if (filters.queda.length > 0 && c.Q && !filters.queda.some(q => normalize(q) === normalize(c.Q || (c as any).S))) return false;
+      if (filters.confrontation.length > 0 && c.Confronto && !filters.confrontation.some(cf => normalize(cf) === normalize(c.Confronto))) return false;
+      return true;
+    });
+
+    // 3. Lista de todos os times do campeonato
+    const allTeamNames = Array.from(new Set([
+      ...teamsRef.map(t => t.TIME),
+      ...(Array.isArray(data?.details) ? data.details : []).map(d => d.TIME),
+      ...(Array.isArray(data?.players) ? data.players : []).map(p => p.TIME),
+      ...charsArr.map(c => c.Time)
+    ].filter(Boolean))).sort((a, b) => a.localeCompare(b));
+
+    // 4. Calcular estatísticas de habilidades ativas por time
+    const teamsRaw = allTeamNames.map(teamName => {
+      const normT = normalize(teamName);
+      const teamRef = teamsRef.find(t => normalize(t.TIME) === normT);
+      const teamLogo = findTeamLogo(teamName, data);
+
+      // Personagens deste time
+      const teamChars = filteredChars.filter(c => {
+        if (c.Time && isSameTeam(c.Time, teamName, teamsRef)) return true;
+        const dim = (data.playersDimension || []).find(p => p.Name && normalize(p.Name) === normalize(c.Player));
+        if (dim && dim.Time && isSameTeam(dim.Time, teamName, teamsRef)) return true;
+        return false;
+      });
+
+      // Quedas únicas do time
+      const dropSet = new Set<string>();
+      teamChars.forEach(c => {
+        const rd = (c.Rd || (c as any).RD || '1').toString().replace(/\D/g, '');
+        const q = (c.Q || (c as any).S || '1').toString().replace(/\D/g, '');
+        if (rd || q) dropSet.add(`${rd}_${q}`);
+      });
+
+      let totalDrops = dropSet.size;
+      if (totalDrops === 0) {
+        const teamDetails = (data.details || []).filter(d => isSameTeam(d.TIME, teamName, teamsRef));
+        totalDrops = new Set(teamDetails.map(d => `${d.RD}_${d.Q}`)).size;
+      }
+      if (totalDrops === 0) totalDrops = 1;
+
+      const totalSlots = teamChars.length || (totalDrops * 4);
+
+      // Mapeamento de habilidades ativas para este time
+      const teamSkillMap: Record<string, {
+        name: string;
+        count: number;
+        dropsSet: Set<string>;
+        playersMap: Record<string, number>;
+        mapsMap: Record<string, number>;
+      }> = {};
+
+      teamChars.forEach(c => {
+        if (!c.Hab1 || !c.Hab1.trim()) return;
+        const sName = c.Hab1.trim();
+        const normS = normalize(sName);
+
+        if (!teamSkillMap[normS]) {
+          teamSkillMap[normS] = {
+            name: sName,
+            count: 0,
+            dropsSet: new Set(),
+            playersMap: {},
+            mapsMap: {}
+          };
+        }
+        const entry = teamSkillMap[normS];
+        entry.count += 1;
+        const rd = (c.Rd || (c as any).RD || '1').toString().replace(/\D/g, '');
+        const q = (c.Q || (c as any).S || '1').toString().replace(/\D/g, '');
+        entry.dropsSet.add(`${rd}_${q}`);
+
+        if (c.Player) {
+          entry.playersMap[c.Player] = (entry.playersMap[c.Player] || 0) + 1;
+        }
+        if (c.Mapa) {
+          entry.mapsMap[c.Mapa] = (entry.mapsMap[c.Mapa] || 0) + 1;
+        }
+      });
+
+      const sortedTeamSkills = Object.values(teamSkillMap).sort((a, b) => b.count - a.count);
+      const topSkill = sortedTeamSkills[0] ? {
+        name: sortedTeamSkills[0].name,
+        count: sortedTeamSkills[0].count,
+        pctSlots: totalSlots > 0 ? parseFloat(((sortedTeamSkills[0].count / totalSlots) * 100).toFixed(1)) : 0,
+        img: findDimImg(data.hab1, sortedTeamSkills[0].name)
+      } : null;
+
+      let count = 0;
+      let dropsWithSkill = 0;
+      let playersForSkill: { name: string; count: number; img?: string }[] = [];
+      let mapsForSkill: { mapName: string; count: number }[] = [];
+
+      if (normSkillFilter) {
+        const entry = teamSkillMap[normSkillFilter];
+        if (entry) {
+          count = entry.count;
+          dropsWithSkill = entry.dropsSet.size;
+          playersForSkill = Object.entries(entry.playersMap)
+            .map(([pName, pCount]) => ({
+              name: pName,
+              count: pCount,
+              img: findDimImg(data.playersDimension, pName)
+            }))
+            .sort((a, b) => b.count - a.count);
+
+          mapsForSkill = Object.entries(entry.mapsMap)
+            .map(([mName, mCount]) => ({ mapName: mName, count: mCount }))
+            .sort((a, b) => b.count - a.count);
+        }
+      } else {
+        count = sortedTeamSkills.reduce((acc, s) => acc + s.count, 0);
+        const allSkillDrops = new Set<string>();
+        sortedTeamSkills.forEach(s => s.dropsSet.forEach(d => allSkillDrops.add(d)));
+        dropsWithSkill = allSkillDrops.size;
+      }
+
+      const pctSlots = totalSlots > 0 ? parseFloat(((count / totalSlots) * 100).toFixed(1)) : 0;
+      const pctDrops = totalDrops > 0 ? parseFloat(((dropsWithSkill / totalDrops) * 100).toFixed(1)) : 0;
+      const avgPerDrop = totalDrops > 0 ? parseFloat((count / totalDrops).toFixed(2)) : 0;
+
+      const allSkillsList = sortedTeamSkills.map(s => ({
+        name: s.name,
+        count: s.count,
+        drops: s.dropsSet.size,
+        pctSlots: totalSlots > 0 ? parseFloat(((s.count / totalSlots) * 100).toFixed(1)) : 0,
+        pctDrops: totalDrops > 0 ? parseFloat(((s.dropsSet.size / totalDrops) * 100).toFixed(1)) : 0,
+        avgPerDrop: totalDrops > 0 ? parseFloat((s.count / totalDrops).toFixed(2)) : 0,
+        img: findDimImg(data.hab1, s.name),
+        players: Object.entries(s.playersMap).map(([pName, pCount]) => ({
+          name: pName,
+          count: pCount,
+          img: findDimImg(data.playersDimension, pName)
+        })).sort((a, b) => b.count - a.count),
+        maps: Object.entries(s.mapsMap).map(([mName, mCount]) => ({ mapName: mName, count: mCount })).sort((a, b) => b.count - a.count)
+      }));
+
+      return {
+        teamName,
+        logo: teamLogo,
+        grupo: teamRef?.GRUPO,
+        totalDrops,
+        totalSlots,
+        count,
+        dropsWithSkill,
+        pctSlots,
+        pctDrops,
+        avgPerDrop,
+        topSkill,
+        playersForSkill,
+        mapsForSkill,
+        allSkillsList
+      };
+    });
+
+    // Filtrar e Ordenar Times
+    let filteredTeams = teamsRaw;
+    if (activeSkillSearch.trim()) {
+      const q = activeSkillSearch.trim().toLowerCase();
+      filteredTeams = filteredTeams.filter(t => t.teamName.toLowerCase().includes(q));
+    }
+    if (selectedActiveSkillFilter !== 'ALL' && activeSkillMinUsageFilter) {
+      filteredTeams = filteredTeams.filter(t => t.count > 0);
+    }
+
+    const { field, direction } = activeSkillSort;
+    filteredTeams.sort((a, b) => {
+      let valA: any = a[field];
+      let valB: any = b[field];
+      if (field === 'teamName') {
+        return direction === 'asc' ? a.teamName.localeCompare(b.teamName) : b.teamName.localeCompare(a.teamName);
+      }
+      if (valA < valB) return direction === 'asc' ? -1 : 1;
+      if (valA > valB) return direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    const topSkillObj = allActiveSkills[0] || null;
+    const topTeamObj = [...teamsRaw].sort((a, b) => b.count - a.count)[0] || null;
+    const totalEntries = filteredChars.filter(c => c && c.Hab1 && c.Hab1.trim()).length;
+    const totalDropsAll = new Set(filteredChars.map(c => `${(c.Rd || (c as any).RD || '1').toString().replace(/\D/g, '')}_${(c.Q || (c as any).S || '1').toString().replace(/\D/g, '')}`)).size || 1;
+    const avgActivesPerDrop = (totalEntries / totalDropsAll).toFixed(2);
+
+    return {
+      allActiveSkills,
+      teamsList: filteredTeams,
+      allTeamsRaw: teamsRaw,
+      kpis: {
+        topSkill: topSkillObj,
+        topTeam: topTeamObj,
+        avgActivesPerDrop,
+        totalEntries
+      }
+    };
+  }, [data, filters, activeSkillMapFilter, selectedActiveSkillFilter, activeSkillSearch, activeSkillMinUsageFilter, activeSkillSort]);
 
   // Comparativo de Abates por Rodada de Cada Mapa e MVPs
   const compareMapKillsAndMvpData = useMemo(() => {
@@ -1107,21 +1360,21 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
   }, [filteredData, filters.grupo]);
   
   const filterOptions = useMemo(() => ({
-    teams: Array.from(new Set(data.players.map(p => p.TIME))).filter(Boolean).sort(),
+    teams: Array.from(new Set((Array.isArray(data?.players) ? data.players : []).map(p => p.TIME))).filter(Boolean).sort(),
     players: [], 
     weapons: [], 
     safes: [], 
-    maps: Array.from(new Set(data.players.map(p => p.MAPA))).filter(Boolean).sort(),
-    rounds: Array.from(new Set(data.players.map(p => p.RD))).filter(Boolean).sort(),
-    quedas: Array.from(new Set(data.players.map(p => p.Q))).filter(Boolean).sort(),
+    maps: Array.from(new Set((Array.isArray(data?.players) ? data.players : []).map(p => p.MAPA))).filter(Boolean).sort(),
+    rounds: Array.from(new Set((Array.isArray(data?.players) ? data.players : []).map(p => p.RD))).filter(Boolean).sort(),
+    quedas: Array.from(new Set((Array.isArray(data?.players) ? data.players : []).map(p => p.Q))).filter(Boolean).sort(),
     confrontations: Array.from(new Set([
-      ...data.confrontationsDimension.map(c => c.CONFRONTO),
-      ...data.killFeed.map(k => k.CONFRONTO),
-      ...data.details.map(d => d.CONFRONTO),
-      ...data.characters.map(c => c.Confronto),
-      ...data.players.map(p => p.CONFRONTO)
+      ...(Array.isArray(data?.confrontationsDimension) ? data.confrontationsDimension : []).map(c => c.CONFRONTO),
+      ...(Array.isArray(data?.killFeed) ? data.killFeed : []).map(k => k.CONFRONTO),
+      ...(Array.isArray(data?.details) ? data.details : []).map(d => d.CONFRONTO),
+      ...(Array.isArray(data?.characters) ? data.characters : []).map(c => c.Confronto),
+      ...(Array.isArray(data?.players) ? data.players : []).map(p => p.CONFRONTO)
     ].filter(Boolean))).sort(),
-    grupos: Array.from(new Set(data.teamsReference.map(t => t.GRUPO))).filter(Boolean).sort() as string[]
+    grupos: Array.from(new Set((Array.isArray(data?.teamsReference) ? data.teamsReference : []).map(t => t.GRUPO))).filter(Boolean).sort() as string[]
   }), [data.players, data.teamsReference, data.confrontationsDimension, data.killFeed, data.details, data.characters]);
 
   const selectedTeamName = filters.team.length === 1 ? filters.team[0] : null;
@@ -2903,6 +3156,12 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                         className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'comparison' ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
                     >
                         <Scale size={15} /> Comparar
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('activeSkills')}
+                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'activeSkills' ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                    >
+                        <Zap size={15} /> Habilidades Ativas
                     </button>
                     <button 
                         onClick={() => setActiveTab('pointsTable')}
@@ -8596,6 +8855,501 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                         </div>
                     )}
                 </div>
+            </div>
+        ) : activeTab === 'activeSkills' ? (
+            <div className="space-y-8 animate-in fade-in duration-300">
+                {/* Header Banner */}
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gradient-to-r from-yellow-500/10 via-amber-500/5 to-transparent p-6 rounded-3xl border border-yellow-500/20 backdrop-blur-md">
+                    <div>
+                        <div className="flex items-center gap-3">
+                            <div className="p-3 bg-yellow-500/20 text-yellow-400 rounded-2xl border border-yellow-500/30 shadow-inner">
+                                <Zap size={24} />
+                            </div>
+                            <div>
+                                <h1 className="text-2xl font-black uppercase italic tracking-widest text-white flex items-center gap-2">
+                                    Análise de Habilidades Ativas dos Times
+                                </h1>
+                                <p className="text-xs text-gray-400 mt-1">
+                                    Filtre por habilidade ativa, veja quais times mais utilizam, a quantidade total de vezes, média por queda e % de utilização da line-up.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-2 self-stretch md:self-auto justify-end">
+                        <div className="bg-black/40 p-1.5 rounded-2xl border border-white/10 flex items-center gap-1">
+                            <button
+                                onClick={() => setActiveSkillViewMode('cards')}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${activeSkillViewMode === 'cards' ? 'bg-yellow-500 text-black shadow-md' : 'text-gray-400 hover:text-white'}`}
+                                title="Visualização em Cards"
+                            >
+                                <LayoutGrid size={14} /> Cards
+                            </button>
+                            <button
+                                onClick={() => setActiveSkillViewMode('table')}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${activeSkillViewMode === 'table' ? 'bg-yellow-500 text-black shadow-md' : 'text-gray-400 hover:text-white'}`}
+                                title="Visualização em Tabela"
+                            >
+                                <LayoutList size={14} /> Tabela
+                            </button>
+                            <button
+                                onClick={() => setActiveSkillViewMode('chart')}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${activeSkillViewMode === 'chart' ? 'bg-yellow-500 text-black shadow-md' : 'text-gray-400 hover:text-white'}`}
+                                title="Visualização em Gráfico"
+                            >
+                                <BarChart2 size={14} /> Gráfico
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* KPIs Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Top Skill Overall */}
+                    <div className="bg-[#1a1a1a] p-5 rounded-3xl border border-white/5 relative overflow-hidden group shadow-xl">
+                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                            <Zap size={80} className="text-yellow-500" />
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <div className="w-14 h-14 rounded-2xl bg-black border border-yellow-500/30 flex items-center justify-center overflow-hidden p-2 flex-shrink-0 shadow-lg">
+                                {activeSkillsAnalysis.kpis.topSkill?.img ? (
+                                    <img src={activeSkillsAnalysis.kpis.topSkill.img} alt={activeSkillsAnalysis.kpis.topSkill.name} className="w-full h-full object-contain" />
+                                ) : (
+                                    <Sparkles size={24} className="text-yellow-400" />
+                                )}
+                            </div>
+                            <div>
+                                <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 block">Ativa Mais Utilizada</span>
+                                <h3 className="text-xl font-black italic text-white uppercase tracking-tight truncate">
+                                    {activeSkillsAnalysis.kpis.topSkill?.name || 'N/A'}
+                                </h3>
+                                <div className="flex items-center gap-2 mt-1">
+                                    <span className="text-xs font-bold text-yellow-400">{activeSkillsAnalysis.kpis.topSkill?.count || 0} escolhas</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Top Team using active skills */}
+                    <div className="bg-[#1a1a1a] p-5 rounded-3xl border border-white/5 relative overflow-hidden group shadow-xl">
+                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                            <Shield size={80} className="text-orange-500" />
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <div className="w-14 h-14 rounded-2xl bg-black border border-orange-500/30 flex items-center justify-center overflow-hidden p-2 flex-shrink-0 shadow-lg">
+                                {activeSkillsAnalysis.kpis.topTeam?.logo ? (
+                                    <img src={activeSkillsAnalysis.kpis.topTeam.logo} alt={activeSkillsAnalysis.kpis.topTeam.teamName} className="w-full h-full object-contain" />
+                                ) : (
+                                    <Shield size={24} className="text-orange-400" />
+                                )}
+                            </div>
+                            <div>
+                                <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 block">Time com Mais Ativas</span>
+                                <h3 className="text-xl font-black italic text-white uppercase tracking-tight truncate">
+                                    {activeSkillsAnalysis.kpis.topTeam?.teamName || 'N/A'}
+                                </h3>
+                                <div className="flex items-center gap-2 mt-1">
+                                    <span className="text-xs font-bold text-orange-400">{activeSkillsAnalysis.kpis.topTeam?.count || 0}x no total</span>
+                                    <span className="text-[10px] text-gray-500">({activeSkillsAnalysis.kpis.topTeam?.avgPerDrop || 0}/queda)</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Average Active Skills per Drop */}
+                    <div className="bg-[#1a1a1a] p-5 rounded-3xl border border-white/5 relative overflow-hidden group shadow-xl">
+                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                            <Activity size={80} className="text-blue-500" />
+                        </div>
+                        <div>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-1">Média de Ativas / Queda</span>
+                            <h3 className="text-3xl font-black italic text-blue-400 tracking-tight">
+                                {activeSkillsAnalysis.kpis.avgActivesPerDrop}
+                            </h3>
+                            <p className="text-[10px] text-gray-400 mt-1 font-bold">
+                                Habilidades ativas em uso por time a cada partida
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Total Mapped Skills */}
+                    <div className="bg-[#1a1a1a] p-5 rounded-3xl border border-white/5 relative overflow-hidden group shadow-xl">
+                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                            <Layers size={80} className="text-purple-500" />
+                        </div>
+                        <div>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-1">Total Mapeado</span>
+                            <h3 className="text-3xl font-black italic text-purple-400 tracking-tight">
+                                {activeSkillsAnalysis.kpis.totalEntries}
+                            </h3>
+                            <p className="text-[10px] text-gray-400 mt-1 font-bold">
+                                {activeSkillsAnalysis.allActiveSkills.length} habilidades ativas diferentes registradas
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Filter Bar for Active Skills */}
+                <div className="bg-[#161619] p-6 rounded-3xl border border-white/10 shadow-2xl space-y-4">
+                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                        <div className="flex items-center gap-2 text-yellow-400 text-xs font-black uppercase tracking-widest">
+                            <Filter size={16} /> Filtros de Habilidades Ativas
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                            {/* Search Team */}
+                            <div className="relative flex-1 md:w-60">
+                                <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                                <input
+                                    type="text"
+                                    placeholder="Buscar time..."
+                                    value={activeSkillSearch}
+                                    onChange={(e) => setActiveSkillSearch(e.target.value)}
+                                    className="w-full bg-black/60 border border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs font-bold text-white placeholder-gray-600 outline-none focus:border-yellow-500/50 transition-all"
+                                />
+                            </div>
+
+                            {/* Filter Map */}
+                            <select
+                                value={activeSkillMapFilter}
+                                onChange={(e) => setActiveSkillMapFilter(e.target.value)}
+                                className="bg-black/60 border border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-yellow-500/50 uppercase cursor-pointer"
+                            >
+                                <option value="ALL">Todos os Mapas</option>
+                                {MAPS_CONFIG.map(m => (
+                                    <option key={m.id} value={m.name}>{m.name}</option>
+                                ))}
+                            </select>
+
+                            {/* Filter Skill Selection Dropdown */}
+                            <select
+                                value={selectedActiveSkillFilter}
+                                onChange={(e) => setSelectedActiveSkillFilter(e.target.value)}
+                                className="bg-black/60 border border-yellow-500/40 rounded-xl px-4 py-2 text-xs font-black text-yellow-400 outline-none focus:border-yellow-500 uppercase shadow-lg shadow-yellow-500/10 cursor-pointer"
+                            >
+                                <option value="ALL">Todas as Habilidades Ativas ({activeSkillsAnalysis.allActiveSkills.length})</option>
+                                {activeSkillsAnalysis.allActiveSkills.map(s => (
+                                    <option key={s.key} value={s.name}>
+                                        {s.name} ({s.count}x)
+                                    </option>
+                                ))}
+                            </select>
+
+                            {/* Filter Min Usage Toggle */}
+                            {selectedActiveSkillFilter !== 'ALL' && (
+                                <label className="flex items-center gap-2 px-3 py-2 bg-black/40 border border-white/10 rounded-xl cursor-pointer hover:border-yellow-500/30 transition-all">
+                                    <input
+                                        type="checkbox"
+                                        checked={activeSkillMinUsageFilter}
+                                        onChange={(e) => setActiveSkillMinUsageFilter(e.target.checked)}
+                                        className="accent-yellow-500 rounded"
+                                    />
+                                    <span className="text-[11px] font-bold text-gray-300 uppercase">Apenas Usados (&gt;0)</span>
+                                </label>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Active Skills Selector Pills */}
+                    <div className="pt-2 border-t border-white/5">
+                        <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest block mb-2">
+                            Seleção Rápida de Habilidade Ativa:
+                        </span>
+                        <div className="flex flex-wrap items-center gap-2 max-h-32 overflow-y-auto custom-scrollbar p-1">
+                            <button
+                                onClick={() => setSelectedActiveSkillFilter('ALL')}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${selectedActiveSkillFilter === 'ALL' ? 'bg-yellow-500 text-black shadow-md font-black' : 'bg-black/40 text-gray-400 hover:text-white border border-white/5'}`}
+                            >
+                                <Zap size={13} /> Todas ({activeSkillsAnalysis.allActiveSkills.length})
+                            </button>
+                            {activeSkillsAnalysis.allActiveSkills.map(s => {
+                                const isSelected = normalize(selectedActiveSkillFilter) === normalize(s.name);
+                                return (
+                                    <button
+                                        key={s.key}
+                                        onClick={() => setSelectedActiveSkillFilter(s.name)}
+                                        className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${isSelected ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black scale-105' : 'bg-black/40 text-gray-300 hover:text-white border border-white/5 hover:border-white/20'}`}
+                                    >
+                                        {s.img ? (
+                                            <img src={s.img} alt={s.name} className="w-4 h-4 object-contain rounded" />
+                                        ) : (
+                                            <Sparkles size={12} className={isSelected ? 'text-black' : 'text-yellow-400'} />
+                                        )}
+                                        <span>{s.name}</span>
+                                        <span className={`text-[10px] px-1.5 py-0.2 rounded ${isSelected ? 'bg-black/20 text-black font-black' : 'bg-white/10 text-gray-400 font-normal'}`}>{s.count}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Selected Skill Banner / Info */}
+                {selectedActiveSkillFilter !== 'ALL' && (
+                    <div className="bg-gradient-to-r from-yellow-500/20 via-yellow-500/10 to-transparent p-4 rounded-2xl border border-yellow-500/30 flex items-center justify-between shadow-xl">
+                        <div className="flex items-center gap-3">
+                            {findDimImg(data.hab1, selectedActiveSkillFilter) ? (
+                                <img src={findDimImg(data.hab1, selectedActiveSkillFilter)} alt={selectedActiveSkillFilter} className="w-10 h-10 object-contain bg-black rounded-xl p-1 border border-yellow-500/40" />
+                            ) : (
+                                <div className="w-10 h-10 bg-yellow-500/20 rounded-xl flex items-center justify-center border border-yellow-500/40">
+                                    <Zap size={20} className="text-yellow-400" />
+                                </div>
+                            )}
+                            <div>
+                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Habilidade Ativa Filtrada</span>
+                                <h2 className="text-lg font-black text-yellow-400 uppercase italic tracking-wider flex items-center gap-2">
+                                    {selectedActiveSkillFilter}
+                                </h2>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-4 text-xs font-bold text-gray-300">
+                            <span><strong>{activeSkillsAnalysis.teamsList.filter(t => t.count > 0).length}</strong> times utilizam</span>
+                            <button
+                                onClick={() => setSelectedActiveSkillFilter('ALL')}
+                                className="text-[10px] font-black text-yellow-400 hover:underline uppercase cursor-pointer"
+                            >
+                                Limpar Filtro
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* VIEW MODE: CHART */}
+                {activeSkillViewMode === 'chart' && (
+                    <div className="bg-[#161619] p-6 rounded-3xl border border-white/10 shadow-2xl space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-sm font-black uppercase text-white tracking-wider flex items-center gap-2">
+                                <BarChart2 size={16} className="text-yellow-400" /> Ranking de Uso por Equipe ({selectedActiveSkillFilter === 'ALL' ? 'Total de Ativas' : selectedActiveSkillFilter})
+                            </h3>
+                            <span className="text-[10px] text-gray-500 uppercase font-bold">Top 15 Equipes</span>
+                        </div>
+                        <div className="h-96 w-full pt-4">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={activeSkillsAnalysis.teamsList.slice(0, 15)} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#222" />
+                                    <XAxis dataKey="teamName" stroke="#666" tick={{ fill: '#aaa', fontSize: 10, fontWeight: 'bold' }} angle={-30} textAnchor="end" interval={0} />
+                                    <YAxis stroke="#666" tick={{ fill: '#aaa', fontSize: 10 }} />
+                                    <Tooltip
+                                        contentStyle={{ backgroundColor: '#111', borderColor: '#333', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' }}
+                                        formatter={(value: any, name: any) => [value, name === 'count' ? 'Quantidade' : 'Média/Queda']}
+                                        labelFormatter={(label: any) => `Time: ${label}`}
+                                    />
+                                    <Bar dataKey="count" fill="#EAB308" radius={[6, 6, 0, 0]} name="Quantidade">
+                                        <LabelList dataKey="count" position="top" fill="#EAB308" fontSize={11} fontWeight="bold" />
+                                    </Bar>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+                )}
+
+                {/* VIEW MODE: CARDS */}
+                {activeSkillViewMode === 'cards' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {activeSkillsAnalysis.teamsList.length === 0 ? (
+                            <div className="col-span-full p-12 text-center bg-[#161619] rounded-3xl border border-white/5">
+                                <AlertTriangle size={32} className="mx-auto text-yellow-500 mb-3" />
+                                <p className="text-gray-400 text-sm font-bold uppercase">Nenhum time encontrado com os filtros selecionados.</p>
+                            </div>
+                        ) : (
+                            activeSkillsAnalysis.teamsList.map((team, idx) => (
+                                <div key={team.teamName} className="bg-[#18181b] rounded-3xl p-6 border border-white/10 hover:border-yellow-500/40 transition-all shadow-xl space-y-4 relative overflow-hidden group">
+                                    <div className="flex items-center justify-between border-b border-white/5 pb-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-12 h-12 rounded-2xl bg-black border border-white/10 p-2 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+                                                {team.logo ? (
+                                                    <img src={team.logo} alt={team.teamName} className="w-full h-full object-contain" />
+                                                ) : (
+                                                    <Shield size={24} className="text-gray-700" />
+                                                )}
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[9px] font-black text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded uppercase">#{idx + 1}</span>
+                                                    {team.grupo && <span className="text-[9px] font-bold text-gray-500 uppercase">{team.grupo}</span>}
+                                                </div>
+                                                <h3 className="text-lg font-black italic text-white uppercase tracking-tight group-hover:text-yellow-400 transition-colors">
+                                                    {team.teamName}
+                                                </h3>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => setFilters(prev => ({ ...prev, team: [team.teamName] }))}
+                                            className="p-2 rounded-xl bg-white/5 hover:bg-yellow-500 hover:text-black text-gray-400 transition-all text-xs font-bold cursor-pointer"
+                                            title="Ver Perfil do Time"
+                                        >
+                                            <Eye size={16} />
+                                        </button>
+                                    </div>
+
+                                    {/* Key Skill Metrics Grid */}
+                                    <div className="grid grid-cols-3 gap-2 bg-black/40 p-3 rounded-2xl border border-white/5 text-center">
+                                        <div>
+                                            <span className="text-[8px] font-black text-gray-500 uppercase block mb-0.5">Quantidade</span>
+                                            <span className="text-xl font-black italic text-yellow-400">{team.count}x</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-[8px] font-black text-gray-500 uppercase block mb-0.5">Média / Queda</span>
+                                            <span className="text-xl font-black italic text-blue-400">{team.avgPerDrop}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-[8px] font-black text-gray-500 uppercase block mb-0.5">% Composição</span>
+                                            <span className="text-xl font-black italic text-emerald-400">{team.pctSlots}%</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Progress bar % of drops */}
+                                    <div className="space-y-1">
+                                        <div className="flex justify-between text-[9px] font-black uppercase text-gray-400">
+                                            <span>% de Quedas Utilizadas</span>
+                                            <span className="text-yellow-400 font-bold">{team.pctDrops}% ({team.dropsWithSkill}/{team.totalDrops} quedas)</span>
+                                        </div>
+                                        <div className="h-2 w-full bg-black rounded-full overflow-hidden border border-white/5">
+                                            <div className="h-full bg-gradient-to-r from-yellow-500 to-amber-500 rounded-full" style={{ width: `${Math.min(team.pctDrops, 100)}%` }} />
+                                        </div>
+                                    </div>
+
+                                    {/* Selected Skill Players Breakdown */}
+                                    {team.playersForSkill.length > 0 && (
+                                        <div className="space-y-1.5 pt-2 border-t border-white/5">
+                                            <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block">
+                                                Jogadores que usaram ({selectedActiveSkillFilter === 'ALL' ? 'Mais Usadas' : selectedActiveSkillFilter}):
+                                            </span>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {team.playersForSkill.map(p => (
+                                                    <div key={p.name} className="flex items-center gap-1.5 bg-black/50 px-2 py-1 rounded-lg border border-white/5 text-xs font-bold">
+                                                        {p.img && <img src={p.img} alt={p.name} className="w-3.5 h-3.5 rounded-full object-cover" />}
+                                                        <span className="text-gray-300">{p.name}</span>
+                                                        <span className="text-yellow-400 font-black text-[10px]">{p.count}x</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* All Skills Used by Team list (if ALL filter selected) */}
+                                    {selectedActiveSkillFilter === 'ALL' && team.allSkillsList.length > 0 && (
+                                        <div className="space-y-1.5 pt-2 border-t border-white/5">
+                                            <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block">
+                                                Habilidades Ativas em Uso:
+                                            </span>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {team.allSkillsList.map(s => (
+                                                    <div key={s.name} className="flex items-center gap-1.5 bg-black/60 px-2.5 py-1 rounded-xl border border-white/10 text-xs font-bold">
+                                                        {s.img && <img src={s.img} alt={s.name} className="w-4 h-4 object-contain rounded" />}
+                                                        <span className="text-gray-200">{s.name}</span>
+                                                        <span className="text-yellow-400 font-black text-[10px] bg-yellow-500/10 px-1.5 rounded">{s.count}x</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ))
+                        )}
+                    </div>
+                )}
+
+                {/* VIEW MODE: TABLE */}
+                {activeSkillViewMode === 'table' && (
+                    <div className="bg-[#161619] rounded-3xl border border-white/10 overflow-hidden shadow-2xl">
+                        <div className="overflow-x-auto custom-scrollbar">
+                            <table className="w-full text-left border-collapse">
+                                <thead className="bg-black/70 text-[9px] text-gray-400 uppercase tracking-widest font-black italic border-b border-gray-800">
+                                    <tr>
+                                        <th className="p-3.5 w-12 text-center">#</th>
+                                        <th
+                                            className="p-3.5 cursor-pointer hover:text-white"
+                                            onClick={() => setActiveSkillSort(prev => ({ field: 'teamName', direction: prev.field === 'teamName' && prev.direction === 'asc' ? 'desc' : 'asc' }))}
+                                        >
+                                            Equipe
+                                        </th>
+                                        <th className="p-3.5 text-center">Ativa Principal</th>
+                                        <th
+                                            className="p-3.5 text-center cursor-pointer hover:text-white"
+                                            onClick={() => setActiveSkillSort(prev => ({ field: 'count', direction: prev.field === 'count' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
+                                        >
+                                            Qtd Vezes
+                                        </th>
+                                        <th
+                                            className="p-3.5 text-center cursor-pointer hover:text-white"
+                                            onClick={() => setActiveSkillSort(prev => ({ field: 'avgPerDrop', direction: prev.field === 'avgPerDrop' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
+                                        >
+                                            Média / Queda
+                                        </th>
+                                        <th
+                                            className="p-3.5 text-center cursor-pointer hover:text-white"
+                                            onClick={() => setActiveSkillSort(prev => ({ field: 'pctSlots', direction: prev.field === 'pctSlots' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
+                                        >
+                                            % Composição
+                                        </th>
+                                        <th
+                                            className="p-3.5 text-center cursor-pointer hover:text-white"
+                                            onClick={() => setActiveSkillSort(prev => ({ field: 'pctDrops', direction: prev.field === 'pctDrops' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
+                                        >
+                                            % Quedas Usadas
+                                        </th>
+                                        <th className="p-3.5 text-center">Jogadores Principais</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5 text-xs">
+                                    {activeSkillsAnalysis.teamsList.map((team, idx) => (
+                                        <tr key={team.teamName} className="hover:bg-white/5 transition-colors">
+                                            <td className="p-3.5 text-center font-mono text-gray-500 text-[10px]">
+                                                {idx + 1}
+                                            </td>
+                                            <td className="p-3.5">
+                                                <div className="flex items-center gap-3 cursor-pointer" onClick={() => setFilters(prev => ({ ...prev, team: [team.teamName] }))}>
+                                                    {team.logo ? (
+                                                        <img src={team.logo} alt={team.teamName} className="w-7 h-7 rounded-lg object-contain bg-black border border-white/5 flex-shrink-0" />
+                                                    ) : (
+                                                        <div className="w-7 h-7 rounded-lg bg-black border border-white/5 flex items-center justify-center flex-shrink-0">
+                                                            <Shield size={12} className="text-gray-700" />
+                                                        </div>
+                                                    )}
+                                                    <span className="text-white font-black italic uppercase tracking-wider hover:text-yellow-500 transition-colors">
+                                                        {team.teamName}
+                                                    </span>
+                                                </div>
+                                            </td>
+                                            <td className="p-3.5 text-center">
+                                                {team.topSkill ? (
+                                                    <div className="flex items-center justify-center gap-1.5">
+                                                        {team.topSkill.img && <img src={team.topSkill.img} alt={team.topSkill.name} className="w-4 h-4 object-contain rounded" />}
+                                                        <span className="text-gray-200 font-bold">{team.topSkill.name}</span>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-gray-600">-</span>
+                                                )}
+                                            </td>
+                                            <td className="p-3.5 text-center font-black text-yellow-400">
+                                                {team.count}x
+                                            </td>
+                                            <td className="p-3.5 text-center font-black text-blue-400">
+                                                {team.avgPerDrop}
+                                            </td>
+                                            <td className="p-3.5 text-center font-bold text-emerald-400">
+                                                {team.pctSlots}%
+                                            </td>
+                                            <td className="p-3.5 text-center font-bold text-gray-300">
+                                                {team.pctDrops}%
+                                            </td>
+                                            <td className="p-3.5 text-center">
+                                                <div className="flex flex-wrap justify-center gap-1 max-w-xs mx-auto">
+                                                    {team.playersForSkill.slice(0, 4).map(p => (
+                                                        <span key={p.name} className="text-[10px] bg-black/40 px-1.5 py-0.5 rounded border border-white/5 font-bold text-gray-300">
+                                                            {p.name} ({p.count}x)
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
             </div>
         ) : (
             /* Galeria de Times */

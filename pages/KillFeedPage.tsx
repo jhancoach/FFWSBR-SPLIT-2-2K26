@@ -67,7 +67,7 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
       ...data.players.map(p => p.CONFRONTO)
     ].filter(Boolean))).sort(),
     quedas: Array.from(new Set(data.killFeed.map(k => k.Q))).filter(Boolean).sort(),
-    grupos: Array.from(new Set(data.teamsReference.map(t => t.GRUPO))).filter(Boolean).sort() as string[],
+    grupos: Array.from(new Set((Array.isArray(data?.teamsReference) ? data.teamsReference : []).map(t => t.GRUPO))).filter(Boolean).sort() as string[],
   }), [data.killFeed, data.players, data.teamsReference, data.confrontationsDimension, data.details, data.characters]);
 
   const handleToggleFilter = (key: keyof typeof filters, value: string) => {
@@ -80,7 +80,7 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
 
   const filteredFeed = useMemo(() => {
     const teamGroupMap = new Map<string, string>();
-    data.teamsReference.forEach(t => {
+    (Array.isArray(data?.teamsReference) ? data.teamsReference : []).forEach(t => {
         if (t.TIME && t.GRUPO) teamGroupMap.set(normalize(t.TIME), normalize(t.GRUPO));
     });
 

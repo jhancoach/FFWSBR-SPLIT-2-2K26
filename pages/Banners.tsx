@@ -1104,7 +1104,7 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
 
   const availableTeams = useMemo(() => {
     const teams = new Set<string>();
-    data.teamsReference.forEach(t => { if (t.TIME) teams.add(t.TIME); });
+    (Array.isArray(data?.teamsReference) ? data.teamsReference : []).forEach(t => { if (t.TIME) teams.add(t.TIME); });
     data.details.forEach(d => { if (d.TIME) teams.add(d.TIME); });
     return Array.from(teams).sort((a, b) => a.localeCompare(b));
   }, [data.details, data.teamsReference]);

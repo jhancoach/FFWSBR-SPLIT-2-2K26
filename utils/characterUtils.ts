@@ -42,7 +42,7 @@ export const isSameTeam = (nameA?: string, nameB?: string, teamsReference: any[]
 
   if (normA === normB) return true;
 
-  if (teamsReference && teamsReference.length > 0) {
+  if (Array.isArray(teamsReference) && teamsReference.length > 0) {
     const refA = teamsReference.find(t => t.TIME && t.TIME.trim().toUpperCase() === normA);
     const refB = teamsReference.find(t => t.TIME && t.TIME.trim().toUpperCase() === normB);
     if (refA && refB && refA.TIME && refB.TIME && refA.TIME.trim().toUpperCase() === refB.TIME.trim().toUpperCase()) {

@@ -154,7 +154,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
     if (activeTab !== 'ranking' && activeTab !== 'auditoria' && activeTab !== 'stats' && activeTab !== 'roles' && activeTab !== 'compare' && activeTab !== 'report') return [];
 
     const teamGroupMap = new Map<string, string>();
-    data.teamsReference.forEach(t => {
+    (Array.isArray(data.teamsReference) ? data.teamsReference : []).forEach(t => {
         if (t.TIME && t.GRUPO) teamGroupMap.set(normalize(t.TIME), normalize(t.GRUPO));
     });
 
@@ -771,7 +771,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
     });
 
     const teamDimMap = new Map<string, { img?: string; grupo?: string }>();
-    (data.teamsReference || []).forEach(t => {
+    (Array.isArray(data.teamsReference) ? data.teamsReference : []).forEach(t => {
         if (t.TIME) teamDimMap.set(normalize(t.TIME), { img: t.IMG, grupo: t.GRUPO });
     });
 
@@ -1239,13 +1239,13 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
 
   const allTeamsList = useMemo(() => {
     const teamNames = Array.from(new Set([
-      ...(data.teamsReference || []).map(t => t.TIME),
-      ...(data.players || []).map(p => p.TIME),
-      ...(data.details || []).map(d => d.TIME)
+      ...(Array.isArray(data.teamsReference) ? data.teamsReference : []).map(t => t.TIME),
+      ...(Array.isArray(data.players) ? data.players : []).map(p => p.TIME),
+      ...(Array.isArray(data.details) ? data.details : []).map(d => d.TIME)
     ])).filter(Boolean).sort();
 
     return teamNames.map(name => {
-      const ref = (data.teamsReference || []).find(t => normalize(t.TIME) === normalize(name));
+      const ref = (Array.isArray(data.teamsReference) ? data.teamsReference : []).find(t => normalize(t.TIME) === normalize(name));
       return {
         name,
         img: ref?.IMG || '',
@@ -1400,8 +1400,8 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
       activeHabImg = topCharacter.img;
     }
 
-    const playerDim = data.playersDimension.find(d => normalize(d.Name) === normalize(pName));
-    const playerTeamDim = data.teamsReference.find(t => normalize(t.TIME) === normalize(pStats.team));
+    const playerDim = (Array.isArray(data.playersDimension) ? data.playersDimension : []).find(d => normalize(d.Name) === normalize(pName));
+    const playerTeamDim = (Array.isArray(data.teamsReference) ? data.teamsReference : []).find(t => normalize(t.TIME) === normalize(pStats.team));
 
     const finalPlayer = {
       ...pStats,
@@ -1418,7 +1418,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
     };
 
     // 2. Processar dados do Time
-    const teamDim = data.teamsReference.find(t => normalize(t.TIME) === normalize(tName));
+    const teamDim = (Array.isArray(data.teamsReference) ? data.teamsReference : []).find(t => normalize(t.TIME) === normalize(tName));
     const teamGroup = teamDim?.GRUPO || 'N/A';
 
     const teamRosterMap = new Map<string, {
@@ -1718,7 +1718,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
     if (activeTab !== 'playerRounds') return [];
 
     const teamGroupMap = new Map<string, string>();
-    data.teamsReference.forEach(t => {
+    (Array.isArray(data.teamsReference) ? data.teamsReference : []).forEach(t => {
       if (t.TIME && t.GRUPO) teamGroupMap.set(normalize(t.TIME), normalize(t.GRUPO));
     });
 
@@ -1755,7 +1755,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
       const mapName = p.MAPA || '';
 
       if (!playerMap.has(pName)) {
-        const teamDim = data.teamsReference.find(t => normalize(t.TIME) === normalize(p.TIME));
+        const teamDim = (Array.isArray(data.teamsReference) ? data.teamsReference : []).find(t => normalize(t.TIME) === normalize(p.TIME));
         playerMap.set(pName, {
           name: pName,
           team: p.TIME,
@@ -1875,7 +1875,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
     };
 
     const teamGroupMap = new Map<string, string>();
-    data.teamsReference.forEach(t => {
+    (Array.isArray(data.teamsReference) ? data.teamsReference : []).forEach(t => {
       if (t.TIME && t.GRUPO) teamGroupMap.set(normalize(t.TIME), normalize(t.GRUPO));
     });
 
@@ -1924,7 +1924,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
       const isZero = kills === 0;
 
       if (!playerMap.has(pName)) {
-        const teamDim = data.teamsReference.find(t => normalize(t.TIME) === normalize(p.TIME));
+        const teamDim = (Array.isArray(data.teamsReference) ? data.teamsReference : []).find(t => normalize(t.TIME) === normalize(p.TIME));
         playerMap.set(pName, {
           name: pName,
           team: p.TIME,
