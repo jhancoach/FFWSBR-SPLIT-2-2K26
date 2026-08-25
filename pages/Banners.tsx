@@ -4,7 +4,7 @@ import { Download, Image as ImageIcon } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { findTeamLogo } from '../utils/teamUtils';
 import { findDimImg } from '../utils/skillImages';
-import { Flame, Crosshair, AlertTriangle, Target as TargetIcon, Skull, Activity, Shield, Star, Crown, Map as MapIcon, Swords, User, Users } from 'lucide-react';
+import { Flame, Crosshair, AlertTriangle, Target as TargetIcon, Skull, Activity, Shield, Star, Crown, Map as MapIcon, Swords, User, Users, Zap } from 'lucide-react';
 
 interface BannersProps {
   data: DashboardData;
@@ -955,6 +955,92 @@ const FifaCard = ({
   );
 };
 
+const SQUAD_THEMES: Record<string, {
+  name: string;
+  primary: string;
+  primaryDark: string;
+  bgGradient: string;
+  badgeBg: string;
+  badgeBorder: string;
+  textPrimary: string;
+  boxBorder: string;
+  boxGlow: string;
+  lineColor: string;
+  dotBg: string;
+  triangleColor: string;
+}> = {
+  neon_green: {
+    name: 'Verde Neon (Estilo LOUD)',
+    primary: '#00ff66',
+    primaryDark: '#023816',
+    bgGradient: 'from-[#031409] via-[#072410] to-[#010a04]',
+    badgeBg: 'bg-[#00ff66] text-black font-black',
+    badgeBorder: 'border-[#00ff66]',
+    textPrimary: 'text-[#00ff66]',
+    boxBorder: 'border-[#00ff66]/60',
+    boxGlow: 'shadow-[0_0_25px_rgba(0,255,102,0.3)]',
+    lineColor: '#00ff66',
+    dotBg: 'bg-[#00ff66]',
+    triangleColor: '#00ff66',
+  },
+  gold_yellow: {
+    name: 'Amarelo Ouro',
+    primary: '#facc15',
+    primaryDark: '#423102',
+    bgGradient: 'from-[#171304] via-[#292109] to-[#0b0802]',
+    badgeBg: 'bg-yellow-400 text-black font-black',
+    badgeBorder: 'border-yellow-400',
+    textPrimary: 'text-yellow-400',
+    boxBorder: 'border-yellow-400/60',
+    boxGlow: 'shadow-[0_0_25px_rgba(250,204,21,0.3)]',
+    lineColor: '#facc15',
+    dotBg: 'bg-yellow-400',
+    triangleColor: '#facc15',
+  },
+  neon_red: {
+    name: 'Vermelho Fogo',
+    primary: '#ef4444',
+    primaryDark: '#450a0a',
+    bgGradient: 'from-[#170404] via-[#290909] to-[#0b0202]',
+    badgeBg: 'bg-red-500 text-white font-black',
+    badgeBorder: 'border-red-500',
+    textPrimary: 'text-red-500',
+    boxBorder: 'border-red-500/60',
+    boxGlow: 'shadow-[0_0_25px_rgba(239,68,68,0.3)]',
+    lineColor: '#ef4444',
+    dotBg: 'bg-red-500',
+    triangleColor: '#ef4444',
+  },
+  cyber_purple: {
+    name: 'Roxo Cyber',
+    primary: '#a855f7',
+    primaryDark: '#3b0764',
+    bgGradient: 'from-[#110417] via-[#210929] to-[#07020b]',
+    badgeBg: 'bg-purple-500 text-white font-black',
+    badgeBorder: 'border-purple-500',
+    textPrimary: 'text-purple-400',
+    boxBorder: 'border-purple-500/60',
+    boxGlow: 'shadow-[0_0_25px_rgba(168,85,247,0.3)]',
+    lineColor: '#a855f7',
+    dotBg: 'bg-purple-500',
+    triangleColor: '#a855f7',
+  },
+  electric_blue: {
+    name: 'Azul Elétrico',
+    primary: '#06b6d4',
+    primaryDark: '#083344',
+    bgGradient: 'from-[#041217] via-[#092229] to-[#02090b]',
+    badgeBg: 'bg-cyan-400 text-black font-black',
+    badgeBorder: 'border-cyan-400',
+    textPrimary: 'text-cyan-400',
+    boxBorder: 'border-cyan-400/60',
+    boxGlow: 'shadow-[0_0_25px_rgba(6,182,212,0.3)]',
+    lineColor: '#06b6d4',
+    dotBg: 'bg-cyan-400',
+    triangleColor: '#06b6d4',
+  }
+};
+
 const Banners: React.FC<BannersProps> = ({ data }) => {
   const [activeTab, setActiveTab] = useState<
     | 'teams' 
@@ -971,6 +1057,7 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
     | 'team_map_kings_stories'
     | 'team_drop_kings_stories'
     | 'fifa_card'
+    | 'esport_squad'
   >('teams');
   const [selectedMapOrDrop, setSelectedMapOrDrop] = useState<string>('');
   const [selectedTeam, setSelectedTeam] = useState<string>('');
@@ -981,6 +1068,8 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [fifaCardMode, setFifaCardMode] = useState<'player' | 'team'>('player');
   const [fifaCardSelected, setFifaCardSelected] = useState<string>('');
+  const [squadColorTheme, setSquadColorTheme] = useState<string>('neon_green');
+  const [squadFormat, setSquadFormat] = useState<'feed' | 'stories'>('feed');
 
   const availableRds = useMemo(() => {
     const rds = new Set<string>();
@@ -1853,7 +1942,139 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
     return { topPtsc, topAbts, topBooyahs };
   }, [data.details, data.teamsReference, selectedRd]);
 
-const handleDownload = async () => {
+  const bannerSquadData = useMemo(() => {
+    if (activeTab !== 'esport_squad' || !selectedTeam) return null;
+
+    const teamImg = findTeamLogo(selectedTeam, data.teamsReference);
+
+    let totalPtsc = 0;
+    let totalAbts = 0;
+    let totalBooyahs = 0;
+    let totalMatches = 0;
+
+    data.details.forEach(d => {
+      if (d.TIME?.toLowerCase() !== selectedTeam.toLowerCase()) return;
+      if (selectedRd !== 'all' && d.RD?.toString() !== selectedRd) return;
+
+      totalPtsc += parseNumber(d.PTSC);
+      totalAbts += parseNumber(d.ABTS);
+      totalBooyahs += parseNumber(d.B);
+      totalMatches++;
+    });
+
+    const winRate = totalMatches > 0 ? Math.round((totalBooyahs / totalMatches) * 100) : 0;
+
+    const playerStatsMap = new Map<string, {
+      name: string;
+      img: string;
+      kills: number;
+      dmg: number;
+      hs: number;
+      knocks: number;
+      assists: number;
+      matches: number;
+      mvp: number;
+    }>();
+
+    // 1. Gather all unique players belonging to selectedTeam from data.players and data.characters
+    const teamPlayerNames = new Set<string>();
+    data.players.forEach(p => {
+      if (p.TIME?.toLowerCase() === selectedTeam.toLowerCase() && p.PLAYER?.trim()) {
+        teamPlayerNames.add(p.PLAYER.trim());
+      }
+    });
+    data.characters.forEach(c => {
+      if (c.Time?.toLowerCase() === selectedTeam.toLowerCase() && c.Player?.trim()) {
+        teamPlayerNames.add(c.Player.trim());
+      }
+    });
+
+    teamPlayerNames.forEach(pName => {
+      const charEntry = data.characters.find(c => c.Player?.toLowerCase().trim() === pName.toLowerCase() && c.playerImg);
+      const playerRef = data.playersDimension.find(d => d.Name.toLowerCase().trim() === pName.toLowerCase());
+      const playerImg = charEntry?.playerImg || playerRef?.IMG || findDimImg(data.playersDimension, pName) || '';
+
+      playerStatsMap.set(pName, {
+        name: pName,
+        img: playerImg,
+        kills: 0,
+        dmg: 0,
+        hs: 0,
+        knocks: 0,
+        assists: 0,
+        matches: 0,
+        mvp: 0,
+      });
+    });
+
+    // 2. Accumulate stats for each player
+    data.players.forEach(p => {
+      if (p.TIME?.toLowerCase() !== selectedTeam.toLowerCase()) return;
+      if (selectedRd !== 'all' && p.RD?.toString() !== selectedRd) return;
+
+      const pName = p.PLAYER?.trim();
+      if (!pName || !playerStatsMap.has(pName)) return;
+
+      const pStat = playerStatsMap.get(pName)!;
+      pStat.kills += parseNumber(p.Abates);
+      pStat.dmg += parseNumber(p.Dano);
+      pStat.hs += parseNumber(p.HS);
+      pStat.knocks += parseNumber(p.Deitados);
+      pStat.assists += parseNumber(p.Assistencias);
+      pStat.mvp += parseNumber(p.MVP);
+      pStat.matches++;
+    });
+
+    let roster = Array.from(playerStatsMap.values()).sort((a, b) => b.kills - a.kills);
+
+    // If no players found in stats for filtered round, grab overall roster for the team across all rounds
+    if (roster.length === 0 || roster.every(r => r.matches === 0)) {
+      const fallbackMap = new Map<string, typeof roster[0]>();
+      data.players.forEach(p => {
+        if (p.TIME?.toLowerCase() !== selectedTeam.toLowerCase()) return;
+        const pName = p.PLAYER?.trim();
+        if (!pName) return;
+        if (!fallbackMap.has(pName)) {
+          const charEntry = data.characters.find(c => c.Player?.toLowerCase().trim() === pName.toLowerCase() && c.playerImg);
+          const playerRef = data.playersDimension.find(d => d.Name.toLowerCase().trim() === pName.toLowerCase());
+          const playerImg = charEntry?.playerImg || playerRef?.IMG || findDimImg(data.playersDimension, pName) || '';
+          fallbackMap.set(pName, {
+            name: pName,
+            img: playerImg,
+            kills: 0,
+            dmg: 0,
+            hs: 0,
+            knocks: 0,
+            assists: 0,
+            matches: 0,
+            mvp: 0,
+          });
+        }
+        const pStat = fallbackMap.get(pName)!;
+        pStat.kills += parseNumber(p.Abates);
+        pStat.dmg += parseNumber(p.Dano);
+        pStat.hs += parseNumber(p.HS);
+        pStat.knocks += parseNumber(p.Deitados);
+        pStat.assists += parseNumber(p.Assistencias);
+        pStat.mvp += parseNumber(p.MVP);
+        pStat.matches++;
+      });
+      roster = Array.from(fallbackMap.values()).sort((a, b) => b.kills - a.kills);
+    }
+
+    return {
+      teamName: selectedTeam,
+      teamImg,
+      totalPtsc,
+      totalAbts,
+      totalBooyahs,
+      totalMatches,
+      winRate,
+      roster: roster.slice(0, 5)
+    };
+  }, [activeTab, selectedTeam, selectedRd, data.details, data.players, data.characters, data.teamsReference, data.playersDimension]);
+
+  const handleDownload = async () => {
     if (!bannerRef.current) return;
     setIsGenerating(true);
     
@@ -1867,7 +2088,7 @@ const handleDownload = async () => {
     await new Promise(r => setTimeout(r, 100)); // allow DOM to update
 
     try {
-      const isFeed = activeTab === 'map_kings' || activeTab === 'drop_kings' || activeTab === 'role_kings' || activeTab === 'team_map_kings' || activeTab === 'team_drop_kings';
+      const isFeed = activeTab === 'map_kings' || activeTab === 'drop_kings' || activeTab === 'role_kings' || activeTab === 'team_map_kings' || activeTab === 'team_drop_kings' || (activeTab === 'esport_squad' && squadFormat === 'feed');
       const canvasHeight = isFeed ? 1350 : 1920;
 
       const canvas = await html2canvas(bannerRef.current, {
@@ -1891,6 +2112,9 @@ const handleDownload = async () => {
         const rdPart = selectedRd === 'all' ? 'Geral' : `RD${selectedRd}`;
         const qPart = selectedQueda === 'all' ? '' : `_Q${selectedQueda}`;
         filename = `FIFA_Card_${fifaCardMode}_${fifaCardSelected}_${rdPart}${qPart}.png`;
+      } else if (activeTab === 'esport_squad') {
+        const rdPart = selectedRd === 'all' ? 'Geral' : `RD${selectedRd}`;
+        filename = `Banner_Esport_Squad_${selectedTeam}_${squadFormat}_${rdPart}.png`;
       } else {
         const rdPart = selectedRd === 'all' ? 'Geral' : `RD_${selectedRd}`;
         filename = `Stories_Banner_${activeTab}_${rdPart}.png`;
@@ -2018,6 +2242,24 @@ const handleDownload = async () => {
               </div>
             </div>
 
+            {/* Squad Esport Banner Category (Estilo LOUD) */}
+            <div className="flex flex-col gap-1.5">
+              <span className="text-green-400 font-bold uppercase tracking-widest text-[11px] flex items-center gap-1">
+                ★ Squad Esport (Estilo LOUD)
+              </span>
+              <div className="flex flex-wrap bg-black p-1 rounded-xl border border-green-500/30 gap-1">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('esport_squad')}
+                  className={`px-3 py-1.5 rounded-lg font-bold text-xs uppercase tracking-wider transition-all ${
+                    activeTab === 'esport_squad' ? 'bg-emerald-500 text-black shadow-[0_0_15px_rgba(16,185,129,0.5)]' : 'text-emerald-400 hover:text-white'
+                  }`}
+                >
+                  Banner Squad
+                </button>
+              </div>
+            </div>
+
             {/* Feed Category */}
             <div className="flex flex-col gap-1.5">
               <span className="text-gray-500 font-bold uppercase tracking-widest text-[11px]">Feed (1080x1350)</span>
@@ -2072,6 +2314,48 @@ const handleDownload = async () => {
           </div>
 
           <div className="flex flex-wrap items-end gap-3 flex-1 md:flex-initial">
+            {/* Esport Squad Options */}
+            {activeTab === 'esport_squad' && (
+              <>
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-gray-500 font-bold uppercase tracking-widest text-[11px] leading-none">Equipe</span>
+                  <select
+                    value={selectedTeam}
+                    onChange={(e) => setSelectedTeam(e.target.value)}
+                    className="bg-black border border-green-500/40 text-white rounded-xl px-3 py-2.5 font-bold uppercase text-xs focus:border-green-400 outline-none"
+                  >
+                    {availableTeams.map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-gray-500 font-bold uppercase tracking-widest text-[11px] leading-none">Formato</span>
+                  <select
+                    value={squadFormat}
+                    onChange={(e) => setSquadFormat(e.target.value as 'feed' | 'stories')}
+                    className="bg-black border border-white/10 text-white rounded-xl px-3 py-2.5 font-bold uppercase text-xs outline-none"
+                  >
+                    <option value="feed">Feed (1080x1350)</option>
+                    <option value="stories">Stories (1080x1920)</option>
+                  </select>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-gray-500 font-bold uppercase tracking-widest text-[11px] leading-none">Tema de Cores</span>
+                  <select
+                    value={squadColorTheme}
+                    onChange={(e) => setSquadColorTheme(e.target.value)}
+                    className="bg-black border border-white/10 text-white rounded-xl px-3 py-2.5 font-bold uppercase text-xs outline-none"
+                  >
+                    {Object.entries(SQUAD_THEMES).map(([k, v]) => (
+                      <option key={k} value={k}>{v.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            )}
             {/* Map/Drop/Role Selector */}
             {(activeTab === 'map_kings' || activeTab === 'drop_kings' || activeTab === 'role_kings' || activeTab === 'team_map_kings' || activeTab === 'team_drop_kings' || activeTab === 'map_kings_stories' || activeTab === 'drop_kings_stories' || activeTab === 'role_kings_stories' || activeTab === 'team_map_kings_stories' || activeTab === 'team_drop_kings_stories') && (
               <div className="flex flex-col gap-1.5">
@@ -2232,7 +2516,7 @@ const handleDownload = async () => {
             <div className="absolute bottom-0 left-0 w-[800px] h-[800px] bg-purple-500/10 blur-[150px] rounded-full mix-blend-screen pointer-events-none translate-y-1/2 -translate-x-1/3"></div>
             
             {/* Header */}
-            {!isKingsTab && (
+            {!isKingsTab && activeTab !== 'esport_squad' && (
               <div className="text-center mb-12 relative z-10">
                 <h1 className="text-[60px] font-black text-white uppercase tracking-[0.2em] italic mb-4">
                   {activeTab === 'fifa_card' ? (
@@ -2254,6 +2538,225 @@ const handleDownload = async () => {
                 <div className="h-1 w-32 bg-yellow-500 mx-auto rounded-full"></div>
               </div>
             )}
+
+            {/* SQUAD ESPORT BANNER (ESTILO LOUD) */}
+            {activeTab === 'esport_squad' && (() => {
+              const theme = SQUAD_THEMES[squadColorTheme] || SQUAD_THEMES.neon_green;
+              return (
+                <div className={`absolute inset-0 w-[1080px] ${squadFormat === 'feed' ? 'h-[1350px]' : 'h-[1920px]'} overflow-hidden bg-gradient-to-b ${theme.bgGradient} font-display p-10 flex flex-col justify-between text-white z-20`}>
+                  
+                  {/* Tech Grid Pattern */}
+                  <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff08_1px,transparent_1px),linear-gradient(to_bottom,#ffffff08_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none" />
+                  <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,#ffffff0d,transparent_75%)] pointer-events-none" />
+
+                  {/* Gigantic Repeating Stroke Watermark */}
+                  <div className="absolute inset-0 flex flex-col justify-center items-center opacity-[0.05] select-none pointer-events-none overflow-hidden leading-none">
+                    <span className="text-[170px] font-black italic tracking-tighter uppercase whitespace-nowrap" style={{ WebkitTextStroke: `4px ${theme.primary}`, color: 'transparent' }}>
+                      {bannerSquadData?.teamName || 'SQUAD'}
+                    </span>
+                    <span className="text-[170px] font-black italic tracking-tighter uppercase whitespace-nowrap text-white">
+                      {bannerSquadData?.teamName || 'SQUAD'}
+                    </span>
+                    <span className="text-[170px] font-black italic tracking-tighter uppercase whitespace-nowrap" style={{ WebkitTextStroke: `4px ${theme.primary}`, color: 'transparent' }}>
+                      {bannerSquadData?.teamName || 'SQUAD'}
+                    </span>
+                  </div>
+
+                  {/* Neon Triangle Decorative Overlay */}
+                  <div className="absolute top-8 right-8 opacity-75 pointer-events-none">
+                    <svg width="220" height="220" viewBox="0 0 100 100" fill="none">
+                      <polygon points="10,10 90,50 10,90 30,50" fill={theme.primary} fillOpacity="0.2" stroke={theme.primary} strokeWidth="3" />
+                      <polygon points="30,25 80,50 30,75 45,50" fill={theme.primary} fillOpacity="0.6" />
+                    </svg>
+                  </div>
+
+                  {/* TOP HEADER */}
+                  <div className="relative z-30 flex items-center justify-between">
+                    {/* Team Emblem & Name */}
+                    <div className="flex items-center gap-5">
+                      <div className={`w-24 h-24 rounded-3xl bg-black/90 p-3 border-2 ${theme.boxBorder} ${theme.boxGlow} flex items-center justify-center shrink-0`}>
+                        {bannerSquadData?.teamImg ? (
+                          <img src={bannerSquadData.teamImg} alt="" crossOrigin="anonymous" className="w-full h-full object-contain" />
+                        ) : (
+                          <span className={`text-3xl font-black ${theme.textPrimary}`}>
+                            {bannerSquadData?.teamName.substring(0,3) || 'SQD'}
+                          </span>
+                        )}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className={`px-3 py-1 rounded-md text-xs uppercase tracking-widest ${theme.badgeBg}`}>
+                            FFWS BR 2026 SPLIT 2
+                          </span>
+                          <span className="text-gray-400 font-bold text-xs uppercase tracking-wider">
+                            {selectedRd === 'all' ? 'DESEMPENHO GERAL' : `RODADA ${selectedRd}`}
+                          </span>
+                        </div>
+                        <h1 className="text-5xl font-black text-white italic uppercase tracking-wider mt-1 drop-shadow-xl">
+                          {bannerSquadData?.teamName || 'EQUIPE'}
+                        </h1>
+                      </div>
+                    </div>
+
+                    {/* Top Right Highlight Card */}
+                    <div className={`bg-black/90 border-2 ${theme.boxBorder} ${theme.boxGlow} rounded-2xl px-7 py-3.5 flex items-center gap-6 backdrop-blur-md`}>
+                      <div className="text-center">
+                        <span className={`text-4xl font-black ${theme.textPrimary} block leading-none`}>
+                          {bannerSquadData?.winRate}%
+                        </span>
+                        <span className="text-[10px] font-bold text-gray-300 uppercase tracking-widest mt-1 block">
+                          WIN RATE
+                        </span>
+                      </div>
+                      <div className="w-[1px] h-9 bg-white/20" />
+                      <div className="text-center">
+                        <span className="text-4xl font-black text-white block leading-none">
+                          {bannerSquadData?.totalAbts || 0}
+                        </span>
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1 block">
+                          ABATES TOTAL
+                        </span>
+                      </div>
+                      <div className="w-[1px] h-9 bg-white/20" />
+                      <div className="text-center">
+                        <span className={`text-4xl font-black ${theme.textPrimary} block leading-none`}>
+                          {bannerSquadData?.totalBooyahs || 0}
+                        </span>
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1 block">
+                          BOOYAHS
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* MIDDLE SECTION: PLAYERS & CALLOUT CARDS INTEGRATED PER COLUMN */}
+                  <div className="relative flex-1 my-6 flex flex-col justify-center">
+                    
+                    {/* 5 PLAYERS ROSTER & CARDS GRID */}
+                    <div className="grid grid-cols-5 gap-3 items-end justify-items-center relative z-20 px-2">
+                      {bannerSquadData?.roster.map((player, idx) => {
+                        const badges = ['MVP', 'RUSHER', 'SUPORTE', 'GRANADEIRO', 'CAPITÃO'];
+                        const roleBadge = badges[idx % 5];
+
+                        // Stats tailored per player slot
+                        let stat1Value = `${bannerSquadData.winRate}% WIN RATE`;
+                        let stat1Label = 'TAXA DE VITÓRIAS';
+                        let stat2Value = `${player.kills} KILLS`;
+                        let stat2Label = 'TOP FRAGGER';
+
+                        if (idx === 1) {
+                          stat1Value = `${player.matches} JOGOS`;
+                          stat1Label = 'DISPUTADOS';
+                          stat2Value = `${player.kills} ABATES`;
+                          stat2Label = 'DESTAQUE FRAGS';
+                        } else if (idx === 2) {
+                          stat1Value = `${player.assists} ASSIST.`;
+                          stat1Label = 'SUPORTE TÁTICO';
+                          stat2Value = `${player.kills} KILLS`;
+                          stat2Label = 'PONTUAÇÃO INDIVIDUAL';
+                        } else if (idx === 3) {
+                          stat1Value = `${player.kills} ABATES`;
+                          stat1Label = 'IMPACTO PARTIDA';
+                          stat2Value = `${(player.dmg / 1000).toFixed(1)}K DANO`;
+                          stat2Label = 'DANO TOTAL';
+                        } else if (idx === 4) {
+                          stat1Value = `${player.matches} JOGOS`;
+                          stat1Label = 'PARTIDAS';
+                          stat2Value = `${player.kills} ABATES`;
+                          stat2Label = 'PONTUAÇÃO INDIVIDUAL';
+                        }
+
+                        return (
+                          <div key={player.name + idx} className="flex flex-col items-center group relative w-full">
+                            {/* 1. Stat Callout Box for this Player */}
+                            <div className={`w-full bg-black/95 border-2 ${theme.boxBorder} ${theme.boxGlow} rounded-2xl p-3.5 backdrop-blur-md shadow-2xl relative z-30 flex flex-col justify-between`}>
+                              <div className="flex items-center justify-between gap-1 border-b border-white/10 pb-1.5 mb-2">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${theme.badgeBg} truncate max-w-[90px]`}>
+                                  {player.name}
+                                </span>
+                                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider shrink-0 flex items-center gap-1">
+                                  {idx === 0 && <Zap size={10} className={theme.textPrimary} />}
+                                  {roleBadge}
+                                </span>
+                              </div>
+                              <div className="space-y-2">
+                                <div>
+                                  <span className={`text-2xl font-black ${idx === 0 ? theme.textPrimary : 'text-white'} block leading-none`}>
+                                    {stat1Value}
+                                  </span>
+                                  <span className="text-[9px] font-bold text-gray-300 uppercase tracking-wider block mt-0.5 truncate">
+                                    {stat1Label}
+                                  </span>
+                                </div>
+                                <div className="w-full h-[1px] bg-white/10" />
+                                <div>
+                                  <span className={`text-xl font-black ${idx === 0 ? 'text-white' : theme.textPrimary} block leading-none`}>
+                                    {stat2Value}
+                                  </span>
+                                  <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block mt-0.5 truncate">
+                                    {stat2Label}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* 2. Neon Connecting Line with Glowing Anchor Dot */}
+                            <div className="flex flex-col items-center my-2 z-20">
+                              <div className={`w-3.5 h-3.5 ${theme.dotBg} rounded-full border-2 border-black shadow-[0_0_10px_${theme.primary}]`} />
+                              <div className={`w-[2px] h-7 bg-gradient-to-b ${theme.primary} to-transparent opacity-80`} />
+                            </div>
+
+                            {/* 3. Player Avatar Frame */}
+                            <div className="relative w-full flex items-center justify-center my-1">
+                              <div className={`absolute w-36 h-36 rounded-full ${idx === 0 ? 'bg-emerald-500/25' : 'bg-white/5'} blur-xl pointer-events-none`} />
+                              
+                              <div className={`relative w-32 h-32 rounded-full border-4 ${idx === 0 ? theme.boxBorder : 'border-white/20'} ${idx === 0 ? theme.boxGlow : ''} overflow-hidden bg-black/90 flex items-center justify-center shrink-0 shadow-2xl`}>
+                                {player.img ? (
+                                  <img
+                                    src={player.img}
+                                    alt={player.name}
+                                    crossOrigin="anonymous"
+                                    className="w-full h-full object-cover filter contrast-110"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center bg-white/5">
+                                    <User size={36} className={theme.textPrimary} />
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* 4. Player Name Badge */}
+                            <div className={`mt-2 px-3 py-2 rounded-xl bg-black/90 border-2 ${theme.boxBorder} ${theme.boxGlow} backdrop-blur-md text-center w-full shadow-2xl shrink-0 z-30`}>
+                              <span className="text-xl font-black text-white italic tracking-wider block uppercase leading-none truncate">
+                                {player.name}
+                              </span>
+                              <span className={`text-[10px] font-bold ${theme.textPrimary} uppercase tracking-widest mt-1 block truncate`}>
+                                {roleBadge}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                  </div>
+
+                  {/* FOOTER BAR */}
+                  <div className="relative z-30 flex items-center justify-between border-t border-white/10 pt-4 mt-2">
+                    <div className="flex items-center gap-2">
+                      <Flame className={theme.textPrimary} size={20} />
+                      <span className="text-sm font-bold text-gray-300 uppercase tracking-widest">
+                        CAMPEONATO DE FREE FIRE • FFWS BR 2026 SPLIT 2
+                      </span>
+                    </div>
+                    <span className={`text-xs font-black uppercase tracking-widest ${theme.textPrimary}`}>
+                      @FFWSBR_OFICIAL
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Content Blocks */}
             {activeTab === 'teams' ? (
