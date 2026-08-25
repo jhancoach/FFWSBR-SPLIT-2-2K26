@@ -3,7 +3,7 @@ import React, { useMemo, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardData, TeamStats } from '../types';
 import { calculateTeamStats } from '../services/dataService';
-import { Trophy, Crosshair, Crown, Layers, Star, ChevronRight, Shield, CheckCircle2, TrendingUp, Medal, Settings2, ArrowUpDown, ArrowUp, ArrowDown, Eye, EyeOff, BookOpen, Globe, Info } from 'lucide-react';
+import { Trophy, Crosshair, Crown, Layers, Star, ChevronRight, Shield, CheckCircle2, TrendingUp, Medal, Settings2, ArrowUpDown, ArrowUp, ArrowDown, Eye, EyeOff, BookOpen, Globe, Info, LayoutGrid, ChevronDown, ChevronUp, SlidersHorizontal } from 'lucide-react';
 import FilterBar from '../components/FilterBar';
 import RulesModal from '../components/RulesModal';
 import { formatTeamName } from '../utils/teamUtils';
@@ -18,7 +18,29 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
   const [generalTop12, setGeneralTop12] = useState<Set<string>>(new Set());
   const [phase, setPhase] = useState<'ALL' | 'QUALIFIERS' | 'RUMO_AO_MUNDIAL' | 'FINALS'>('ALL');
   const [showColumnMenu, setShowColumnMenu] = useState(false);
+  const [showSectionMenu, setShowSectionMenu] = useState(false);
   const [showRulesModal, setShowRulesModal] = useState(false);
+  
+  // Section visibility states
+  const [visibleSections, setVisibleSections] = useState({
+    filters: true,
+    top3: true,
+    legend: true,
+    table: true
+  });
+
+  const toggleSection = (section: keyof typeof visibleSections) => {
+    setVisibleSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  const setAllSections = (show: boolean) => {
+    setVisibleSections({
+      filters: show,
+      top3: show,
+      legend: show,
+      table: show
+    });
+  };
   
   const [sortConfig, setSortConfig] = useState<{ key: keyof TeamStats; direction: 'asc' | 'desc' }>({
     key: 'pts',
@@ -185,14 +207,14 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
   const topAbts = [...stats].sort((a, b) => b.abts - a.abts || b.pts - a.pts).slice(0, 3);
 
   const Top3Card = ({ title, icon, teams, metricKey, metricLabel, colorClass }: any) => (
-    <div className="bg-[#1a1a1a] rounded-2xl p-6 border border-gray-800 relative overflow-hidden group hover:border-yellow-600/50 transition-all shadow-lg">
+    <div className="bg-[#1a1a1a] rounded-2xl p-5 sm:p-6 border border-gray-800 relative overflow-hidden group hover:border-yellow-600/50 transition-all shadow-lg">
       <div className={`absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity ${colorClass}`}>
         {icon}
       </div>
-      <h3 className="text-lg font-black uppercase italic text-gray-200 mb-4 flex items-center gap-2">
+      <h3 className="text-base sm:text-lg font-black uppercase italic text-gray-200 mb-4 flex items-center gap-2">
         <span className={colorClass}>{icon}</span> {title}
       </h3>
-      <div className="space-y-4">
+      <div className="space-y-3">
         {teams.map((team: any, idx: number) => {
           const isLoud = team.name.toLowerCase().includes('loud');
           return (
@@ -201,7 +223,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
               onClick={() => handleTeamClick(team.name)}
               className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${
                 isLoud 
-                  ? 'bg-gradient-to-r from-yellow-500/25 via-amber-500/15 to-yellow-500/10 border-yellow-400 shadow-[0_0_15px_rgba(234,179,8,0.25)]' 
+                  ? 'bg-gradient-to-r from-yellow-500/30 via-amber-500/20 to-yellow-500/10 border-yellow-400 shadow-[0_0_18px_rgba(234,179,8,0.35)] ring-1 ring-yellow-400/40' 
                   : 'bg-[#0f0f0f] border-gray-800 hover:bg-gray-800'
               }`}
             >
@@ -209,19 +231,23 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
                 <div className={`w-6 h-6 rounded-sm skew-x-[-10deg] flex items-center justify-center text-xs font-bold ${idx === 0 ? 'bg-yellow-500 text-black' : idx === 1 ? 'bg-gray-400 text-black' : 'bg-orange-700 text-white'}`}>
                   {idx + 1}
                 </div>
-                <div className="flex items-center gap-2">
-                   {team.image && <img src={team.image} alt={team.name} className={`w-8 h-8 rounded-full object-cover bg-black border ${isLoud ? 'border-yellow-400 shadow-[0_0_8px_#facc15]' : 'border-gray-700'}`} />}
-                   <div className="flex flex-col">
-                     <span className={`font-black text-sm uppercase tracking-tight flex items-center gap-1 ${isLoud ? 'text-yellow-400 font-display' : 'text-gray-200 hover:text-yellow-400'}`}>
+                <div className="flex items-center gap-2.5">
+                   {team.image && (
+                     <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl overflow-hidden shrink-0 flex items-center justify-center ${isLoud ? 'bg-black p-0.5 border-2 border-yellow-400 shadow-[0_0_10px_rgba(250,204,21,0.5)]' : 'bg-black/40 p-0.5 border border-gray-700'}`}>
+                       <img src={team.image} alt={team.name} className="w-full h-full object-contain" />
+                     </div>
+                   )}
+                   <div className="flex flex-col min-w-0">
+                     <span className={`font-black text-sm uppercase tracking-tight flex items-center gap-1 ${isLoud ? 'text-yellow-300 font-display' : 'text-gray-200 hover:text-yellow-400'}`}>
                        {formatTeamName(team.name)}
-                       {isLoud && <Star size={12} className="fill-yellow-400 text-yellow-400" />}
+                       {isLoud && <Star size={13} className="fill-yellow-400 text-yellow-400 shrink-0" />}
                      </span>
-                     {isLoud && <span className="text-[8px] text-yellow-400 font-bold uppercase tracking-widest">★ TIME DESTAQUE</span>}
+                     {isLoud && <span className="text-[8px] text-yellow-300 font-black uppercase tracking-widest">★ TIME DESTAQUE</span>}
                    </div>
                 </div>
               </div>
               <div className="text-right">
-                <span className={`block font-black text-xl italic ${colorClass}`}>{team[metricKey]}</span>
+                <span className={`block font-black text-xl sm:text-2xl italic ${isLoud ? 'text-yellow-300 drop-shadow' : colorClass}`}>{team[metricKey]}</span>
                 <span className="text-[9px] text-gray-500 uppercase font-bold">{metricLabel}</span>
               </div>
             </div>
@@ -320,29 +346,39 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
         onClick={() => handleTeamClick(team.name)} 
         className={`transition-all group cursor-pointer border-b ${
           isLoud 
-            ? 'bg-gradient-to-r from-yellow-500/25 via-amber-500/15 to-yellow-500/10 border-y-2 border-yellow-400 shadow-[0_0_20px_rgba(234,179,8,0.25)] font-bold hover:from-yellow-500/35' 
+            ? 'bg-gradient-to-r from-yellow-500/30 via-yellow-400/15 to-transparent border-y-2 border-yellow-400 shadow-[0_0_20px_rgba(234,179,8,0.25)] font-bold hover:from-yellow-500/40' 
             : `hover:bg-yellow-900/10 border-gray-800/50 ${isTop12 ? 'relative overflow-hidden bg-yellow-500/5' : ''}`
         }`}
       >
         {visibleColumns.rank && (
-          <td className="px-1 sm:px-1.5 py-2 text-center font-mono text-[10px] sm:text-[11px] relative">
-              {(isTop12 || isLoud) && <div className={`absolute left-0 top-0 bottom-0 w-0.5 sm:w-1 ${isLoud ? 'bg-yellow-400 shadow-[0_0_12px_#facc15]' : 'bg-yellow-500 shadow-[0_0_10px_#facc15]'}`}></div>}
-              <span className={isLoud ? 'text-yellow-400 font-black text-[11px] sm:text-xs flex items-center justify-center gap-0.5' : isTop12 ? 'text-yellow-500 font-black' : 'text-gray-500'}>
-                {index + 1} {isLoud && <Star size={9} className="fill-yellow-400 text-yellow-400" />}
+          <td className="px-1.5 sm:px-2 py-3 text-center font-mono text-[11px] sm:text-xs relative">
+              {(isTop12 || isLoud) && <div className={`absolute left-0 top-0 bottom-0 ${isLoud ? 'w-1 sm:w-1.5 bg-yellow-400 shadow-[0_0_12px_#facc15]' : 'w-0.5 sm:w-1 bg-yellow-500 shadow-[0_0_10px_#facc15]'}`}></div>}
+              <span className={isLoud ? 'text-yellow-300 font-black text-xs sm:text-sm flex items-center justify-center gap-1' : isTop12 ? 'text-yellow-500 font-black' : 'text-gray-500'}>
+                {index + 1} {isLoud && <Star size={12} className="fill-yellow-400 text-yellow-400 shrink-0" />}
               </span>
           </td>
         )}
         {visibleColumns.team && (
-          <td className="px-1.5 sm:px-2 py-2 font-bold text-white flex items-center gap-1.5 min-w-0">
-            {team.image && <img src={team.image} className={`w-5 h-5 sm:w-6 sm:h-6 object-contain shrink-0 ${isLoud ? 'border border-yellow-400 rounded-full bg-black p-0.5 shadow-[0_0_8px_#facc15]' : ''}`} alt={team.name}/>}
+          <td className="px-2 sm:px-3 py-2.5 font-bold text-white flex items-center gap-2.5 min-w-0">
+            {team.image && (
+              <div className={`rounded-xl overflow-hidden shrink-0 flex items-center justify-center ${
+                isLoud 
+                  ? 'w-9 h-9 sm:w-10 sm:h-10 bg-black p-1 border-2 border-yellow-400 shadow-[0_0_12px_rgba(250,204,21,0.7)] ring-1 ring-yellow-300' 
+                  : 'w-7 h-7 sm:w-8 sm:h-8 bg-black/40 p-0.5 border border-gray-700/60'
+              }`}>
+                <img src={team.image} className="w-full h-full object-contain" alt={team.name}/>
+              </div>
+            )}
             <div className="flex flex-col min-w-0">
-              <span className={`uppercase italic text-[10px] sm:text-[11px] truncate flex items-center gap-1 ${isLoud ? 'text-yellow-400 font-black font-display drop-shadow' : isTop12 ? 'text-yellow-400' : ''}`}>
+              <span className={`uppercase italic font-black truncate flex items-center gap-1.5 ${
+                isLoud ? 'text-sm sm:text-base text-yellow-300 drop-shadow-sm tracking-wide' : isTop12 ? 'text-xs sm:text-sm text-yellow-400' : 'text-xs sm:text-sm text-gray-200'
+              }`}>
                   {formatTeamName(team.name)}
-                  {isLoud && <Star size={10} className="fill-yellow-400 text-yellow-400 shrink-0" />}
+                  {isLoud && <Star size={13} className="fill-yellow-400 text-yellow-400 shrink-0" />}
               </span>
               {isLoud ? (
-                <span className="text-[7px] font-black text-yellow-400 uppercase tracking-widest flex items-center gap-1 truncate">
-                  ★ LOUD
+                <span className="text-[9px] font-black text-yellow-400 uppercase tracking-widest flex items-center gap-1 truncate">
+                  ★ TIME DESTAQUE (LOUD)
                 </span>
               ) : isGeneralFinalist ? (
                   <span className="text-[7px] font-black text-yellow-600 uppercase tracking-widest flex items-center gap-1 truncate">
@@ -352,13 +388,25 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
             </div>
           </td>
         )}
-        {visibleColumns.pts && <td className={`px-1 sm:px-1.5 py-2 text-center font-black text-xs sm:text-sm ${isLoud ? 'text-yellow-300 bg-yellow-500/25 font-display' : isTop12 ? 'text-white bg-yellow-600/20' : 'text-yellow-500 bg-yellow-900/5'}`}>{team.pts}</td>}
-        {visibleColumns.ptsc && <td className={`px-1 sm:px-1.5 py-2 text-center font-bold text-[10px] sm:text-[11px] ${isLoud ? 'text-orange-300 font-black' : 'text-orange-400/70'}`}>{team.ptsc}</td>}
-        {visibleColumns.avgPts && <td className={`px-1 sm:px-1.5 py-2 text-center font-mono text-[9px] sm:text-[10px] ${isLoud ? 'text-yellow-300 font-bold' : 'text-yellow-600/60'}`}>{team.avgPts}</td>}
-        {visibleColumns.abts && <td className={`px-1 sm:px-1.5 py-2 text-center font-bold text-[10px] sm:text-[11px] ${isLoud ? 'text-red-300 font-black' : 'text-red-400'}`}>{team.abts}</td>}
-        {visibleColumns.avgAbts && <td className={`px-1 sm:px-1.5 py-2 text-center font-mono text-[9px] sm:text-[10px] ${isLoud ? 'text-red-300 font-bold' : 'text-red-600/60'}`}>{team.avgAbts}</td>}
-        {visibleColumns.b && <td className={`px-1 sm:px-1.5 py-2 text-center font-bold text-[10px] sm:text-[11px] ${isLoud ? 'text-yellow-300 font-black' : 'text-yellow-600'}`}>{team.b}</td>}
-        {visibleColumns.s && <td className={`px-1 sm:px-1.5 py-2 text-center text-[10px] sm:text-[11px] ${isLoud ? 'text-gray-200 font-bold' : 'text-gray-400'}`}>{team.s}</td>}
+        {visibleColumns.pts && (
+          <td className="px-1.5 sm:px-2 py-3 text-center">
+            <span className={`inline-flex items-center justify-center min-w-[2.5rem] font-mono font-black ${
+              isLoud 
+                ? 'bg-yellow-400 text-black text-sm sm:text-base px-2.5 py-1 rounded-xl shadow-[0_0_15px_rgba(250,204,21,0.6)] ring-2 ring-yellow-200 font-extrabold' 
+                : isTop12 
+                  ? 'text-white bg-yellow-600/25 border border-yellow-500/30 text-xs sm:text-sm px-2 py-0.5 rounded-lg' 
+                  : 'text-yellow-400 bg-yellow-900/20 text-xs sm:text-sm px-2 py-0.5 rounded-lg'
+            }`}>
+              {team.pts}
+            </span>
+          </td>
+        )}
+        {visibleColumns.ptsc && <td className={`px-1.5 sm:px-2 py-3 text-center ${isLoud ? 'text-orange-300 font-black text-xs sm:text-sm' : 'text-orange-400/80 font-bold text-[10px] sm:text-[11px]'}`}>{team.ptsc}</td>}
+        {visibleColumns.avgPts && <td className={`px-1.5 sm:px-2 py-3 text-center font-mono ${isLoud ? 'text-yellow-200 font-black text-xs sm:text-sm' : 'text-yellow-600/70 text-[9px] sm:text-[10px]'}`}>{team.avgPts}</td>}
+        {visibleColumns.abts && <td className={`px-1.5 sm:px-2 py-3 text-center ${isLoud ? 'text-red-300 font-black text-xs sm:text-sm' : 'text-red-400 font-bold text-[10px] sm:text-[11px]'}`}>{team.abts}</td>}
+        {visibleColumns.avgAbts && <td className={`px-1.5 sm:px-2 py-3 text-center font-mono ${isLoud ? 'text-red-200 font-black text-xs sm:text-sm' : 'text-red-600/70 text-[9px] sm:text-[10px]'}`}>{team.avgAbts}</td>}
+        {visibleColumns.b && <td className={`px-1.5 sm:px-2 py-3 text-center ${isLoud ? 'text-yellow-300 font-black text-xs sm:text-sm' : 'text-yellow-500 font-bold text-[10px] sm:text-[11px]'}`}>{team.b}</td>}
+        {visibleColumns.s && <td className={`px-1.5 sm:px-2 py-3 text-center ${isLoud ? 'text-gray-100 font-black text-xs sm:text-sm' : 'text-gray-400 text-[10px] sm:text-[11px]'}`}>{team.s}</td>}
       </tr>
     );
   };
@@ -393,11 +441,66 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
             </button>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Menu de Gerenciamento de Seções */}
             <div className="relative">
               <button 
-                onClick={() => setShowColumnMenu(!showColumnMenu)}
-                className="bg-[#1a1a1a] border border-gray-800 p-2.5 rounded-xl text-gray-400 hover:text-yellow-500 hover:border-yellow-500/50 transition-all shadow-lg flex items-center gap-2 text-[10px] font-black uppercase tracking-widest"
+                onClick={() => { setShowSectionMenu(!showSectionMenu); setShowColumnMenu(false); }}
+                className="bg-[#1a1a1a] border border-gray-800 p-2.5 rounded-xl text-gray-400 hover:text-yellow-500 hover:border-yellow-500/50 transition-all shadow-lg flex items-center gap-2 text-[10px] font-black uppercase tracking-widest cursor-pointer"
+                title="Mostrar ou Ocultar Seções do Dashboard"
+              >
+                <LayoutGrid size={16} /> Seções ({Object.values(visibleSections).filter(Boolean).length}/4)
+              </button>
+              
+              {showSectionMenu && (
+                <div className="absolute right-0 mt-2 w-64 bg-[#121215] border border-gray-700 rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.7)] z-[100] p-2.5 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="flex items-center justify-between px-2 py-1.5 border-b border-gray-800 mb-2">
+                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Gerenciar Seções</span>
+                    <div className="flex items-center gap-1.5">
+                      <button onClick={() => setAllSections(true)} className="text-[9px] font-black text-yellow-500 hover:underline px-1 py-0.5 cursor-pointer">Todas</button>
+                      <span className="text-gray-600">•</span>
+                      <button onClick={() => setAllSections(false)} className="text-[9px] font-black text-gray-400 hover:underline px-1 py-0.5 cursor-pointer">Nenhuma</button>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <button
+                      onClick={() => toggleSection('filters')}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-[10px] font-bold uppercase italic transition-colors cursor-pointer ${visibleSections.filters ? 'bg-yellow-500/10 text-yellow-500' : 'text-gray-500 hover:bg-white/5'}`}
+                    >
+                      <span className="flex items-center gap-1.5"><SlidersHorizontal size={12} /> Filtros Avançados</span>
+                      {visibleSections.filters ? <Eye size={13} /> : <EyeOff size={13} />}
+                    </button>
+                    <button
+                      onClick={() => toggleSection('top3')}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-[10px] font-bold uppercase italic transition-colors cursor-pointer ${visibleSections.top3 ? 'bg-yellow-500/10 text-yellow-500' : 'text-gray-500 hover:bg-white/5'}`}
+                    >
+                      <span className="flex items-center gap-1.5"><Trophy size={12} /> Top 3 Destaques</span>
+                      {visibleSections.top3 ? <Eye size={13} /> : <EyeOff size={13} />}
+                    </button>
+                    <button
+                      onClick={() => toggleSection('legend')}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-[10px] font-bold uppercase italic transition-colors cursor-pointer ${visibleSections.legend ? 'bg-yellow-500/10 text-yellow-500' : 'text-gray-500 hover:bg-white/5'}`}
+                    >
+                      <span className="flex items-center gap-1.5"><Info size={12} /> Legenda da Tabela</span>
+                      {visibleSections.legend ? <Eye size={13} /> : <EyeOff size={13} />}
+                    </button>
+                    <button
+                      onClick={() => toggleSection('table')}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-[10px] font-bold uppercase italic transition-colors cursor-pointer ${visibleSections.table ? 'bg-yellow-500/10 text-yellow-500' : 'text-gray-500 hover:bg-white/5'}`}
+                    >
+                      <span className="flex items-center gap-1.5"><Crown size={12} /> Tabela de Classificação</span>
+                      {visibleSections.table ? <Eye size={13} /> : <EyeOff size={13} />}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Menu de Colunas */}
+            <div className="relative">
+              <button 
+                onClick={() => { setShowColumnMenu(!showColumnMenu); setShowSectionMenu(false); }}
+                className="bg-[#1a1a1a] border border-gray-800 p-2.5 rounded-xl text-gray-400 hover:text-yellow-500 hover:border-yellow-500/50 transition-all shadow-lg flex items-center gap-2 text-[10px] font-black uppercase tracking-widest cursor-pointer"
               >
                 <Settings2 size={16} /> Colunas
               </button>
@@ -422,7 +525,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
                       <button
                         key={key}
                         onClick={() => toggleColumn(key as keyof typeof visibleColumns)}
-                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-[10px] font-bold uppercase italic transition-colors ${visibleColumns[key as keyof typeof visibleColumns] ? 'bg-yellow-500/10 text-yellow-500' : 'text-gray-500 hover:bg-white/5'}`}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-[10px] font-bold uppercase italic transition-colors cursor-pointer ${visibleColumns[key as keyof typeof visibleColumns] ? 'bg-yellow-500/10 text-yellow-500' : 'text-gray-500 hover:bg-white/5'}`}
                       >
                         {label}
                         {visibleColumns[key as keyof typeof visibleColumns] ? <Eye size={12} /> : <EyeOff size={12} />}
@@ -447,7 +550,23 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
           </div>
       </div>
 
-      <FilterBar filters={filters} setFilters={setFilters} options={filterOptions} />
+      {/* SEÇÃO 1: FILTROS AVANÇADOS */}
+      {visibleSections.filters ? (
+        <FilterBar filters={filters} setFilters={setFilters} options={filterOptions} />
+      ) : (
+        <div className="bg-[#1a1a1a]/60 border border-gray-800/80 rounded-2xl px-4 py-3 flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-2.5 text-gray-400 text-xs font-bold uppercase">
+            <SlidersHorizontal size={15} className="text-yellow-500" />
+            <span>Seção de Filtros Oculta</span>
+          </div>
+          <button
+            onClick={() => toggleSection('filters')}
+            className="px-3 py-1.5 rounded-xl bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer"
+          >
+            <Eye size={13} /> Mostrar Filtros
+          </button>
+        </div>
+      )}
 
       {phase === 'QUALIFIERS' && (
         <div className="bg-blue-500/10 border border-blue-500/20 px-4 py-3 rounded-xl text-xs text-blue-300 flex items-center justify-between font-medium">
@@ -476,113 +595,175 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Top3Card title="Top 3 Booyahs" icon={<Trophy size={24} />} teams={topBooyahs} metricKey="b" metricLabel="Vitórias" colorClass="text-yellow-500" />
-        <Top3Card title="Top 3 PTS/C" icon={<Medal size={24} />} teams={topPtsc} metricKey="ptsc" metricLabel="Pts Colocação" colorClass="text-orange-400" />
-        <Top3Card title="Top 3 Abates" icon={<Crosshair size={24} />} teams={topAbts} metricKey="abts" metricLabel="Abates" colorClass="text-red-500" />
+      {/* SEÇÃO 2: TOP 3 DESTAQUES */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between bg-[#141418] border border-gray-800 rounded-xl px-4 py-2">
+          <div className="flex items-center gap-2">
+            <Trophy size={16} className="text-yellow-500" />
+            <h2 className="text-xs font-black uppercase tracking-wider text-white font-display">
+              Destaques da Rodada (Top 3)
+            </h2>
+          </div>
+          <button
+            onClick={() => toggleSection('top3')}
+            className="px-2.5 py-1 rounded-lg bg-black/40 hover:bg-white/10 border border-gray-800 text-gray-300 hover:text-white text-[10px] font-black uppercase flex items-center gap-1.5 transition-all cursor-pointer"
+          >
+            {visibleSections.top3 ? (
+              <><EyeOff size={12} /> Ocultar Destaques</>
+            ) : (
+              <><Eye size={12} /> Mostrar Destaques</>
+            )}
+          </button>
+        </div>
+
+        {visibleSections.top3 && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-in fade-in duration-200">
+            <Top3Card title="Top 3 Booyahs" icon={<Trophy size={24} />} teams={topBooyahs} metricKey="b" metricLabel="Vitórias" colorClass="text-yellow-500" />
+            <Top3Card title="Top 3 PTS/C" icon={<Medal size={24} />} teams={topPtsc} metricKey="ptsc" metricLabel="Pts Colocação" colorClass="text-orange-400" />
+            <Top3Card title="Top 3 Abates" icon={<Crosshair size={24} />} teams={topAbts} metricKey="abts" metricLabel="Abates" colorClass="text-red-500" />
+          </div>
+        )}
       </div>
 
-      {/* Legenda da Tabela de Classificação */}
+      {/* SEÇÃO 3: LEGENDA DA TABELA DE CLASSIFICAÇÃO */}
       <div className="bg-[#141418] border border-gray-800 rounded-2xl p-4 shadow-xl">
-        <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-800">
-          <Info size={16} className="text-yellow-400" />
-          <h3 className="text-xs font-black uppercase tracking-wider text-white font-display">
-            Legenda da Tabela de Classificação
-          </h3>
+        <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-800">
+          <div className="flex items-center gap-2">
+            <Info size={16} className="text-yellow-400" />
+            <h3 className="text-xs font-black uppercase tracking-wider text-white font-display">
+              Legenda da Tabela de Classificação
+            </h3>
+          </div>
+          <button
+            onClick={() => toggleSection('legend')}
+            className="px-2.5 py-1 rounded-lg bg-black/40 hover:bg-white/10 border border-gray-800 text-gray-300 hover:text-white text-[10px] font-black uppercase flex items-center gap-1.5 transition-all cursor-pointer"
+          >
+            {visibleSections.legend ? (
+              <><EyeOff size={12} /> Ocultar Legenda</>
+            ) : (
+              <><Eye size={12} /> Mostrar Legenda</>
+            )}
+          </button>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2 text-[10px]">
-          <div className="bg-black/60 p-2 rounded-xl border border-gray-800">
-            <span className="font-bold text-gray-400 block uppercase"># / POS</span>
-            <span className="text-gray-300 font-mono">Posição Geral</span>
+        {visibleSections.legend && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2 text-[10px] animate-in fade-in duration-200">
+            <div className="bg-black/60 p-2 rounded-xl border border-gray-800">
+              <span className="font-bold text-gray-400 block uppercase"># / POS</span>
+              <span className="text-gray-300 font-mono">Posição Geral</span>
+            </div>
+            <div className="bg-black/60 p-2 rounded-xl border border-yellow-500/40">
+              <span className="font-black text-yellow-400 block uppercase">PTS</span>
+              <span className="text-yellow-200 font-mono">Pontos Totais</span>
+            </div>
+            <div className="bg-black/60 p-2 rounded-xl border border-orange-500/30">
+              <span className="font-bold text-orange-400 block uppercase">PTS/C</span>
+              <span className="text-gray-300 font-mono">Pts Colocação</span>
+            </div>
+            <div className="bg-black/60 p-2 rounded-xl border border-yellow-600/30">
+              <span className="font-bold text-yellow-500 block uppercase">M.PTS</span>
+              <span className="text-gray-300 font-mono">Média Pts/Queda</span>
+            </div>
+            <div className="bg-black/60 p-2 rounded-xl border border-red-500/30">
+              <span className="font-bold text-red-400 block uppercase">ABTS</span>
+              <span className="text-gray-300 font-mono">Abates Totais</span>
+            </div>
+            <div className="bg-black/60 p-2 rounded-xl border border-red-600/30">
+              <span className="font-bold text-red-500 block uppercase">M.ABTS</span>
+              <span className="text-gray-300 font-mono">Média Abates/Queda</span>
+            </div>
+            <div className="bg-black/60 p-2 rounded-xl border border-yellow-500/30">
+              <span className="font-bold text-yellow-500 block uppercase">B</span>
+              <span className="text-gray-300 font-mono">Booyahs (Vitórias)</span>
+            </div>
+            <div className="bg-black/60 p-2 rounded-xl border border-gray-800">
+              <span className="font-bold text-gray-400 block uppercase">S</span>
+              <span className="text-gray-300 font-mono">Quedas Jogadas</span>
+            </div>
+            <div className="bg-yellow-500/20 p-2 rounded-xl border border-yellow-400/60 shadow-[0_0_10px_rgba(234,179,8,0.15)] col-span-2 sm:col-span-1">
+              <span className="font-black text-yellow-400 block uppercase flex items-center gap-1">
+                <Star size={10} className="fill-yellow-400" /> ★ LOUD
+              </span>
+              <span className="text-yellow-200 font-mono">Time Destaque</span>
+            </div>
           </div>
-          <div className="bg-black/60 p-2 rounded-xl border border-yellow-500/40">
-            <span className="font-black text-yellow-400 block uppercase">PTS</span>
-            <span className="text-yellow-200 font-mono">Pontos Totais</span>
-          </div>
-          <div className="bg-black/60 p-2 rounded-xl border border-orange-500/30">
-            <span className="font-bold text-orange-400 block uppercase">PTS/C</span>
-            <span className="text-gray-300 font-mono">Pts Colocação</span>
-          </div>
-          <div className="bg-black/60 p-2 rounded-xl border border-yellow-600/30">
-            <span className="font-bold text-yellow-500 block uppercase">M.PTS</span>
-            <span className="text-gray-300 font-mono">Média Pts/Queda</span>
-          </div>
-          <div className="bg-black/60 p-2 rounded-xl border border-red-500/30">
-            <span className="font-bold text-red-400 block uppercase">ABTS</span>
-            <span className="text-gray-300 font-mono">Abates Totais</span>
-          </div>
-          <div className="bg-black/60 p-2 rounded-xl border border-red-600/30">
-            <span className="font-bold text-red-500 block uppercase">M.ABTS</span>
-            <span className="text-gray-300 font-mono">Média Abates/Queda</span>
-          </div>
-          <div className="bg-black/60 p-2 rounded-xl border border-yellow-500/30">
-            <span className="font-bold text-yellow-500 block uppercase">B</span>
-            <span className="text-gray-300 font-mono">Booyahs (Vitórias)</span>
-          </div>
-          <div className="bg-black/60 p-2 rounded-xl border border-gray-800">
-            <span className="font-bold text-gray-400 block uppercase">S</span>
-            <span className="text-gray-300 font-mono">Quedas Jogadas</span>
-          </div>
-          <div className="bg-yellow-500/20 p-2 rounded-xl border border-yellow-400/60 shadow-[0_0_10px_rgba(234,179,8,0.15)] col-span-2 sm:col-span-1">
-            <span className="font-black text-yellow-400 block uppercase flex items-center gap-1">
-              <Star size={10} className="fill-yellow-400" /> ★ LOUD
-            </span>
-            <span className="text-yellow-200 font-mono">Time Destaque</span>
-          </div>
-        </div>
+        )}
       </div>
 
-      <div className={`grid grid-cols-1 ${isSingleColumn ? '' : 'lg:grid-cols-2'} gap-6`}>
-        <div className="bg-[#1a1a1a] rounded-2xl overflow-hidden border border-gray-800 shadow-xl">
-          <div className="bg-[#0a0a0a] px-4 py-2 border-b border-gray-800 flex items-center justify-between">
-            <span className="text-[10px] font-black text-yellow-500 uppercase tracking-[0.2em]">
-              {isSingleColumn ? 'Classificação da Rodada' : `Tier 1 • Top 1-${leftStats.length}`}
-            </span>
-            <div className="flex items-center gap-2">
-                <TrendingUp size={12} className="text-yellow-500/50" />
-                <span className="text-[9px] text-gray-600 uppercase font-bold">Resumo Competitivo</span>
-            </div>
+      {/* SEÇÃO 4: TABELA DE CLASSIFICAÇÃO */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between bg-[#141418] border border-gray-800 rounded-xl px-4 py-2">
+          <div className="flex items-center gap-2">
+            <Crown size={16} className="text-yellow-500" />
+            <h2 className="text-xs font-black uppercase tracking-wider text-white font-display">
+              Tabela de Classificação {phase === 'ALL' ? 'Geral' : phase === 'QUALIFIERS' ? '• Classificatórias' : phase === 'RUMO_AO_MUNDIAL' ? '• Rumo ao Mundial' : '• Grande Final'}
+            </h2>
           </div>
-          <div className="overflow-x-auto custom-scrollbar">
-            <table className="w-full text-left whitespace-nowrap">
-              <TableHeader />
-              <tbody className="divide-y divide-gray-800 text-sm font-medium">
-                {leftStats.map((team, index) => (
-                  <TableRow key={team.name} team={team} index={index} />
-                ))}
-                {leftStats.length === 0 && (
-                  <tr>
-                    <td colSpan={9} className="py-10 text-center text-gray-600 italic uppercase text-[10px]">Sem dados para esta filtragem</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <button
+            onClick={() => toggleSection('table')}
+            className="px-2.5 py-1 rounded-lg bg-black/40 hover:bg-white/10 border border-gray-800 text-gray-300 hover:text-white text-[10px] font-black uppercase flex items-center gap-1.5 transition-all cursor-pointer"
+          >
+            {visibleSections.table ? (
+              <><EyeOff size={12} /> Ocultar Tabela</>
+            ) : (
+              <><Eye size={12} /> Mostrar Tabela</>
+            )}
+          </button>
         </div>
 
-        {!isSingleColumn && (
-          <div className="bg-[#1a1a1a] rounded-2xl overflow-hidden border border-gray-800 shadow-xl">
-            <div className="bg-[#0a0a0a] px-4 py-2 border-b border-gray-800 flex items-center justify-between">
-              <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">
-                Tier 2 • Top {leftStats.length + 1}-{stats.length}
-              </span>
-              <Shield size={14} className="text-gray-600 opacity-50" />
+        {visibleSections.table && (
+          <div className={`grid grid-cols-1 ${isSingleColumn ? '' : 'lg:grid-cols-2'} gap-6 animate-in fade-in duration-200`}>
+            <div className="bg-[#1a1a1a] rounded-2xl overflow-hidden border border-gray-800 shadow-xl">
+              <div className="bg-[#0a0a0a] px-4 py-2 border-b border-gray-800 flex items-center justify-between">
+                <span className="text-[10px] font-black text-yellow-500 uppercase tracking-[0.2em]">
+                  {isSingleColumn ? 'Classificação da Rodada' : `Tier 1 • Top 1-${leftStats.length}`}
+                </span>
+                <div className="flex items-center gap-2">
+                    <TrendingUp size={12} className="text-yellow-500/50" />
+                    <span className="text-[9px] text-gray-600 uppercase font-bold">Resumo Competitivo</span>
+                </div>
+              </div>
+              <div className="overflow-x-auto custom-scrollbar">
+                <table className="w-full text-left whitespace-nowrap">
+                  <TableHeader />
+                  <tbody className="divide-y divide-gray-800 text-sm font-medium">
+                    {leftStats.map((team, index) => (
+                      <TableRow key={team.name} team={team} index={index} />
+                    ))}
+                    {leftStats.length === 0 && (
+                      <tr>
+                        <td colSpan={9} className="py-10 text-center text-gray-600 italic uppercase text-[10px]">Sem dados para esta filtragem</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
-            <div className="overflow-x-auto custom-scrollbar">
-              <table className="w-full text-left whitespace-nowrap">
-                <TableHeader />
-                <tbody className="divide-y divide-gray-800 text-sm font-medium">
-                  {rightStats.map((team, index) => (
-                    <TableRow key={team.name} team={team} index={index + leftStats.length} />
-                  ))}
-                  {rightStats.length === 0 && (
-                    <tr>
-                      <td colSpan={9} className="py-10 text-center text-gray-600 italic uppercase text-[10px]">Nenhuma equipe nesta faixa</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+
+            {!isSingleColumn && (
+              <div className="bg-[#1a1a1a] rounded-2xl overflow-hidden border border-gray-800 shadow-xl">
+                <div className="bg-[#0a0a0a] px-4 py-2 border-b border-gray-800 flex items-center justify-between">
+                  <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">
+                    Tier 2 • Top {leftStats.length + 1}-{stats.length}
+                  </span>
+                  <Shield size={14} className="text-gray-600 opacity-50" />
+                </div>
+                <div className="overflow-x-auto custom-scrollbar">
+                  <table className="w-full text-left whitespace-nowrap">
+                    <TableHeader />
+                    <tbody className="divide-y divide-gray-800 text-sm font-medium">
+                      {rightStats.map((team, index) => (
+                        <TableRow key={team.name} team={team} index={index + leftStats.length} />
+                      ))}
+                      {rightStats.length === 0 && (
+                        <tr>
+                          <td colSpan={9} className="py-10 text-center text-gray-600 italic uppercase text-[10px]">Nenhuma equipe nesta faixa</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

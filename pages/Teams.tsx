@@ -76,6 +76,44 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
   const [teamKillFeedEventType, setTeamKillFeedEventType] = useState<'all' | 'kills' | 'deaths'>('all');
   const [compareSubTab, setCompareSubTab] = useState<'all' | 'overview' | 'combat' | 'zeradas' | 'mapKills' | 'safeKills' | 'safes'>('all');
   const [showTeamDetails, setShowTeamDetails] = useState<boolean>(true);
+  const [showTeamSectionMenu, setShowTeamSectionMenu] = useState<boolean>(false);
+  const [teamVisibleSections, setTeamVisibleSections] = useState({
+    header: true,
+    mapStyles: true,
+    zeradas: true,
+    rounds: true,
+    safes: true,
+    mapKills: true,
+    lineups: true,
+    killfeedPhases: true,
+    evolution: true,
+    territorial: true,
+    safesDistribution: true,
+    positions: true,
+    drops: true
+  });
+
+  const toggleTeamSection = (section: keyof typeof teamVisibleSections) => {
+    setTeamVisibleSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  const setAllTeamSections = (show: boolean) => {
+    setTeamVisibleSections({
+      header: show,
+      mapStyles: show,
+      zeradas: show,
+      rounds: show,
+      safes: show,
+      mapKills: show,
+      lineups: show,
+      killfeedPhases: show,
+      evolution: show,
+      territorial: show,
+      safesDistribution: show,
+      positions: show,
+      drops: show
+    });
+  };
   const [matrixViewMode, setMatrixViewMode] = useState<'both' | 'points' | 'kills'>('both');
   const [expandedMatrixCell, setExpandedMatrixCell] = useState<{ rd: string; q: string } | null>(null);
   const [expandedSafesMap, setExpandedSafesMap] = useState<Record<string, boolean>>({});
@@ -2904,65 +2942,91 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
         {selectedTeamName && selectedTeamStats && activeTab !== 'comparison' ? (
             <div className="space-y-8 animate-in fade-in duration-500 pb-10">
                 {/* Header do Time */}
-                <div className="bg-[#1a1a1a] rounded-3xl p-8 border border-gray-800 shadow-2xl relative overflow-hidden bg-gradient-to-br from-[#1a1a1a] to-black">
-                    <div className="absolute top-0 right-0 p-12 opacity-5">
-                         <Shield size={220} className="text-yellow-500" />
-                    </div>
-                    <div className="flex flex-col md:flex-row items-center gap-10 relative z-10">
-                         <div className="w-40 h-40 bg-black rounded-3xl border-2 border-yellow-500/30 flex items-center justify-center overflow-hidden shadow-2xl p-4 rotate-2 hover:rotate-0 transition-transform duration-500">
-                             {selectedTeamStats.image ? (
-                                 <img src={selectedTeamStats.image} alt={selectedTeamStats.name} className="w-full h-full object-contain" />
-                             ) : (
-                                 <Shield size={80} className="text-gray-800" />
-                             )}
-                         </div>
-                         <div className="text-center md:text-left space-y-4">
-                             <div className="flex items-center gap-3 justify-center md:justify-start">
-                                <span className="bg-yellow-500 text-black text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-tighter">PRO LEAGUE</span>
-                                <span className="text-gray-500 text-[10px] font-bold uppercase tracking-widest">DADOS FILTRADOS</span>
-                                {(() => {
-                                    const char = getTeamCharacteristic(selectedTeamStats.percentAbts, selectedTeamStats.percentPos);
-                                    return (
-                                        <div className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border ${char.bg} ${char.border} ${char.color} text-[9px] font-black uppercase tracking-widest shadow-lg`}>
-                                            {char.icon}
-                                            {char.label}
-                                        </div>
-                                    );
-                                })()}
+                {teamVisibleSections.header ? (
+                    <div className="bg-[#1a1a1a] rounded-3xl p-8 border border-gray-800 shadow-2xl relative overflow-hidden bg-gradient-to-br from-[#1a1a1a] to-black">
+                        <div className="absolute top-0 right-0 p-12 opacity-5">
+                             <Shield size={220} className="text-yellow-500" />
+                        </div>
+                        <div className="absolute top-6 right-6 z-20">
+                            <button
+                                onClick={() => toggleTeamSection('header')}
+                                className="px-3 py-1.5 rounded-xl bg-black/60 border border-white/10 text-gray-400 hover:text-white hover:border-yellow-500/40 text-[11px] font-bold flex items-center gap-1.5 transition-all shadow-md"
+                                title="Ocultar esta seção"
+                            >
+                                <EyeOff size={13} /> Ocultar Seção
+                            </button>
+                        </div>
+                        <div className="flex flex-col md:flex-row items-center gap-10 relative z-10">
+                             <div className="w-40 h-40 bg-black rounded-3xl border-2 border-yellow-500/30 flex items-center justify-center overflow-hidden shadow-2xl p-4 rotate-2 hover:rotate-0 transition-transform duration-500">
+                                 {selectedTeamStats.image ? (
+                                     <img src={selectedTeamStats.image} alt={selectedTeamStats.name} className="w-full h-full object-contain" />
+                                 ) : (
+                                     <Shield size={80} className="text-gray-800" />
+                                 )}
                              </div>
-                             <h1 className="text-5xl md:text-7xl font-black italic text-white tracking-tighter uppercase leading-none">{selectedTeamStats.name}</h1>
-                             <div className="flex flex-wrap justify-center md:justify-start gap-4">
-                                 <StatBadge label="PONTOS" value={selectedTeamStats.pts} color="text-yellow-500" />
-                                 <StatBadge label="VITÓRIAS" value={selectedTeamStats.b} color="text-orange-500" />
-                                 <StatBadge label="KILLS" value={selectedTeamStats.abts} color="text-red-500" />
-                                 <StatBadge label="MÉDIA EQUIPE" value={selectedTeamStats.avgAbts} color="text-blue-500" />
-                                 <button 
-                                     onClick={() => setActiveTab('comparison')}
-                                     className="flex items-center gap-2 px-5 py-3 bg-white/5 hover:bg-yellow-500 hover:text-black text-yellow-500 hover:scale-105 rounded-2xl transition-all text-[10px] font-black uppercase tracking-widest border border-white/5"
-                                 >
-                                     <Scale size={16} /> Comparar este Time
-                                 </button>
-                             </div>
-                             
-                             <div className="mt-6 max-w-md">
-                                 <div className="flex justify-between text-[9px] font-black uppercase tracking-widest mb-2 italic">
-                                     <span className="text-red-500 flex items-center gap-1"><Flame size={10}/> ABATES ({selectedTeamStats.percentAbts}%)</span>
-                                     <span className="text-yellow-500 flex items-center gap-1">POSIÇÃO ({selectedTeamStats.percentPos}%) <Target size={10}/></span>
+                             <div className="text-center md:text-left space-y-4">
+                                 <div className="flex items-center gap-3 justify-center md:justify-start">
+                                    <span className="bg-yellow-500 text-black text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-tighter">PRO LEAGUE</span>
+                                    <span className="text-gray-500 text-[10px] font-bold uppercase tracking-widest">DADOS FILTRADOS</span>
+                                    {(() => {
+                                        const char = getTeamCharacteristic(selectedTeamStats.percentAbts, selectedTeamStats.percentPos);
+                                        return (
+                                            <div className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border ${char.bg} ${char.border} ${char.color} text-[9px] font-black uppercase tracking-widest shadow-lg`}>
+                                                {char.icon}
+                                                {char.label}
+                                            </div>
+                                        );
+                                    })()}
                                  </div>
-                                 <div className="h-2 w-full bg-gray-900 rounded-full overflow-hidden flex border border-white/5 shadow-inner">
-                                     <div className="h-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.3)] transition-all duration-1000" style={{ width: `${selectedTeamStats.percentAbts}%` }}></div>
-                                     <div className="h-full bg-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.3)] transition-all duration-1000" style={{ width: `${selectedTeamStats.percentPos}%` }}></div>
+                                 <h1 className="text-5xl md:text-7xl font-black italic text-white tracking-tighter uppercase leading-none">{selectedTeamStats.name}</h1>
+                                 <div className="flex flex-wrap justify-center md:justify-start gap-4">
+                                     <StatBadge label="PONTOS" value={selectedTeamStats.pts} color="text-yellow-500" />
+                                     <StatBadge label="VITÓRIAS" value={selectedTeamStats.b} color="text-orange-500" />
+                                     <StatBadge label="KILLS" value={selectedTeamStats.abts} color="text-red-500" />
+                                     <StatBadge label="MÉDIA EQUIPE" value={selectedTeamStats.avgAbts} color="text-blue-500" />
+                                     <button 
+                                         onClick={() => setActiveTab('comparison')}
+                                         className="flex items-center gap-2 px-5 py-3 bg-white/5 hover:bg-yellow-500 hover:text-black text-yellow-500 hover:scale-105 rounded-2xl transition-all text-[10px] font-black uppercase tracking-widest border border-white/5"
+                                     >
+                                         <Scale size={16} /> Comparar este Time
+                                     </button>
                                  </div>
-                                 <p className="text-[8px] text-gray-500 mt-2 font-bold uppercase tracking-widest italic leading-relaxed">
-                                     * Distribuição baseada na origem dos pontos totais da equipe.
-                                 </p>
+                                 
+                                 <div className="mt-6 max-w-md">
+                                     <div className="flex justify-between text-[9px] font-black uppercase tracking-widest mb-2 italic">
+                                         <span className="text-red-500 flex items-center gap-1"><Flame size={10}/> ABATES ({selectedTeamStats.percentAbts}%)</span>
+                                         <span className="text-yellow-500 flex items-center gap-1">POSIÇÃO ({selectedTeamStats.percentPos}%) <Target size={10}/></span>
+                                     </div>
+                                     <div className="h-2 w-full bg-gray-900 rounded-full overflow-hidden flex border border-white/5 shadow-inner">
+                                         <div className="h-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.3)] transition-all duration-1000" style={{ width: `${selectedTeamStats.percentAbts}%` }}></div>
+                                         <div className="h-full bg-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.3)] transition-all duration-1000" style={{ width: `${selectedTeamStats.percentPos}%` }}></div>
+                                     </div>
+                                     <p className="text-[8px] text-gray-500 mt-2 font-bold uppercase tracking-widest italic leading-relaxed">
+                                         * Distribuição baseada na origem dos pontos totais da equipe.
+                                     </p>
+                                 </div>
                              </div>
-                         </div>
+                        </div>
                     </div>
-                </div>
+                ) : (
+                    <div className="bg-[#1a1a1a] p-4 rounded-2xl border border-white/10 flex items-center justify-between shadow-lg">
+                        <div className="flex items-center gap-3">
+                            <Shield size={20} className="text-yellow-500" />
+                            <span className="text-xs font-black uppercase text-gray-300">
+                                1. Resumo & Identidade da Equipe: <strong className="text-yellow-400">{selectedTeamStats.name}</strong> <span className="text-red-400 font-normal">(Oculto)</span>
+                            </span>
+                        </div>
+                        <button
+                            onClick={() => toggleTeamSection('header')}
+                            className="px-3 py-1.5 rounded-xl bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-xs font-bold hover:bg-yellow-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                            <Eye size={13} /> Mostrar Seção
+                        </button>
+                    </div>
+                )}
 
                 {/* Sub-Navegação e Controles de Exibição do Perfil do Time */}
-                <div className="flex flex-wrap items-center justify-between gap-4 bg-[#121215] p-3 rounded-2xl border border-white/10 shadow-xl">
+                <div className="flex flex-wrap items-center justify-between gap-4 bg-[#121215] p-3 rounded-2xl border border-white/10 shadow-xl relative">
                     <div className="flex flex-wrap items-center gap-2">
                         <button
                             onClick={() => setTeamProfileSubTab('all')}
@@ -3053,6 +3117,85 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                     </div>
 
                     <div className="flex items-center gap-3">
+                        {/* Dropdown Gerenciador de Seções */}
+                        <div className="relative">
+                            <button
+                                onClick={() => setShowTeamSectionMenu(!showTeamSectionMenu)}
+                                className={`px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 border cursor-pointer shadow-md ${
+                                    showTeamSectionMenu 
+                                        ? 'bg-yellow-500 text-black border-yellow-400' 
+                                        : 'bg-black/60 border-white/10 text-gray-300 hover:text-white hover:border-yellow-500/40'
+                                }`}
+                                title="Mostrar ou ocultar seções individuais"
+                            >
+                                <LayoutList size={15} className={showTeamSectionMenu ? 'text-black' : 'text-yellow-400'} />
+                                <span>Seções ({Object.values(teamVisibleSections).filter(Boolean).length}/13)</span>
+                                <ChevronDown size={14} className={`transition-transform ${showTeamSectionMenu ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {showTeamSectionMenu && (
+                                <div className="absolute right-0 top-full mt-2 w-80 bg-[#141417] border border-yellow-500/30 rounded-2xl p-4 shadow-2xl z-50 space-y-3 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-200">
+                                    <div className="flex items-center justify-between pb-2 border-b border-white/10">
+                                        <span className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
+                                            <Layers size={14} className="text-yellow-400" /> Seções do Time
+                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => setAllTeamSections(true)}
+                                                className="text-[10px] font-black text-emerald-400 hover:underline uppercase"
+                                            >
+                                                Todas
+                                            </button>
+                                            <span className="text-gray-600 text-xs">|</span>
+                                            <button
+                                                onClick={() => setAllTeamSections(false)}
+                                                className="text-[10px] font-black text-rose-400 hover:underline uppercase"
+                                            >
+                                                Nenhuma
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-1.5 max-h-80 overflow-y-auto custom-scrollbar pr-1">
+                                        {[
+                                            { key: 'header', label: '1. Resumo & Identidade', icon: Shield },
+                                            { key: 'mapStyles', label: '2. Estilos por Mapa', icon: MapIcon },
+                                            { key: 'zeradas', label: '3. Quedas Zeradas', icon: AlertTriangle },
+                                            { key: 'rounds', label: '4. Pontos & Kills por Rodada', icon: Swords },
+                                            { key: 'safes', label: '5. Safes por Mapa', icon: MapPin },
+                                            { key: 'mapKills', label: '6. Abates & MVP por Mapa', icon: Trophy },
+                                            { key: 'lineups', label: '7. Formações (Lineups)', icon: Users },
+                                            { key: 'killfeedPhases', label: '8. Fases do Jogo (Kill Feed)', icon: Crosshair },
+                                            { key: 'evolution', label: '9. Histórico de Performance', icon: TrendingUp },
+                                            { key: 'territorial', label: '10. Domínio Territorial (Mapas)', icon: MapIcon },
+                                            { key: 'safesDistribution', label: '11. Distribuição por Safe', icon: Disc },
+                                            { key: 'positions', label: '12. Sumário de Posições', icon: Trophy },
+                                            { key: 'drops', label: '13. Performance por Queda', icon: Zap }
+                                        ].map(({ key, label, icon: Icon }) => {
+                                            const isVisible = teamVisibleSections[key as keyof typeof teamVisibleSections];
+                                            return (
+                                                <button
+                                                    key={key}
+                                                    onClick={() => toggleTeamSection(key as keyof typeof teamVisibleSections)}
+                                                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                                                        isVisible 
+                                                            ? 'bg-yellow-500/10 text-yellow-300 border border-yellow-500/30' 
+                                                            : 'bg-black/40 text-gray-500 border border-white/5 hover:text-gray-300'
+                                                    }`}
+                                                >
+                                                    <span className="flex items-center gap-2 truncate">
+                                                        <Icon size={13} className={isVisible ? 'text-yellow-400' : 'text-gray-600'} />
+                                                        {label}
+                                                    </span>
+                                                    {isVisible ? <Eye size={13} className="text-emerald-400 flex-shrink-0" /> : <EyeOff size={13} className="text-gray-600 flex-shrink-0" />}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
                         <button
                             onClick={() => setShowTeamDetails(!showTeamDetails)}
                             className={`px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 border cursor-pointer shadow-md ${
@@ -3076,6 +3219,7 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
 
                 {/* NOVO: PERFIL DE ESTILO POR MAPA */}
                 {showTeamDetails && (teamProfileSubTab === 'all' || teamProfileSubTab === 'mapStyles') && teamMapStylesData.length > 0 && (
+                    teamVisibleSections.mapStyles ? (
                     <div className="bg-[#1a1a1a] p-8 rounded-3xl border border-orange-500/30 shadow-2xl space-y-6">
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-4">
                             <div>
@@ -3087,6 +3231,13 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                     CARACTERÍSTICAS DA EQUIPE ({selectedTeamStats?.name}) EM CADA MAPA
                                 </p>
                             </div>
+                            <button
+                                onClick={() => toggleTeamSection('mapStyles')}
+                                className="px-3 py-1.5 rounded-xl bg-black/60 border border-white/10 text-gray-400 hover:text-white hover:border-orange-500/40 text-[11px] font-bold flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
+                                title="Ocultar esta seção"
+                            >
+                                <EyeOff size={13} /> Ocultar Seção
+                            </button>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -3162,10 +3313,27 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                             })}
                         </div>
                     </div>
+                    ) : (
+                    <div className="bg-[#1a1a1a] p-4 rounded-2xl border border-white/10 flex items-center justify-between shadow-lg">
+                        <div className="flex items-center gap-3">
+                            <MapIcon size={20} className="text-orange-500" />
+                            <span className="text-xs font-black uppercase text-gray-300">
+                                2. Perfil e Estilo de Jogo por Mapa <span className="text-red-400 font-normal">(Oculto)</span>
+                            </span>
+                        </div>
+                        <button
+                            onClick={() => toggleTeamSection('mapStyles')}
+                            className="px-3 py-1.5 rounded-xl bg-orange-500/10 border border-orange-500/30 text-orange-400 text-xs font-bold hover:bg-orange-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                            <Eye size={13} /> Mostrar Seção
+                        </button>
+                    </div>
+                    )
                 )}
 
                 {/* 1. SEÇÃO: QUEDAS ZERADAS DO TIME */}
                 {showTeamDetails && (teamProfileSubTab === 'all' || teamProfileSubTab === 'zeradas') && zeroStatsTeam && (
+                    teamVisibleSections.zeradas ? (
                     <div className="bg-[#1a1a1a] p-8 rounded-3xl border border-red-900/30 shadow-2xl space-y-6">
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-4">
                             <div>
@@ -3182,13 +3350,20 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                 </p>
                             </div>
 
-                            <div className="flex flex-wrap gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
                                 <span className="px-3 py-1.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 font-black text-xs uppercase">
                                     {zeroStatsTeam.totalZeroPts} Quedas sem Pontos ({zeroStatsTeam.pctZeradas}%)
                                 </span>
                                 <span className="px-3 py-1.5 rounded-xl bg-orange-500/10 border border-orange-500/30 text-orange-400 font-black text-xs uppercase">
                                     {zeroStatsTeam.totalZeroKills} Quedas sem Abates
                                 </span>
+                                <button
+                                    onClick={() => toggleTeamSection('zeradas')}
+                                    className="px-3 py-1.5 rounded-xl bg-black/60 border border-white/10 text-gray-400 hover:text-white hover:border-red-500/40 text-[11px] font-bold flex items-center gap-1.5 transition-all shadow-md cursor-pointer ml-2"
+                                    title="Ocultar esta seção"
+                                >
+                                    <EyeOff size={13} /> Ocultar Seção
+                                </button>
                             </div>
                         </div>
 
@@ -3308,10 +3483,27 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                             </div>
                         )}
                     </div>
+                    ) : (
+                    <div className="bg-[#1a1a1a] p-4 rounded-2xl border border-white/10 flex items-center justify-between shadow-lg">
+                        <div className="flex items-center gap-3">
+                            <AlertTriangle size={20} className="text-red-500" />
+                            <span className="text-xs font-black uppercase text-gray-300">
+                                3. Quedas Zeradas da Equipe ({zeroStatsTeam.totalZeroPts} quedas) <span className="text-red-400 font-normal">(Oculto)</span>
+                            </span>
+                        </div>
+                        <button
+                            onClick={() => toggleTeamSection('zeradas')}
+                            className="px-3 py-1.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-bold hover:bg-red-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                            <Eye size={13} /> Mostrar Seção
+                        </button>
+                    </div>
+                    )
                 )}
 
                 {/* 2. SEÇÃO: MATRIZ DE PONTOS E ABATES POR RODADA E POR QUEDA (COM DETALHAMENTO) */}
                 {showTeamDetails && (teamProfileSubTab === 'all' || teamProfileSubTab === 'rounds') && (
+                    teamVisibleSections.rounds ? (
                     <div className="bg-[#1a1a1a] p-8 rounded-3xl border border-blue-900/30 shadow-2xl space-y-6">
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-4">
                             <div>
@@ -3355,6 +3547,13 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                         Abates
                                     </button>
                                 </div>
+                                <button
+                                    onClick={() => toggleTeamSection('rounds')}
+                                    className="px-3 py-1.5 rounded-xl bg-black/60 border border-white/10 text-gray-400 hover:text-white hover:border-blue-500/40 text-[11px] font-bold flex items-center gap-1.5 transition-all shadow-md cursor-pointer ml-2"
+                                    title="Ocultar esta seção"
+                                >
+                                    <EyeOff size={13} /> Ocultar Seção
+                                </button>
                             </div>
                         </div>
 
@@ -3552,10 +3751,27 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                             </table>
                         </div>
                     </div>
+                    ) : (
+                    <div className="bg-[#1a1a1a] p-4 rounded-2xl border border-white/10 flex items-center justify-between shadow-lg">
+                        <div className="flex items-center gap-3">
+                            <Swords size={20} className="text-blue-400" />
+                            <span className="text-xs font-black uppercase text-gray-300">
+                                4. Pontos e Abates por Rodada e por Queda <span className="text-red-400 font-normal">(Oculto)</span>
+                            </span>
+                        </div>
+                        <button
+                            onClick={() => toggleTeamSection('rounds')}
+                            className="px-3 py-1.5 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-bold hover:bg-blue-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                            <Eye size={13} /> Mostrar Seção
+                        </button>
+                    </div>
+                    )
                 )}
 
                 {/* 3. SEÇÃO: MELHORES E PIORES DESEMPENHO POR ONDE A SAFE FECHOU PARA CADA MAPA */}
                 {showTeamDetails && (teamProfileSubTab === 'all' || teamProfileSubTab === 'safes') && safePerformanceByMapTeam.length > 0 && (
+                    teamVisibleSections.safes ? (
                     <div className="bg-[#1a1a1a] p-8 rounded-3xl border border-amber-900/30 shadow-2xl space-y-6">
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-4">
                             <div>
@@ -3576,6 +3792,13 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                 <span className="text-xs font-black text-amber-400 bg-amber-500/10 px-3 py-1.5 rounded-xl border border-amber-500/20">
                                     {safePerformanceByMapTeam.length} Mapas Mapeados
                                 </span>
+                                <button
+                                    onClick={() => toggleTeamSection('safes')}
+                                    className="px-3 py-1.5 rounded-xl bg-black/60 border border-white/10 text-gray-400 hover:text-white hover:border-amber-500/40 text-[11px] font-bold flex items-center gap-1.5 transition-all shadow-md cursor-pointer ml-2"
+                                    title="Ocultar esta seção"
+                                >
+                                    <EyeOff size={13} /> Ocultar Seção
+                                </button>
                             </div>
                         </div>
 
@@ -3782,30 +4005,36 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                                 <div className="overflow-x-auto">
                                                     <table className="w-full text-left border-collapse text-xs">
                                                         <thead>
-                                                            <tr className="border-b border-white/10 text-[9px] text-gray-400 uppercase font-black tracking-wider bg-white/5">
-                                                                <th className="py-2.5 px-3">Região (Safe)</th>
-                                                                <th className="py-2.5 px-3 text-center">Partidas (PJ)</th>
-                                                                <th className="py-2.5 px-3 text-center">Total Abates</th>
-                                                                <th className="py-2.5 px-3 text-center">Média Abates</th>
+                                                            <tr className="bg-black/60 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/10">
+                                                                <th className="py-2.5 px-3">Local da Safe</th>
+                                                                <th className="py-2.5 px-3 text-center">Quedas</th>
+                                                                <th className="py-2.5 px-3 text-center">Pos Média</th>
                                                                 <th className="py-2.5 px-3 text-center">Booyahs</th>
-                                                                <th className="py-2.5 px-3 text-center">Pts Totais</th>
-                                                                <th className="py-2.5 px-3 text-right">Pos Média</th>
+                                                                <th className="py-2.5 px-3 text-center text-yellow-500">Pts Total</th>
+                                                                <th className="py-2.5 px-3 text-center text-yellow-400">Média Pts</th>
+                                                                <th className="py-2.5 px-3 text-center text-red-500">Abates Total</th>
+                                                                <th className="py-2.5 px-3 text-center text-red-400">Média Abates</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody className="divide-y divide-white/5">
-                                                            {mapGroup.allLocals.map((safeLoc, idx) => (
-                                                                <tr key={idx} className="hover:bg-white/5 transition-colors">
-                                                                    <td className="py-2.5 px-3 font-black text-white italic uppercase">{safeLoc.localName}</td>
-                                                                    <td className="py-2.5 px-3 text-center font-bold text-gray-300">{safeLoc.matchesCount}</td>
-                                                                    <td className="py-2.5 px-3 text-center font-black text-red-400">{safeLoc.totalKills} abates</td>
-                                                                    <td className="py-2.5 px-3 text-center">
-                                                                        <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-full text-[10px] font-black">
-                                                                            {safeLoc.avgKills} / Q
-                                                                        </span>
+                                                            {mapGroup.allLocals.map((loc, lIdx) => (
+                                                                <tr key={lIdx} className="hover:bg-white/5 transition-colors">
+                                                                    <td className="py-2 px-3 font-black text-white uppercase italic">{loc.localName}</td>
+                                                                    <td className="py-2 px-3 text-center text-gray-300 font-bold">{loc.matchesCount}</td>
+                                                                    <td className="py-2 px-3 text-center text-gray-300 font-bold">#{loc.avgPos}</td>
+                                                                    <td className="py-2 px-3 text-center">
+                                                                        {loc.booyahs > 0 ? (
+                                                                            <span className="px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 text-[10px] font-black">
+                                                                                {loc.booyahs} 🏆
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="text-gray-600">-</span>
+                                                                        )}
                                                                     </td>
-                                                                    <td className="py-2.5 px-3 text-center font-bold text-yellow-500">{safeLoc.booyahs} 🏆</td>
-                                                                    <td className="py-2.5 px-3 text-center font-black text-yellow-400">{safeLoc.totalPts} pts</td>
-                                                                    <td className="py-2.5 px-3 text-right font-bold text-gray-400">#{safeLoc.avgPos}</td>
+                                                                    <td className="py-2 px-3 text-center font-black text-yellow-500 italic">{loc.totalPts}</td>
+                                                                    <td className="py-2 px-3 text-center font-black text-yellow-400 italic">{loc.avgPts}</td>
+                                                                    <td className="py-2 px-3 text-center font-black text-red-500 italic">{loc.totalKills}</td>
+                                                                    <td className="py-2 px-3 text-center font-black text-red-400 italic">{loc.avgKills}</td>
                                                                 </tr>
                                                             ))}
                                                         </tbody>
@@ -3818,10 +4047,27 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                             })}
                         </div>
                     </div>
+                    ) : (
+                    <div className="bg-[#1a1a1a] p-4 rounded-2xl border border-white/10 flex items-center justify-between shadow-lg">
+                        <div className="flex items-center gap-3">
+                            <MapPin size={20} className="text-amber-500" />
+                            <span className="text-xs font-black uppercase text-gray-300">
+                                5. Melhores e Piores Safes por Mapa <span className="text-red-400 font-normal">(Oculto)</span>
+                            </span>
+                        </div>
+                        <button
+                            onClick={() => toggleTeamSection('safes')}
+                            className="px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold hover:bg-amber-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                            <Eye size={13} /> Mostrar Seção
+                        </button>
+                    </div>
+                    )
                 )}
 
                 {/* 4. SEÇÃO: ABATES POR RODADA DE CADA MAPA E MVP DA EQUIPE POR MAPA */}
                 {showTeamDetails && (teamProfileSubTab === 'all' || teamProfileSubTab === 'mapKills') && teamMapKillsAndMvpData.length > 0 && (
+                    teamVisibleSections.mapKills ? (
                     <div className="bg-[#1a1a1a] p-8 rounded-3xl border border-purple-900/30 shadow-2xl space-y-6">
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-4">
                             <div>
@@ -3842,6 +4088,13 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                 <span className="text-xs font-black text-purple-300 bg-purple-500/10 px-3 py-1.5 rounded-xl border border-purple-500/20">
                                     {teamMapKillsAndMvpData.length} Mapas Analisados
                                 </span>
+                                <button
+                                    onClick={() => toggleTeamSection('mapKills')}
+                                    className="px-3 py-1.5 rounded-xl bg-black/60 border border-white/10 text-gray-400 hover:text-white hover:border-purple-500/40 text-[11px] font-bold flex items-center gap-1.5 transition-all shadow-md cursor-pointer ml-2"
+                                    title="Ocultar esta seção"
+                                >
+                                    <EyeOff size={13} /> Ocultar Seção
+                                </button>
                             </div>
                         </div>
 
@@ -4043,9 +4296,26 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                             })}
                         </div>
                     </div>
+                    ) : (
+                    <div className="bg-[#1a1a1a] p-4 rounded-2xl border border-white/10 flex items-center justify-between shadow-lg">
+                        <div className="flex items-center gap-3">
+                            <Trophy size={20} className="text-purple-400" />
+                            <span className="text-xs font-black uppercase text-gray-300">
+                                6. Abates por Rodada e MVP da Equipe por Mapa <span className="text-red-400 font-normal">(Oculto)</span>
+                            </span>
+                        </div>
+                        <button
+                            onClick={() => toggleTeamSection('mapKills')}
+                            className="px-3 py-1.5 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-400 text-xs font-bold hover:bg-purple-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                            <Eye size={13} /> Mostrar Seção
+                        </button>
+                    </div>
+                    )
                 )}
 
                 {showTeamDetails && (teamProfileSubTab === 'all' || teamProfileSubTab === 'lineups') && (
+                    teamVisibleSections.lineups ? (
                     <div className="bg-[#1a1a1a] p-8 rounded-3xl border border-indigo-900/40 shadow-2xl space-y-8">
                         {/* Header da Seção */}
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-white/5 pb-6">
@@ -4065,13 +4335,20 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                 </div>
                             </div>
 
-                            {teamLineupsData && (
-                                <div className="flex items-center gap-2 self-stretch md:self-auto justify-end">
+                            <div className="flex items-center gap-2 self-stretch md:self-auto justify-end">
+                                {teamLineupsData && (
                                     <span className="px-3.5 py-1.5 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 font-black text-xs uppercase tracking-wider">
                                         {teamLineupsData.totalLineupsCount} {teamLineupsData.totalLineupsCount === 1 ? 'Formação Utilizada' : 'Formações Utilizadas'}
                                     </span>
-                                </div>
-                            )}
+                                )}
+                                <button
+                                    onClick={() => toggleTeamSection('lineups')}
+                                    className="px-3 py-1.5 rounded-xl bg-black/60 border border-white/10 text-gray-400 hover:text-white hover:border-indigo-500/40 text-[11px] font-bold flex items-center gap-1.5 transition-all shadow-md cursor-pointer ml-2"
+                                    title="Ocultar esta seção"
+                                >
+                                    <EyeOff size={13} /> Ocultar Seção
+                                </button>
+                            </div>
                         </div>
 
                         {teamLineupsData && teamLineupsData.lineups.length > 0 ? (
@@ -4385,6 +4662,22 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                             </div>
                         )}
                     </div>
+                    ) : (
+                    <div className="bg-[#1a1a1a] p-4 rounded-2xl border border-white/10 flex items-center justify-between shadow-lg">
+                        <div className="flex items-center gap-3">
+                            <Users size={20} className="text-indigo-400" />
+                            <span className="text-xs font-black uppercase text-gray-300">
+                                7. Formações (Lineups) da Equipe <span className="text-red-400 font-normal">(Oculto)</span>
+                            </span>
+                        </div>
+                        <button
+                            onClick={() => toggleTeamSection('lineups')}
+                            className="px-3 py-1.5 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 text-xs font-bold hover:bg-indigo-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                            <Eye size={13} /> Mostrar Seção
+                        </button>
+                    </div>
+                    )
                 )}
 
                 {/* Roster Performance Ordenada por Kills - GRID RESPONSIVO (SEM SCROLL) */}
@@ -4680,6 +4973,7 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                 
                 {/* SEÇÃO: KILL FEED PHASES (EARLY, MID, LATE) NO PERFIL DA EQUIPE */}
                 {showTeamDetails && (teamProfileSubTab === 'all' || teamProfileSubTab === 'killfeedPhases') && (
+                    teamVisibleSections.killfeedPhases ? (
                     <div className="bg-[#1a1a1a] p-8 rounded-3xl border border-emerald-900/30 shadow-2xl space-y-6">
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-4">
                             <div>
@@ -4694,6 +4988,16 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-1">
                                     Análise da distribuição de abates da equipe baseada nas zonas seguras (Early, Mid e Late Game) no Kill Feed.
                                 </p>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => toggleTeamSection('killfeedPhases')}
+                                    className="px-3 py-1.5 rounded-xl bg-black/60 border border-white/10 text-gray-400 hover:text-white hover:border-emerald-500/40 text-[11px] font-bold flex items-center gap-1.5 transition-all shadow-md cursor-pointer ml-2"
+                                    title="Ocultar esta seção"
+                                >
+                                    <EyeOff size={13} /> Ocultar Seção
+                                </button>
                             </div>
                         </div>
 
@@ -4747,6 +5051,22 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                             );
                         })()}
                     </div>
+                    ) : (
+                    <div className="bg-[#1a1a1a] p-4 rounded-2xl border border-white/10 flex items-center justify-between shadow-lg">
+                        <div className="flex items-center gap-3">
+                            <Crosshair size={20} className="text-emerald-400" />
+                            <span className="text-xs font-black uppercase text-gray-300">
+                                8. Agressividade por Fase do Jogo <span className="text-red-400 font-normal">(Oculto)</span>
+                            </span>
+                        </div>
+                        <button
+                            onClick={() => toggleTeamSection('killfeedPhases')}
+                            className="px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold hover:bg-emerald-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                            <Eye size={13} /> Mostrar Seção
+                        </button>
+                    </div>
+                    )
                 )}
 
                 {/* Grid Principal */}
