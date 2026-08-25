@@ -151,7 +151,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
 
   // Ranking com Filtragem Estrita (RD AND Q)
   const rankingData = useMemo(() => {
-    if (activeTab !== 'ranking' && activeTab !== 'auditoria' && activeTab !== 'stats' && activeTab !== 'roles' && activeTab !== 'compare') return [];
+    if (activeTab !== 'ranking' && activeTab !== 'auditoria' && activeTab !== 'stats' && activeTab !== 'roles' && activeTab !== 'compare' && activeTab !== 'report') return [];
 
     const teamGroupMap = new Map<string, string>();
     data.teamsReference.forEach(t => {
@@ -427,6 +427,12 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
     
     data.playersDimension.forEach(d => {
         const stats = rankingData.find(r => normalize(r.name) === normalize(d.Name));
+        const safeKillsMap = stats?.safeKills || {};
+        const safeFields: Record<string, number> = {};
+        allSafeNames.forEach(s => {
+            safeFields[`safe_${s}`] = safeKillsMap[s] || 0;
+        });
+
         const basePlayer = {
             name: d.Name,
             img: d.IMG || findDimImg(data.playersDimension, d.Name),
@@ -452,7 +458,10 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             kd: stats?.kd || '0.00',
             zeroKills: stats?.zeroKills || 0,
             withKills: stats?.withKills || 0,
-            loadout: stats?.loadout
+            loadout: stats?.loadout,
+            safeKills: safeKillsMap,
+            totalSafeKills: stats?.totalSafeKills || 0,
+            ...safeFields
         };
 
         const role1 = d.Funcao?.trim().toUpperCase();
@@ -553,7 +562,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
     });
 
     return { players: playersWithRoles, bestsByRole: [allRolesGroup, ...bestsByRole] };
-  }, [data.playersDimension, data.teamsReference, rankingData, activeTab, roleSort]);
+  }, [data.playersDimension, data.teamsReference, rankingData, activeTab, roleSort, allSafeNames]);
 
   const auditData = useMemo(() => {
     if (activeTab !== 'auditoria') return [];
@@ -3217,45 +3226,80 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                   </div>
 
                   {/* Atalhos de Filtro / Ordenação Rápida do Ranking */}
-                  <div className="bg-[#181818] p-4 rounded-2xl border border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-lg">
-                      <div className="flex items-center gap-2">
-                          <Trophy size={16} className="text-yellow-500" />
-                          <span className="text-xs font-black uppercase text-white tracking-wider">Filtrar Ranking por Métrica:</span>
+                  <div className="bg-[#181818] p-4 rounded-2xl border border-white/5 flex flex-col gap-3 shadow-lg">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                              <Trophy size={16} className="text-yellow-500" />
+                              <span className="text-xs font-black uppercase text-white tracking-wider">Filtrar Ranking por Métrica:</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                              {[
+                                  { label: 'Abates (Kills)', field: 'kills', icon: Skull },
+                                  { label: 'Dano Total', field: 'damage', icon: Flame },
+                                  { label: 'Média Kills', field: 'avg', icon: Target },
+                                  { label: 'Knocks (Deitados)', field: 'knocks', icon: Zap },
+                                  { label: 'MVP', field: 'mvp', icon: AwardIcon => <Crown size={12} /> },
+                                  { label: 'Assistências', field: 'assists', icon: Users },
+                                  { label: 'Headshots', field: 'hs', icon: Crosshair },
+                                  { label: 'Gelos', field: 'gelos', icon: Shield },
+                                  { label: 'Revives', field: 'reviveu', icon: Activity },
+                                  { label: 'Saldo (Diff)', field: 'diff', icon: Scale },
+                                  { label: '% Contribuição', field: 'killContributionPct', icon: BarChart2 }
+                              ].map(metric => {
+                                  const isSorted = roleSort.field === metric.field;
+                                  return (
+                                      <button
+                                          key={metric.field}
+                                          onClick={() => handleRoleSort(metric.field)}
+                                          className={`px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                                              isSorted
+                                                  ? 'bg-yellow-500 text-black shadow-md shadow-yellow-500/20 font-black'
+                                                  : 'bg-black/40 text-gray-400 hover:text-white hover:bg-white/5 border border-white/5'
+                                          }`}
+                                      >
+                                          {typeof metric.icon === 'function' ? metric.icon() : <metric.icon size={12} />}
+                                          <span>{metric.label}</span>
+                                          {isSorted && (
+                                              roleSort.direction === 'desc' ? <ChevronDown size={12} className="stroke-[3]" /> : <ChevronUp size={12} className="stroke-[3]" />
+                                          )}
+                                      </button>
+                                  );
+                              })}
+                          </div>
                       </div>
-                      <div className="flex flex-wrap gap-1.5">
-                          {[
-                              { label: 'Abates (Kills)', field: 'kills', icon: Skull },
-                              { label: 'Dano Total', field: 'damage', icon: Flame },
-                              { label: 'Média Kills', field: 'avg', icon: Target },
-                              { label: 'Knocks (Deitados)', field: 'knocks', icon: Zap },
-                              { label: 'MVP', field: 'mvp', icon: AwardIcon => <Crown size={12} /> },
-                              { label: 'Assistências', field: 'assists', icon: Users },
-                              { label: 'Headshots', field: 'hs', icon: Crosshair },
-                              { label: 'Gelos', field: 'gelos', icon: Shield },
-                              { label: 'Revives', field: 'reviveu', icon: Activity },
-                              { label: 'Saldo (Diff)', field: 'diff', icon: Scale },
-                              { label: '% Contribuição', field: 'killContributionPct', icon: BarChart2 }
-                          ].map(metric => {
-                              const isSorted = roleSort.field === metric.field;
-                              return (
-                                  <button
-                                      key={metric.field}
-                                      onClick={() => handleRoleSort(metric.field)}
-                                      className={`px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
-                                          isSorted
-                                              ? 'bg-yellow-500 text-black shadow-md shadow-yellow-500/20 font-black'
-                                              : 'bg-black/40 text-gray-400 hover:text-white hover:bg-white/5 border border-white/5'
-                                      }`}
-                                  >
-                                      {typeof metric.icon === 'function' ? metric.icon() : <metric.icon size={12} />}
-                                      <span>{metric.label}</span>
-                                      {isSorted && (
-                                          roleSort.direction === 'desc' ? <ChevronDown size={12} className="stroke-[3]" /> : <ChevronUp size={12} className="stroke-[3]" />
-                                      )}
-                                  </button>
-                              );
-                          })}
-                      </div>
+
+                      {/* Atalhos Rápidos por Safe (Kill Feed) */}
+                      {allSafeNames.length > 0 && (
+                          <div className="pt-2.5 border-t border-white/5 flex flex-col sm:flex-row sm:items-center gap-2">
+                              <div className="flex items-center gap-1.5 text-emerald-400 flex-shrink-0">
+                                  <Disc size={13} className="text-emerald-400" />
+                                  <span className="text-[11px] font-black uppercase tracking-wider">Abates por Safe (Killfeed):</span>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                  {allSafeNames.map(s => {
+                                      const isSorted = roleSort.field === `safe_${s}`;
+                                      const safeLabel = s.toUpperCase() === 'OUT' ? 'OUT / FORA' : s.toUpperCase().startsWith('S') ? s.toUpperCase() : `SAFE ${s}`;
+                                      return (
+                                          <button
+                                              key={`safe-filter-btn-${s}`}
+                                              onClick={() => handleRoleSort(`safe_${s}`)}
+                                              className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                                                  isSorted
+                                                      ? 'bg-emerald-500 text-black shadow-md shadow-emerald-500/30 font-black'
+                                                      : 'bg-emerald-950/30 text-emerald-300 hover:text-emerald-100 hover:bg-emerald-900/40 border border-emerald-500/20'
+                                              }`}
+                                              title={`Ordenar ranking pelos melhores da função na Safe ${s} (Killfeed)`}
+                                          >
+                                              <span>{safeLabel}</span>
+                                              {isSorted && (
+                                                  roleSort.direction === 'desc' ? <ChevronDown size={11} className="stroke-[3]" /> : <ChevronUp size={11} className="stroke-[3]" />
+                                              )}
+                                          </button>
+                                      );
+                                  })}
+                              </div>
+                          </div>
+                      )}
                   </div>
 
                   <div className="grid grid-cols-1 gap-8">
@@ -3299,7 +3343,9 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                                       <div className="bg-black/40 px-4 py-2 rounded-xl border border-white/5 flex flex-col items-end">
                                           <span className="text-[9px] font-black text-gray-400 tracking-widest uppercase">Ordenação Atual</span>
                                           <span className="text-xs font-black text-yellow-400 uppercase leading-none mt-0.5">
-                                              {roleSort.field.toUpperCase()} ({roleSort.direction === 'desc' ? 'MAIOR' : 'MENOR'})
+                                              {roleSort.field.startsWith('safe_')
+                                                  ? `SAFE ${roleSort.field.replace('safe_', '').toUpperCase()}`
+                                                  : roleSort.field.toUpperCase()} ({roleSort.direction === 'desc' ? 'MAIOR' : 'MENOR'})
                                           </span>
                                       </div>
                                   </div>
@@ -3627,7 +3673,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
 
                                                   {/* MVP */}
                                                   <th
-                                                      className={`px-3 py-3 rounded-r-xl text-center cursor-pointer transition-colors ${
+                                                      className={`px-3 py-3 ${allSafeNames.length === 0 ? 'rounded-r-xl' : ''} text-center cursor-pointer transition-colors ${
                                                           roleSort.field === 'mvp' ? 'text-yellow-400 bg-yellow-500/10 font-black' : 'text-yellow-500/80 hover:text-yellow-400'
                                                       }`}
                                                       onClick={() => handleRoleSort('mvp')}
@@ -3638,6 +3684,32 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                                                           {roleSort.field === 'mvp' && (roleSort.direction === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)}
                                                       </div>
                                                   </th>
+
+                                                  {/* Colunas Dinamicas de Abates por Safe */}
+                                                  {allSafeNames.map((s, sIdx) => {
+                                                      const isLast = sIdx === allSafeNames.length - 1;
+                                                      const isSorted = roleSort.field === `safe_${s}`;
+                                                      const safeLabel = s.toUpperCase() === 'OUT' ? 'OUT' : s.toUpperCase().startsWith('S') ? s.toUpperCase() : `S${s}`;
+                                                      return (
+                                                          <th
+                                                              key={`th-safe-${s}`}
+                                                              className={`px-2.5 py-3 text-center cursor-pointer transition-colors ${
+                                                                  isLast ? 'rounded-r-xl' : ''
+                                                              } ${
+                                                                  isSorted
+                                                                      ? 'text-emerald-300 bg-emerald-500/20 font-black border-b-2 border-emerald-400'
+                                                                      : 'text-emerald-400/90 hover:text-emerald-200 bg-black/20 hover:bg-emerald-950/30'
+                                                              }`}
+                                                              onClick={() => handleRoleSort(`safe_${s}`)}
+                                                              title={`Clique para ordenar por Abates na Safe ${s} (Killfeed)`}
+                                                          >
+                                                              <div className="flex items-center justify-center gap-0.5">
+                                                                  <span className="font-mono">{safeLabel}</span>
+                                                                  {isSorted && (roleSort.direction === 'desc' ? <ChevronDown size={10} className="text-emerald-300" /> : <ChevronUp size={10} className="text-emerald-300" />)}
+                                                              </div>
+                                                          </th>
+                                                      );
+                                                  })}
                                               </tr>
                                           </thead>
                                           <tbody>
@@ -3837,11 +3909,40 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                                                           </td>
 
                                                           {/* MVP */}
-                                                          <td className={`px-3 py-2.5 rounded-r-xl text-center text-xs font-black italic ${
+                                                          <td className={`px-3 py-2.5 ${allSafeNames.length === 0 ? 'rounded-r-xl' : ''} text-center text-xs font-black italic ${
                                                               roleSort.field === 'mvp' ? 'text-yellow-300 bg-yellow-500/20 font-black' : 'text-yellow-400 bg-yellow-500/5'
                                                           }`}>
                                                               {p.mvp}
                                                           </td>
+
+                                                          {/* Celulas de Abates por Safe */}
+                                                          {allSafeNames.map((s, sIdx) => {
+                                                              const isLast = sIdx === allSafeNames.length - 1;
+                                                              const isSorted = roleSort.field === `safe_${s}`;
+                                                              const safeKillsCount = p.safeKills?.[s] ?? p[`safe_${s}`] ?? 0;
+                                                              return (
+                                                                  <td
+                                                                      key={`td-safe-${p.name}-${s}`}
+                                                                      className={`px-2.5 py-2.5 text-center text-[10px] font-mono ${
+                                                                          isLast ? 'rounded-r-xl' : ''
+                                                                      } ${
+                                                                          isSorted
+                                                                              ? 'text-emerald-300 bg-emerald-500/20 font-black border-x border-emerald-500/30'
+                                                                              : safeKillsCount > 0
+                                                                              ? 'text-emerald-400 font-bold bg-emerald-950/20'
+                                                                              : 'text-gray-600'
+                                                                      }`}
+                                                                  >
+                                                                      {safeKillsCount > 0 ? (
+                                                                          <span className="inline-flex items-center justify-center min-w-[20px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-black text-[10px]">
+                                                                              {safeKillsCount}
+                                                                          </span>
+                                                                      ) : (
+                                                                          <span className="text-gray-600 font-normal">-</span>
+                                                                      )}
+                                                                  </td>
+                                                              );
+                                                          })}
                                                       </tr>
                                                   );
                                               })}
@@ -4684,7 +4785,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                            <button onClick={() => { setFilters(prev => ({...prev, players: []})); setActiveTab('ranking'); }} className="text-xs text-yellow-500 hover:text-yellow-400 flex items-center gap-1 font-black uppercase tracking-widest bg-white/5 px-4 py-2 rounded-lg border border-white/5 transition-colors">
                                <ArrowLeft size={14}/> Voltar para Ranking
                            </button>
-                           <PlayerProfile data={data} playerName={filters.players[0]} filters={filters} characters={data.characters} />
+                           <PlayerProfile data={data} playerName={filters.players[0]} filters={filters} characters={data.characters} rankingData={rankingData} />
                       </div>
                   ) : (
                       <div className="bg-[#1a1a1a] rounded-2xl p-24 text-center border border-gray-800 shadow-inner">
@@ -5152,11 +5253,59 @@ const PlayerRadarComponent: React.FC<{
 };
 
 
-const PlayerProfile = ({ data, playerName, filters, characters }: any) => {
+const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: any) => {
     const [profileSubTab, setProfileSubTab] = useState<'all' | 'zeradas' | 'rounds' | 'history'>('all');
     const [showDetails, setShowDetails] = useState<boolean>(true);
     const normalize = (val: string | undefined) => (val || '').trim().toUpperCase();
     const cleanKey = (s: string) => s.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "").trim();
+
+    
+    const rankings = useMemo(() => {
+        if (!rankingData) return null;
+        
+        const normalize = (val: string | undefined) => (val || '').trim().toUpperCase();
+        const pName = normalize(playerName);
+        
+        // Find player's team and role
+        const pData = rankingData.find((p: any) => normalize(p.name) === pName);
+        if (!pData) return null;
+        
+        const team = normalize(pData.team);
+        const role = normalize(pData.role);
+        
+        // Helper to get rank
+        const getRanks = (field: string) => {
+            const sortedDesc = [...rankingData].sort((a,b) => b[field] - a[field]);
+            
+            const overallRank = sortedDesc.findIndex(p => normalize(p.name) === pName) + 1;
+            
+            const roleSorted = sortedDesc.filter(p => normalize(p.role) === role);
+            const roleRank = roleSorted.findIndex(p => normalize(p.name) === pName) + 1;
+            const roleTotal = roleSorted.length;
+            
+            const teamSorted = sortedDesc.filter(p => normalize(p.team) === team);
+            const teamRank = teamSorted.findIndex(p => normalize(p.name) === pName) + 1;
+            const teamTotal = teamSorted.length;
+            
+            return {
+                overall: overallRank,
+                overallTotal: rankingData.length,
+                role: roleRank,
+                roleTotal,
+                team: teamRank,
+                teamTotal,
+                value: pData[field]
+            };
+        };
+        
+        return {
+            kills: getRanks('kills'),
+            damage: getRanks('damage'),
+            hs: getRanks('hs'),
+            knocks: getRanks('knocks'),
+            assists: getRanks('assists')
+        };
+    }, [rankingData, playerName]);
 
     const stats = useMemo(() => {
         const records = data.players.filter((p: PlayerData) => {
@@ -5833,7 +5982,59 @@ const PlayerProfile = ({ data, playerName, filters, characters }: any) => {
             )}
 
             {/* Conteúdo: Visão Geral ou Abas Específicas */}
-            {showDetails && (profileSubTab === 'all' || profileSubTab === 'zeradas') && (
+            
+            {/* Rankings Section */}
+            {showDetails && profileSubTab === 'all' && rankings && (
+                <div className="bg-gradient-to-br from-[#1a1a1a] to-[#121215] p-6 rounded-3xl border border-yellow-500/20 shadow-2xl space-y-6 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-yellow-500/5 rounded-full blur-3xl pointer-events-none -mr-10 -mt-10" />
+                    
+                    <div className="flex items-center gap-3 border-b border-white/5 pb-4">
+                        <Trophy size={20} className="text-yellow-500" />
+                        <h3 className="text-lg font-black text-white uppercase italic tracking-tight">Classificações do Jogador no Campeonato</h3>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                        {[
+                            { label: "Abates", data: rankings.kills, color: "text-red-400", bg: "bg-red-500/10", border: "border-red-500/20" },
+                            { label: "Dano", data: rankings.damage, color: "text-orange-400", bg: "bg-orange-500/10", border: "border-orange-500/20" },
+                            { label: "HS", data: rankings.hs, color: "text-yellow-400", bg: "bg-yellow-500/10", border: "border-yellow-500/20" },
+                            { label: "Deitados", data: rankings.knocks, color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/20" },
+                            { label: "Assistências", data: rankings.assists, color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20" }
+                        ].map(stat => (
+                            <div key={stat.label} className="bg-black/60 p-4 rounded-2xl border border-white/5 flex flex-col items-center relative overflow-hidden">
+                                <div className={`absolute top-0 left-0 w-full h-1 ${stat.bg}`} />
+                                <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest mb-3">{stat.label}</span>
+                                
+                                <div className="w-full space-y-2">
+                                    <div className="flex justify-between items-center text-xs">
+                                        <span className="text-gray-500 font-bold">Geral</span>
+                                        <div className="flex items-center gap-1">
+                                            <span className={`font-black italic ${stat.color}`}>#{stat.data.overall}</span>
+                                            <span className="text-[9px] text-gray-600">/ {stat.data.overallTotal}</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-between items-center text-xs">
+                                        <span className="text-gray-500 font-bold">Função</span>
+                                        <div className="flex items-center gap-1">
+                                            <span className={`font-black italic ${stat.color}`}>#{stat.data.role}</span>
+                                            <span className="text-[9px] text-gray-600">/ {stat.data.roleTotal}</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-between items-center text-xs">
+                                        <span className="text-gray-500 font-bold">Equipe</span>
+                                        <div className="flex items-center gap-1">
+                                            <span className={`font-black italic ${stat.color}`}>#{stat.data.team}</span>
+                                            <span className="text-[9px] text-gray-600">/ {stat.data.teamTotal}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+{showDetails && (profileSubTab === 'all' || profileSubTab === 'zeradas') && (
                 <div className="bg-[#0e0e11] p-6 rounded-3xl border border-red-900/30 shadow-2xl space-y-6">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-4">
                         <div>
