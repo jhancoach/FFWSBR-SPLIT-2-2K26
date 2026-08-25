@@ -4,7 +4,7 @@ import { Download, Image as ImageIcon } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { findTeamLogo } from '../utils/teamUtils';
 import { findDimImg } from '../utils/skillImages';
-import { Flame, Crosshair, AlertTriangle, Target as TargetIcon, Skull, Activity, Shield, Star, Crown, Map as MapIcon, Swords, User } from 'lucide-react';
+import { Flame, Crosshair, AlertTriangle, Target as TargetIcon, Skull, Activity, Shield, Star, Crown, Map as MapIcon, Swords, User, Users } from 'lucide-react';
 
 interface BannersProps {
   data: DashboardData;
@@ -102,15 +102,71 @@ const PlayerStatCard = ({ title, data, statKey, avgKey, statLabel, color }: any)
 };
 
 
-const FifaCard = ({ data, mode, selectedId }: { data: any, mode: 'player' | 'team', selectedId: string }) => {
+const FifaCard = ({ 
+  data, 
+  mode, 
+  selectedId, 
+  selectedRd = 'all', 
+  selectedQueda = 'all' 
+}: { 
+  data: any; 
+  mode: 'player' | 'team'; 
+  selectedId: string; 
+  selectedRd?: string; 
+  selectedQueda?: string; 
+}) => {
   const [isFlipped, setIsFlipped] = React.useState(false);
 
-  const { stats, topWeapon, mapStats, safeStats, info, rank, topVictims, topVictimTeams } = React.useMemo(() => {
+  const { stats, topWeapon, mapStats, safeStats, info, rank, topVictims, topVictimTeams, filterLabel, teamPlayers } = React.useMemo(() => {
+    const emptyStats = { 
+      kills: 0, matches: 0, damage: 0, hs: 0, knocks: 0, assists: 0, mvp: 0, 
+      matchesWithKills: 0, matchesZeroKills: 0, killContribution: '0',
+      pts: 0, ptsc: 0, booyahs: 0, booyahRate: '0', top3Count: 0, top3Rate: '0',
+      avgPts: '0', avgKills: '0', avgPtsc: '0', avgDamage: '0', avgKnocks: '0', avgHs: '0', avgAssists: '0'
+    };
+
+    const filterText = (selectedRd === 'all' && selectedQueda === 'all')
+      ? 'FFWS 2026 • GERAL'
+      : (selectedRd !== 'all' && selectedQueda !== 'all')
+      ? `RODADA ${selectedRd} • QUEDA ${selectedQueda}`
+      : selectedRd !== 'all'
+      ? `RODADA ${selectedRd}`
+      : `QUEDA ${selectedQueda}`;
+
     if (!selectedId) {
-      return { stats: { kills: 0, matches: 0, damage: 0, hs: 0, knocks: 0, assists: 0, mvp: 0, matchesWithKills: 0, matchesZeroKills: 0, killContribution: '0' }, topWeapon: 'NENHUMA', mapStats: [], safeStats: [], info: { name: '', subtitle: '', img: '', teamImg: '', weaponImg: '', role: '' }, rank: 0, topVictims: [], topVictimTeams: [] };
+      return { 
+        stats: emptyStats, 
+        topWeapon: 'NENHUMA', 
+        mapStats: [], 
+        safeStats: [], 
+        info: { name: '', subtitle: '', img: '', teamImg: '', weaponImg: '', role: '' }, 
+        rank: 0, 
+        topVictims: [], 
+        topVictimTeams: [],
+        filterLabel: filterText,
+        teamPlayers: []
+      };
     }
 
+    // Filter helpers
+    const isRowMatching = (r: { RD?: any; Q?: any }) => {
+      if (selectedRd && selectedRd !== 'all') {
+        const rdVal = (r.RD ?? '').toString().trim();
+        if (rdVal !== selectedRd.toString().trim()) return false;
+      }
+      if (selectedQueda && selectedQueda !== 'all') {
+        const qVal = (r.Q ?? '').toString().trim();
+        if (qVal !== selectedQueda.toString().trim()) return false;
+      }
+      return true;
+    };
+
+    const filteredPlayers = data.players.filter(isRowMatching);
+    const filteredDetails = data.details.filter(isRowMatching);
+    const filteredKillFeed = data.killFeed.filter(isRowMatching);
+
     let kills = 0, matches = 0, damage = 0, hs = 0, knocks = 0, assists = 0, mvp = 0;
+    let pts = 0, ptsc = 0, booyahs = 0, top3Count = 0;
     let matchesWithKills = 0, matchesZeroKills = 0;
     const mapCount: Record<string, { kills: number, matches: number }> = {};
     const safeCount: Record<string, number> = {};
@@ -126,13 +182,29 @@ const FifaCard = ({ data, mode, selectedId }: { data: any, mode: 'player' | 'tea
     let killContribution = '0';
     let rank = 0;
 
+    const teamPlayers: Array<{
+      name: string;
+      img: string;
+      role: string;
+      kills: number;
+      damage: number;
+      hs: number;
+      knocks: number;
+      assists: number;
+      mvp: number;
+      matches: number;
+      killShare: string;
+      avgKills: string;
+      avgDamage: string;
+    }> = [];
+
     if (mode === 'player') {
       const pDim = data.playersDimension?.find((d: any) => d.Name === selectedId);
       img = pDim ? pDim.IMG : '';
       role = pDim ? pDim.Funcao || '' : '';
       
       let pTeam = '';
-      data.players.forEach((p: any) => {
+      filteredPlayers.forEach((p: any) => {
         if (p.PLAYER === selectedId) {
           const k = parseNumber(p.Abates);
           kills += k;
@@ -142,35 +214,41 @@ const FifaCard = ({ data, mode, selectedId }: { data: any, mode: 'player' | 'tea
           assists += parseNumber(p.Assistencias);
           mvp += parseNumber(p.MVP);
           matches += 1;
-          pTeam = p.TIME;
+          if (!pTeam && p.TIME) pTeam = p.TIME;
 
           if (k > 0) matchesWithKills++;
           else matchesZeroKills++;
         }
       });
+
+      // Fallback team lookup if no matches found in current filter
+      if (!pTeam) {
+        pTeam = data.players.find((p: any) => p.PLAYER === selectedId)?.TIME || '';
+      }
+
       subtitle = pTeam;
       if (pTeam) {
-          teamImg = findTeamLogo(pTeam, data.teamsReference) || '';
+        teamImg = findTeamLogo(pTeam, data.teamsReference) || '';
       }
 
       let teamTotalKills = 0;
-      data.players.forEach((p: any) => {
-          if (p.TIME === pTeam) {
-              teamTotalKills += parseNumber(p.Abates);
-          }
+      filteredPlayers.forEach((p: any) => {
+        if (p.TIME === pTeam) {
+          teamTotalKills += parseNumber(p.Abates);
+        }
       });
       killContribution = teamTotalKills > 0 ? ((kills / teamTotalKills) * 100).toFixed(1) : '0';
 
-      const playerMap = new Map();
-      data.players.forEach((p: any) => {
-          const k = parseNumber(p.Abates);
-          playerMap.set(p.PLAYER, (playerMap.get(p.PLAYER) || 0) + k);
+      const playerMap = new Map<string, number>();
+      filteredPlayers.forEach((p: any) => {
+        const k = parseNumber(p.Abates);
+        playerMap.set(p.PLAYER, (playerMap.get(p.PLAYER) || 0) + k);
       });
-      const sorted = Array.from(playerMap.entries()).sort((a,b) => b[1] - a[1]);
+      const sorted = Array.from(playerMap.entries()).sort((a, b) => b[1] - a[1]);
       const idx = sorted.findIndex(s => s[0] === selectedId);
       rank = idx !== -1 ? idx + 1 : 0;
 
-      data.killFeed.forEach((k: any) => {
+      filteredKillFeed.forEach((k: any) => {
         if (k.PLAYER === selectedId) {
           if (k.ARMA) weaponCount[k.ARMA] = (weaponCount[k.ARMA] || 0) + 1;
           if (k.MAPA) {
@@ -181,32 +259,57 @@ const FifaCard = ({ data, mode, selectedId }: { data: any, mode: 'player' | 'tea
           if (k.SAFE) safeCount[k.SAFE] = (safeCount[k.SAFE] || 0) + 1;
           
           if (k.VITIMA) {
-             victimPlayerCount[k.VITIMA] = (victimPlayerCount[k.VITIMA] || 0) + 1;
-             const vTeam = data.players.find((p: any) => p.PLAYER === k.VITIMA)?.TIME;
-             if (vTeam) {
-                 victimTeamCount[vTeam] = (victimTeamCount[vTeam] || 0) + 1;
-             }
+            victimPlayerCount[k.VITIMA] = (victimPlayerCount[k.VITIMA] || 0) + 1;
+            const vTeam = data.players.find((p: any) => p.PLAYER === k.VITIMA)?.TIME;
+            if (vTeam) {
+              victimTeamCount[vTeam] = (victimTeamCount[vTeam] || 0) + 1;
+            }
           }
         }
       });
 
-      data.details.forEach((d: any) => {
+      filteredDetails.forEach((d: any) => {
         if (d.TIME === pTeam && d.MAPA) {
-            const m = formatMapName(d.MAPA);
-            if (!mapCount[m]) mapCount[m] = { kills: 0, matches: 0 };
-            mapCount[m].matches += 1;
+          const m = formatMapName(d.MAPA);
+          if (!mapCount[m]) mapCount[m] = { kills: 0, matches: 0 };
+          mapCount[m].matches += 1;
         }
       });
 
     } else {
-      const tDim = data.teamsReference?.find((t: any) => t.name === selectedId);
-      img = tDim ? tDim.logo : '';
-      teamImg = img;
+      // Team Mode
+      const teamLogo = findTeamLogo(selectedId, data.teamsReference);
+      img = teamLogo || '';
+      teamImg = teamLogo || '';
 
-      data.details.forEach((d: any) => {
+      const teamRef = data.teamsReference?.find((t: any) => t.TIME === selectedId);
+      subtitle = teamRef?.GRUPO ? `GRUPO ${teamRef.GRUPO}` : 'EQUIPE FFWS';
+
+      filteredDetails.forEach((d: any) => {
         if (d.TIME === selectedId) {
-          kills += parseNumber(d.ABTS);
+          const rowAbts = parseNumber(d.ABTS);
+          const rowPtsc = parseNumber(d.PTSC);
+          const rowPts = parseNumber(d.PTS) || (rowPtsc + rowAbts);
+          const rowPos = parseNumber(d.POS);
+          const rowB = parseNumber(d.B);
+
+          kills += rowAbts;
+          ptsc += rowPtsc;
+          pts += rowPts;
           matches += 1;
+
+          if (rowPos === 1 || rowB === 1) {
+            booyahs += 1;
+          }
+          if (rowPos >= 1 && rowPos <= 3) {
+            top3Count += 1;
+          }
+          if (rowAbts > 0) {
+            matchesWithKills += 1;
+          } else {
+            matchesZeroKills += 1;
+          }
+
           if (d.MAPA) {
             const m = formatMapName(d.MAPA);
             if (!mapCount[m]) mapCount[m] = { kills: 0, matches: 0 };
@@ -214,7 +317,8 @@ const FifaCard = ({ data, mode, selectedId }: { data: any, mode: 'player' | 'tea
           }
         }
       });
-      data.players.forEach((p: any) => {
+
+      filteredPlayers.forEach((p: any) => {
         if (p.TIME === selectedId) {
           damage += parseNumber(p.Dano);
           hs += parseNumber(p.HS);
@@ -224,16 +328,97 @@ const FifaCard = ({ data, mode, selectedId }: { data: any, mode: 'player' | 'tea
         }
       });
 
-      const teamMap = new Map();
-      data.details.forEach((d: any) => {
-          const k = parseNumber(d.ABTS);
-          teamMap.set(d.TIME, (teamMap.get(d.TIME) || 0) + k);
+      // Calculate roster of team players
+      const pMap = new Map<string, {
+        name: string;
+        kills: number;
+        damage: number;
+        hs: number;
+        knocks: number;
+        assists: number;
+        mvp: number;
+        matches: number;
+      }>();
+
+      filteredPlayers.forEach((p: any) => {
+        if (p.TIME === selectedId && p.PLAYER) {
+          const cur = pMap.get(p.PLAYER) || {
+            name: p.PLAYER,
+            kills: 0,
+            damage: 0,
+            hs: 0,
+            knocks: 0,
+            assists: 0,
+            mvp: 0,
+            matches: 0
+          };
+          cur.kills += parseNumber(p.Abates);
+          cur.damage += parseNumber(p.Dano);
+          cur.hs += parseNumber(p.HS);
+          cur.knocks += parseNumber(p.Deitados);
+          cur.assists += parseNumber(p.Assistencias);
+          cur.mvp += parseNumber(p.MVP);
+          cur.matches += 1;
+          pMap.set(p.PLAYER, cur);
+        }
       });
-      const sorted = Array.from(teamMap.entries()).sort((a,b) => b[1] - a[1]);
-      const idx = sorted.findIndex(s => s[0] === selectedId);
+
+      // Fallback: make sure all registered players for this team in data.players exist in the map
+      data.players.forEach((p: any) => {
+        if (p.TIME === selectedId && p.PLAYER && !pMap.has(p.PLAYER)) {
+          pMap.set(p.PLAYER, {
+            name: p.PLAYER,
+            kills: 0,
+            damage: 0,
+            hs: 0,
+            knocks: 0,
+            assists: 0,
+            mvp: 0,
+            matches: 0
+          });
+        }
+      });
+
+      Array.from(pMap.values()).forEach(p => {
+        const pDim = data.playersDimension?.find((d: any) => d.Name === p.name || d.PLAYER === p.name);
+        const killShare = kills > 0 ? ((p.kills / kills) * 100).toFixed(0) : '0';
+        const avgKills = p.matches > 0 ? (p.kills / p.matches).toFixed(1) : '0';
+        const avgDamage = p.matches > 0 ? (p.damage / p.matches).toFixed(0) : '0';
+        teamPlayers.push({
+          ...p,
+          img: pDim ? pDim.IMG : '',
+          role: pDim ? pDim.Funcao || '' : '',
+          killShare,
+          avgKills,
+          avgDamage
+        });
+      });
+
+      teamPlayers.sort((a, b) => b.kills - a.kills || b.damage - a.damage);
+
+      // Team rank in filtered period
+      const teamMap = new Map<string, { pts: number; kills: number }>();
+      filteredDetails.forEach((d: any) => {
+        const t = d.TIME;
+        if (!t) return;
+        const current = teamMap.get(t) || { pts: 0, kills: 0 };
+        const rowAbts = parseNumber(d.ABTS);
+        const rowPtsc = parseNumber(d.PTSC);
+        const rowPts = parseNumber(d.PTS) || (rowPtsc + rowAbts);
+        teamMap.set(t, {
+          pts: current.pts + rowPts,
+          kills: current.kills + rowAbts,
+        });
+      });
+      const sortedTeams = Array.from(teamMap.entries()).sort((a, b) => {
+        if (b[1].pts !== a[1].pts) return b[1].pts - a[1].pts;
+        return b[1].kills - a[1].kills;
+      });
+      const idx = sortedTeams.findIndex(s => s[0] === selectedId);
       rank = idx !== -1 ? idx + 1 : 0;
 
-      data.killFeed.forEach((k: any) => {
+      // KillFeed for Team
+      filteredKillFeed.forEach((k: any) => {
         const pTeam = data.players.find((p: any) => p.PLAYER === k.PLAYER)?.TIME;
         if (pTeam === selectedId) {
           if (k.ARMA) weaponCount[k.ARMA] = (weaponCount[k.ARMA] || 0) + 1;
@@ -245,11 +430,11 @@ const FifaCard = ({ data, mode, selectedId }: { data: any, mode: 'player' | 'tea
           if (k.SAFE) safeCount[k.SAFE] = (safeCount[k.SAFE] || 0) + 1;
           
           if (k.VITIMA) {
-             victimPlayerCount[k.VITIMA] = (victimPlayerCount[k.VITIMA] || 0) + 1;
-             const vTeam = data.players.find((p: any) => p.PLAYER === k.VITIMA)?.TIME;
-             if (vTeam) {
-                 victimTeamCount[vTeam] = (victimTeamCount[vTeam] || 0) + 1;
-             }
+            victimPlayerCount[k.VITIMA] = (victimPlayerCount[k.VITIMA] || 0) + 1;
+            const vTeam = data.players.find((p: any) => p.PLAYER === k.VITIMA)?.TIME;
+            if (vTeam) {
+              victimTeamCount[vTeam] = (victimTeamCount[vTeam] || 0) + 1;
+            }
           }
         }
       });
@@ -263,36 +448,52 @@ const FifaCard = ({ data, mode, selectedId }: { data: any, mode: 'player' | 'tea
     
     let weaponImg = '';
     if (topWeapon !== 'NENHUMA' && data.weapons) {
-       const wDim = data.weapons.find((w: any) => w.Arma?.toUpperCase() === topWeapon.toUpperCase());
-       if (wDim) weaponImg = wDim.IMG;
+      const wDim = data.weapons.find((w: any) => w.Arma?.toUpperCase() === topWeapon.toUpperCase());
+      if (wDim) weaponImg = wDim.IMG;
     }
     
     const topVictims = Object.entries(victimPlayerCount)
-        .sort((a,b) => b[1] - a[1])
-        .slice(0, 3)
-        .map(([n, c]) => {
-            const pDim = data.playersDimension?.find((d: any) => d.Name === n);
-            return { name: n, count: c, img: pDim ? pDim.IMG : '' };
-        });
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([n, c]) => {
+        const pDim = data.playersDimension?.find((d: any) => d.Name === n);
+        return { name: n, count: c, img: pDim ? pDim.IMG : '' };
+      });
 
     const topVictimTeams = Object.entries(victimTeamCount)
-        .sort((a,b) => b[1] - a[1])
-        .slice(0, 3)
-        .map(([n, c]) => {
-            return { name: n, count: c, img: findTeamLogo(n, data.teamsReference) || '' };
-        });
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([n, c]) => {
+        return { name: n, count: c, img: findTeamLogo(n, data.teamsReference) || '' };
+      });
+
+    const booyahRate = matches > 0 ? ((booyahs / matches) * 100).toFixed(1) : '0';
+    const top3Rate = matches > 0 ? ((top3Count / matches) * 100).toFixed(1) : '0';
+    const avgPts = matches > 0 ? (pts / matches).toFixed(1) : '0';
+    const avgKills = matches > 0 ? (kills / matches).toFixed(1) : '0';
+    const avgPtsc = matches > 0 ? (ptsc / matches).toFixed(1) : '0';
+    const avgDamage = matches > 0 ? (damage / matches).toFixed(0) : '0';
+    const avgKnocks = matches > 0 ? (knocks / matches).toFixed(1) : '0';
+    const avgHs = matches > 0 ? (hs / matches).toFixed(1) : '0';
+    const avgAssists = matches > 0 ? (assists / matches).toFixed(1) : '0';
 
     return {
-      stats: { kills, matches, damage, hs, knocks, assists, mvp, matchesWithKills, matchesZeroKills, killContribution },
+      stats: { 
+        kills, matches, damage, hs, knocks, assists, mvp, matchesWithKills, matchesZeroKills, killContribution,
+        pts, ptsc, booyahs, booyahRate, top3Count, top3Rate,
+        avgPts, avgKills, avgPtsc, avgDamage, avgKnocks, avgHs, avgAssists
+      },
       topWeapon,
-      mapStats: Object.entries(mapCount).map(([k, v]) => ({ name: k, ...v })).sort((a,b) => b.kills - a.kills),
-      safeStats: Object.entries(safeCount).map(([k, v]) => ({ name: k, kills: v })).sort((a,b) => parseInt(a.name) - parseInt(b.name)),
+      mapStats: Object.entries(mapCount).map(([k, v]) => ({ name: k, ...v })).sort((a, b) => b.kills - a.kills),
+      safeStats: Object.entries(safeCount).map(([k, v]) => ({ name: k, kills: v })).sort((a, b) => parseInt(a.name) - parseInt(b.name)),
       info: { name, subtitle, img, teamImg, weaponImg, role },
       rank,
       topVictims,
-      topVictimTeams
+      topVictimTeams,
+      filterLabel: filterText,
+      teamPlayers
     };
-  }, [data, mode, selectedId]);
+  }, [data, mode, selectedId, selectedRd, selectedQueda]);
 
   if (!selectedId) {
     return <div className="text-gray-500 font-bold uppercase tracking-widest h-96 flex items-center justify-center">Selecione um {mode === 'player' ? 'jogador' : 'time'} para gerar a carta.</div>;
@@ -301,226 +502,450 @@ const FifaCard = ({ data, mode, selectedId }: { data: any, mode: 'player' | 'tea
   return (
     <div className="flex justify-center my-8">
       <div 
-        className="relative w-[360px] h-[580px] cursor-pointer group" 
-        style={{ perspective: '1000px' }} 
+        className="relative w-[360px] h-[580px] cursor-pointer group select-none" 
+        style={{ perspective: '1200px', WebkitPerspective: '1200px' }} 
         onClick={() => setIsFlipped(!isFlipped)}
       >
         <div 
-          className={`w-full h-full relative transition-transform duration-700`} 
-          style={{ transformStyle: 'preserve-3d', transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)' }}
+          className="w-full h-full relative transition-transform duration-700" 
+          style={{ 
+            transformStyle: 'preserve-3d', 
+            WebkitTransformStyle: 'preserve-3d', 
+            transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+            WebkitTransform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)'
+          }}
         >
           {/* Front */}
           <div 
-            className="absolute w-full h-full rounded-2xl overflow-hidden bg-gradient-to-br from-zinc-900 via-black to-neutral-950 p-4 border-[2px] border-zinc-700 shadow-[0_0_30px_rgba(0,0,0,0.8)] flex flex-col items-center"
-            style={{ backfaceVisibility: 'hidden' }}
+            className="absolute inset-0 w-full h-full rounded-2xl overflow-hidden bg-gradient-to-br from-zinc-900 via-black to-neutral-950 p-4 border-[2px] border-zinc-700 shadow-[0_0_30px_rgba(0,0,0,0.8)] flex flex-col items-center"
+            style={{ 
+              backfaceVisibility: 'hidden',
+              WebkitBackfaceVisibility: 'hidden',
+              transform: 'rotateY(0deg) translateZ(1px)',
+              WebkitTransform: 'rotateY(0deg) translateZ(1px)',
+              pointerEvents: isFlipped ? 'none' : 'auto',
+              visibility: isFlipped ? 'hidden' : 'visible',
+              transition: 'visibility 0s linear 0.35s'
+            }}
           >
-             {/* Rank Badge absolute top-center */}
+             {/* Rank Badge absolute top-center without 2D translate transform */}
              {rank > 0 && (
-                 <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-yellow-500 text-black px-4 py-1 rounded-b-xl border-x-2 border-b-2 border-yellow-600 font-black italic shadow-lg z-20">
+                 <div 
+                     className="absolute top-0 inset-x-0 mx-auto w-fit bg-yellow-500 text-black px-4 py-1 rounded-b-xl border-x-2 border-b-2 border-yellow-600 font-black italic shadow-lg"
+                     style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
+                 >
                      RANK #{rank}
                  </div>
              )}
 
-             <div className="flex w-full items-start justify-between px-2 mb-1 mt-3">
+             <div className="flex w-full items-start justify-between px-2 mb-1 mt-3" style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}>
                  {/* Team Badge Top Left */}
-                 <div className="w-12 h-12 bg-zinc-900 rounded-lg border-2 border-white/20 shadow-lg p-1 overflow-hidden flex items-center justify-center">
+                 <div 
+                     className="w-12 h-12 bg-zinc-900 rounded-lg border-2 border-white/20 shadow-lg p-1 overflow-hidden flex items-center justify-center"
+                     style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
+                 >
                     {info.teamImg ? (
-                        <img src={info.teamImg} alt={info.subtitle} className="w-full h-full object-contain" />
+                        <img src={info.teamImg} alt={info.subtitle} className="w-full h-full object-contain" style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }} />
                     ) : (
                         <span className="text-xs font-bold text-gray-500">{info.subtitle.substring(0,3)}</span>
                     )}
                  </div>
 
-                 {/* Role Top Right */}
-                 {mode === 'player' && info.role && (
-                    <div className="bg-black/60 border border-white/20 rounded-md px-2 py-1">
-                        <span className="text-[10px] font-black text-yellow-400 uppercase tracking-widest">{info.role}</span>
+                 {/* Role / Group Top Right */}
+                 {mode === 'player' ? (
+                    info.role && (
+                      <div className="bg-black/60 border border-white/20 rounded-md px-2 py-1" style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}>
+                          <span className="text-[10px] font-black text-yellow-400 uppercase tracking-widest">{info.role}</span>
+                      </div>
+                    )
+                 ) : (
+                    <div className="bg-black/60 border border-white/20 rounded-md px-2 py-1" style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}>
+                        <span className="text-[10px] font-black text-yellow-400 uppercase tracking-widest">{info.subtitle}</span>
                     </div>
                  )}
              </div>
 
-             <div className="relative w-32 h-32 rounded-full bg-zinc-900 border-4 border-white/20 shadow-[0_0_15px_rgba(0,0,0,0.5)] overflow-visible mb-2 flex items-center justify-center p-1 z-10 -mt-8">
+             <div 
+                 className="relative w-32 h-32 rounded-full bg-zinc-900 border-4 border-white/20 shadow-[0_0_15px_rgba(0,0,0,0.5)] overflow-hidden mb-2 flex items-center justify-center p-1.5 -mt-8"
+                 style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
+             >
                 {info.img ? (
-                    <img src={info.img} alt={info.name} className="w-full h-full object-cover rounded-full" />
+                    <img 
+                        src={info.img} 
+                        alt={info.name} 
+                        className={`w-full h-full ${mode === 'team' ? 'object-contain p-2' : 'object-cover'} rounded-full`} 
+                        style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
+                    />
                 ) : (
-                    <span className="text-4xl font-black text-gray-500">{info.name.substring(0,2)}</span>
+                    <span className="text-3xl font-black text-gray-500">{info.name.substring(0,3)}</span>
                 )}
              </div>
              
              <h2 className="text-[28px] font-black italic text-white uppercase tracking-tighter shadow-black drop-shadow-md text-center leading-tight max-w-[280px] truncate">{info.name}</h2>
              
-             {mode === 'player' && (
+             {mode === 'player' ? (
                  <div className="bg-white/5 border border-white/10 rounded-full px-3 py-0.5 mt-1 mb-1.5">
                      <span className="text-[10px] font-bold text-yellow-300 uppercase tracking-widest">
                          ⚡ {stats.killContribution}% Kills do Time
                      </span>
                  </div>
+             ) : (
+                 <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-full px-3 py-0.5 mt-1 mb-1.5 flex items-center gap-1.5">
+                     <span className="text-[10px] font-black text-yellow-400 uppercase tracking-widest">
+                         🏆 {stats.booyahs} BOOYAHS ({stats.booyahRate}%)
+                     </span>
+                 </div>
              )}
 
-             {!info.subtitle && <div className="h-1.5" />}
-
-             {/* Adjust Grid for Stats including Partidas (Matches) & Averages */}
-             <div className="grid grid-cols-3 gap-1.5 w-full mt-1">
-                 <div className="bg-white/5 p-1.5 rounded-xl border border-white/10 text-center flex flex-col justify-center">
-                    <span className="block text-lg font-black text-white italic leading-none">{stats.kills}</span>
-                    <span className="text-[8px] uppercase font-bold text-yellow-300 mt-1">Abates</span>
-                 </div>
-                 <div className="bg-white/5 p-1.5 rounded-xl border border-white/10 text-center flex flex-col justify-center">
-                    <span className="block text-lg font-black text-white italic leading-none">{stats.matches > 0 ? (stats.kills / stats.matches).toFixed(2) : 0}</span>
-                    <span className="text-[8px] uppercase font-bold text-yellow-300 mt-1">Média/Q</span>
-                 </div>
-                 <div className="bg-white/5 p-1.5 rounded-xl border border-white/10 text-center flex flex-col justify-center">
-                    <span className="block text-lg font-black text-white italic leading-none">{stats.matches}</span>
-                    <span className="text-[8px] uppercase font-bold text-yellow-300 mt-1">Partidas</span>
+             {/* Dynamic Stats Grid for Player vs Team */}
+             {mode === 'player' ? (
+               <>
+                 <div className="grid grid-cols-3 gap-1.5 w-full mt-1">
+                     <div className="bg-white/5 p-1.5 rounded-xl border border-white/10 text-center flex flex-col justify-center">
+                        <span className="block text-lg font-black text-white italic leading-none">{stats.kills}</span>
+                        <span className="text-[8px] uppercase font-bold text-yellow-300 mt-1">Abates</span>
+                     </div>
+                     <div className="bg-white/5 p-1.5 rounded-xl border border-white/10 text-center flex flex-col justify-center">
+                        <span className="block text-lg font-black text-white italic leading-none">{stats.avgKills}</span>
+                        <span className="text-[8px] uppercase font-bold text-yellow-300 mt-1">Média/Q</span>
+                     </div>
+                     <div className="bg-white/5 p-1.5 rounded-xl border border-white/10 text-center flex flex-col justify-center">
+                        <span className="block text-lg font-black text-white italic leading-none">{stats.matches}</span>
+                        <span className="text-[8px] uppercase font-bold text-yellow-300 mt-1">Partidas</span>
+                     </div>
+                     
+                     <div className="bg-white/5 p-1 rounded-xl border border-white/10 text-center flex flex-col justify-center">
+                        <span className="block text-lg font-black text-white italic leading-none">{stats.damage.toLocaleString('pt-BR')}</span>
+                        <span className="text-[7.5px] text-gray-400 font-bold mt-0.5">AVG {stats.avgDamage}</span>
+                        <span className="text-[8px] uppercase font-bold text-yellow-300 mt-0.5">Dano</span>
+                     </div>
+                     <div className="bg-white/5 p-1 rounded-xl border border-white/10 text-center flex flex-col justify-center">
+                        <span className="block text-lg font-black text-white italic leading-none">{stats.hs}</span>
+                        <span className="text-[7.5px] text-gray-400 font-bold mt-0.5">AVG {stats.avgHs}</span>
+                        <span className="text-[8px] uppercase font-bold text-yellow-300 mt-0.5">HS</span>
+                     </div>
+                     <div className="bg-white/5 p-1 rounded-xl border border-white/10 text-center flex flex-col justify-center">
+                        <span className="block text-lg font-black text-white italic leading-none">{stats.assists}</span>
+                        <span className="text-[7.5px] text-gray-400 font-bold mt-0.5">AVG {stats.avgAssists}</span>
+                        <span className="text-[8px] uppercase font-bold text-yellow-300 mt-0.5">Assist.</span>
+                     </div>
                  </div>
                  
-                 <div className="bg-white/5 p-1 rounded-xl border border-white/10 text-center flex flex-col justify-center">
-                    <span className="block text-lg font-black text-white italic leading-none">{stats.damage.toLocaleString('pt-BR')}</span>
-                    <span className="text-[7.5px] text-gray-400 font-bold mt-0.5">AVG {stats.matches > 0 ? (stats.damage/stats.matches).toFixed(0) : 0}</span>
-                    <span className="text-[8px] uppercase font-bold text-yellow-300 mt-0.5">Dano</span>
-                 </div>
-                 <div className="bg-white/5 p-1 rounded-xl border border-white/10 text-center flex flex-col justify-center">
-                    <span className="block text-lg font-black text-white italic leading-none">{stats.hs}</span>
-                    <span className="text-[7.5px] text-gray-400 font-bold mt-0.5">AVG {stats.matches > 0 ? (stats.hs/stats.matches).toFixed(1) : 0}</span>
-                    <span className="text-[8px] uppercase font-bold text-yellow-300 mt-0.5">HS</span>
-                 </div>
-                 <div className="bg-white/5 p-1 rounded-xl border border-white/10 text-center flex flex-col justify-center">
-                    <span className="block text-lg font-black text-white italic leading-none">{stats.assists}</span>
-                    <span className="text-[7.5px] text-gray-400 font-bold mt-0.5">AVG {stats.matches > 0 ? (stats.assists/stats.matches).toFixed(1) : 0}</span>
-                    <span className="text-[8px] uppercase font-bold text-yellow-300 mt-0.5">Assist.</span>
-                 </div>
-             </div>
-             
-             {mode === 'player' ? (
-               <div className="grid grid-cols-3 gap-1.5 w-full mt-1.5">
-                   <div className="bg-white/5 p-1 rounded-xl border border-white/10 text-center flex flex-col justify-center">
-                       <span className="block text-sm font-black text-white italic leading-none">{stats.knocks}</span>
-                       <span className="text-[7.5px] text-gray-400 font-bold mt-0.5">AVG {stats.matches > 0 ? (stats.knocks/stats.matches).toFixed(1) : 0}</span>
-                       <span className="text-[8px] uppercase font-bold text-yellow-300 mt-0.5">Deitados</span>
-                   </div>
-                   <div className="bg-white/5 p-1 rounded-xl border border-green-500/40 text-center flex flex-col justify-center">
-                       <span className="block text-sm font-black text-green-400 italic leading-none">{stats.matchesWithKills}</span>
-                       <span className="text-[7.5px] text-transparent font-bold mt-0.5 select-none">-</span>
-                       <span className="text-[8px] uppercase font-bold text-green-300 mt-0.5">Q. c/ Kill</span>
-                   </div>
-                   <div className="bg-white/5 p-1 rounded-xl border border-red-500/40 text-center flex flex-col justify-center">
-                       <span className="block text-sm font-black text-red-400 italic leading-none">{stats.matchesZeroKills}</span>
-                       <span className="text-[7.5px] text-transparent font-bold mt-0.5 select-none">-</span>
-                       <span className="text-[8px] uppercase font-bold text-red-300 mt-0.5">Q. Zerada</span>
-                   </div>
-               </div>
-             ) : (
-                 <div className="w-full mt-1.5 bg-white/5 p-1.5 rounded-xl border border-white/10 text-center flex items-center justify-center gap-2">
-                     <div className="flex flex-col items-end">
-                       <span className="block text-xl font-black text-white italic leading-none">{stats.knocks}</span>
-                       <span className="text-[9px] text-gray-400 font-bold">AVG {stats.matches > 0 ? (stats.knocks/stats.matches).toFixed(1) : 0}</span>
+                 <div className="grid grid-cols-3 gap-1.5 w-full mt-1.5">
+                     <div className="bg-white/5 p-1 rounded-xl border border-white/10 text-center flex flex-col justify-center">
+                         <span className="block text-sm font-black text-white italic leading-none">{stats.knocks}</span>
+                         <span className="text-[7.5px] text-gray-400 font-bold mt-0.5">AVG {stats.avgKnocks}</span>
+                         <span className="text-[8px] uppercase font-bold text-yellow-300 mt-0.5">Deitados</span>
                      </div>
-                     <span className="text-[9px] uppercase font-bold text-yellow-300">Deitados</span>
+                     <div className="bg-white/5 p-1 rounded-xl border border-green-500/40 text-center flex flex-col justify-center">
+                         <span className="block text-sm font-black text-green-400 italic leading-none">{stats.matchesWithKills}</span>
+                         <span className="text-[7.5px] text-transparent font-bold mt-0.5 select-none">-</span>
+                         <span className="text-[8px] uppercase font-bold text-green-300 mt-0.5">Q. c/ Kill</span>
+                     </div>
+                     <div className="bg-white/5 p-1 rounded-xl border border-red-500/40 text-center flex flex-col justify-center">
+                         <span className="block text-sm font-black text-red-400 italic leading-none">{stats.matchesZeroKills}</span>
+                         <span className="text-[7.5px] text-transparent font-bold mt-0.5 select-none">-</span>
+                         <span className="text-[8px] uppercase font-bold text-red-300 mt-0.5">Q. Zerada</span>
+                     </div>
                  </div>
+               </>
+             ) : (
+               /* TEAM FRONT STATS */
+               <>
+                 <div className="grid grid-cols-3 gap-1.5 w-full mt-1">
+                     <div className="bg-white/5 p-1.5 rounded-xl border border-yellow-500/30 text-center flex flex-col justify-center">
+                        <span className="block text-lg font-black text-yellow-400 italic leading-none">{stats.pts}</span>
+                        <span className="text-[7.5px] text-gray-400 font-bold mt-0.5">AVG {stats.avgPts}</span>
+                        <span className="text-[8px] uppercase font-bold text-yellow-300 mt-0.5">Pontos Totais</span>
+                     </div>
+                     <div className="bg-white/5 p-1.5 rounded-xl border border-white/10 text-center flex flex-col justify-center">
+                        <span className="block text-lg font-black text-white italic leading-none">{stats.kills}</span>
+                        <span className="text-[7.5px] text-gray-400 font-bold mt-0.5">AVG {stats.avgKills}</span>
+                        <span className="text-[8px] uppercase font-bold text-yellow-300 mt-0.5">Abates</span>
+                     </div>
+                     <div className="bg-white/5 p-1.5 rounded-xl border border-white/10 text-center flex flex-col justify-center">
+                        <span className="block text-lg font-black text-white italic leading-none">{stats.matches}</span>
+                        <span className="text-[7.5px] text-gray-400 font-bold mt-0.5">Disputadas</span>
+                        <span className="text-[8px] uppercase font-bold text-yellow-300 mt-0.5">Quedas</span>
+                     </div>
+                     
+                     <div className="bg-white/5 p-1 rounded-xl border border-yellow-500/20 text-center flex flex-col justify-center">
+                        <span className="block text-lg font-black text-yellow-300 italic leading-none">{stats.booyahs}</span>
+                        <span className="text-[7.5px] text-yellow-400 font-bold mt-0.5">{stats.booyahRate}%</span>
+                        <span className="text-[8px] uppercase font-bold text-yellow-300 mt-0.5">Booyahs</span>
+                     </div>
+                     <div className="bg-white/5 p-1 rounded-xl border border-white/10 text-center flex flex-col justify-center">
+                        <span className="block text-lg font-black text-white italic leading-none">{stats.ptsc}</span>
+                        <span className="text-[7.5px] text-gray-400 font-bold mt-0.5">AVG {stats.avgPtsc}</span>
+                        <span className="text-[8px] uppercase font-bold text-yellow-300 mt-0.5">Pts Coloc.</span>
+                     </div>
+                     <div className="bg-white/5 p-1 rounded-xl border border-white/10 text-center flex flex-col justify-center">
+                        <span className="block text-lg font-black text-white italic leading-none">{stats.top3Count}</span>
+                        <span className="text-[7.5px] text-gray-400 font-bold mt-0.5">{stats.top3Rate}%</span>
+                        <span className="text-[8px] uppercase font-bold text-yellow-300 mt-0.5">Top 3</span>
+                     </div>
+                 </div>
+
+                 <div className="grid grid-cols-3 gap-1.5 w-full mt-1.5">
+                     <div className="bg-white/5 p-1 rounded-xl border border-white/10 text-center flex flex-col justify-center">
+                         <span className="block text-sm font-black text-white italic leading-none">{stats.damage.toLocaleString('pt-BR')}</span>
+                         <span className="text-[7.5px] text-gray-400 font-bold mt-0.5">AVG {stats.avgDamage}</span>
+                         <span className="text-[8px] uppercase font-bold text-yellow-300 mt-0.5">Dano</span>
+                     </div>
+                     <div className="bg-white/5 p-1 rounded-xl border border-white/10 text-center flex flex-col justify-center">
+                         <span className="block text-sm font-black text-white italic leading-none">{stats.knocks}</span>
+                         <span className="text-[7.5px] text-gray-400 font-bold mt-0.5">AVG {stats.avgKnocks}</span>
+                         <span className="text-[8px] uppercase font-bold text-yellow-300 mt-0.5">Deitados</span>
+                     </div>
+                     <div className="bg-white/5 p-1 rounded-xl border border-white/10 text-center flex flex-col justify-center">
+                         <span className="block text-sm font-black text-white italic leading-none">{stats.hs}</span>
+                         <span className="text-[7.5px] text-gray-400 font-bold mt-0.5">AVG {stats.avgHs}</span>
+                         <span className="text-[8px] uppercase font-bold text-yellow-300 mt-0.5">HS</span>
+                     </div>
+                 </div>
+               </>
              )}
 
-             <div className="mt-auto pt-1 text-center group-hover:opacity-100 opacity-60 transition-opacity">
-                <span className="text-[9px] text-yellow-400 uppercase font-black tracking-widest">Clique para virar</span>
+             <div className="mt-auto pt-1 flex flex-col items-center gap-0.5">
+                <span className="text-[8px] text-gray-400 font-black uppercase tracking-wider bg-white/5 px-2 py-0.5 rounded-md border border-white/5">
+                  {filterLabel}
+                </span>
+                <span className="text-[9px] text-yellow-400 uppercase font-black tracking-widest group-hover:opacity-100 opacity-60 transition-opacity">
+                  Clique para virar
+                </span>
              </div>
           </div>
 
-          {/* Back - Compacted to avoid scrolling */}
+          {/* Back */}
           <div 
-            className="absolute w-full h-full rounded-2xl overflow-hidden bg-gradient-to-br from-zinc-900 via-black to-neutral-950 p-4 border-[2px] border-zinc-700 shadow-[0_0_30px_rgba(0,0,0,0.8)] flex flex-col"
-            style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
+            className="absolute inset-0 w-full h-full rounded-2xl overflow-hidden bg-gradient-to-br from-zinc-900 via-black to-neutral-950 p-3.5 border-[2px] border-zinc-700 shadow-[0_0_30px_rgba(0,0,0,0.8)] flex flex-col"
+            style={{ 
+              backfaceVisibility: 'hidden', 
+              WebkitBackfaceVisibility: 'hidden',
+              transform: 'rotateY(180deg) translateZ(1px)',
+              WebkitTransform: 'rotateY(180deg) translateZ(1px)',
+              pointerEvents: isFlipped ? 'auto' : 'none',
+              visibility: !isFlipped ? 'hidden' : 'visible',
+              transition: 'visibility 0s linear 0.35s'
+            }}
           >
-             <h3 className="text-xl font-black text-white italic uppercase border-b border-white/10 pb-1.5 mb-2 text-center shrink-0">Estatísticas</h3>
-             
-             <div className="flex-1 flex flex-col gap-2">
-                
-                {/* 1. Arma & Top Victims */}
-                <div className="grid grid-cols-1 gap-2 shrink-0">
-                    <div className="flex items-center gap-2">
-                        {/* Weapon */}
-                        <div className="flex-1">
-                            <h4 className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1 flex items-center gap-1"><TargetIcon size={10}/> Arma Favorita</h4>
-                            <div className="bg-white/5 border border-white/10 rounded-xl p-1 flex items-center justify-center gap-2 h-10">
-                                {info.weaponImg && (
-                                <img src={info.weaponImg} alt={topWeapon} className="h-6 w-auto object-contain drop-shadow-md" />
-                                )}
-                                <span className="text-xs font-black text-white italic uppercase truncate">{topWeapon}</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Top Victims Grid */}
-                    <div className="grid grid-cols-2 gap-2">
-                        <div>
-                            <h4 className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1 flex items-center gap-1"><Swords size={10}/> Vítimas (Times)</h4>
-                            <div className="flex flex-col gap-1">
-                                {topVictimTeams.map(t => (
-                                    <div key={t.name} className="bg-white/5 rounded-lg p-1 border border-white/10 flex items-center gap-2">
-                                        <div className="w-5 h-5 bg-black rounded overflow-hidden flex items-center justify-center border border-white/10 shrink-0">
-                                        {t.img ? <img src={t.img} className="w-full h-full object-contain p-0.5" /> : <span className="text-[6px] text-gray-500">{t.name.substring(0,3)}</span>}
-                                        </div>
-                                        <div className="flex flex-col min-w-0">
-                                        <span className="text-[8px] font-black text-white uppercase truncate leading-none mb-0.5">{t.name}</span>
-                                        <span className="text-[8px] text-yellow-400 leading-none">{t.count} abates</span>
-                                        </div>
-                                    </div>
-                                ))}
-                                {topVictimTeams.length === 0 && <span className="text-xs text-gray-500 italic">Nenhum</span>}
-                            </div>
-                        </div>
-                        <div>
-                            <h4 className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1 flex items-center gap-1"><User size={10}/> Vítimas (Jogadores)</h4>
-                            <div className="flex flex-col gap-1">
-                                {topVictims.map(p => (
-                                    <div key={p.name} className="bg-white/5 rounded-lg p-1 border border-white/10 flex items-center gap-2">
-                                        <div className="w-5 h-5 bg-black rounded overflow-hidden flex items-center justify-center border border-white/10 shrink-0">
-                                        {p.img ? <img src={p.img} className="w-full h-full object-cover" /> : <span className="text-[6px] text-gray-500">{p.name.substring(0,2)}</span>}
-                                        </div>
-                                        <div className="flex flex-col min-w-0">
-                                        <span className="text-[8px] font-black text-white uppercase truncate leading-none mb-0.5">{p.name}</span>
-                                        <span className="text-[8px] text-yellow-400 leading-none">{p.count} abates</span>
-                                        </div>
-                                    </div>
-                                ))}
-                                {topVictims.length === 0 && <span className="text-xs text-gray-500 italic">Nenhum</span>}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Maps (Grid - 3 columns to save space) */}
-                <div className="shrink-0">
-                    <h4 className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1 flex items-center gap-1"><MapIcon size={10}/> Por Mapa</h4>
-                    <div className="grid grid-cols-3 gap-1">
-                        {mapStats.slice(0, 6).map(m => (
-                            <div key={m.name} className="flex flex-col items-center justify-center bg-white/5 rounded-md p-1 border border-white/5">
-                                <span className="text-[8px] font-bold text-white uppercase truncate w-full text-center">{m.name}</span>
-                                <div className="flex items-baseline gap-1 mt-0.5">
-                                    <span className="text-[10px] text-yellow-400 font-black leading-none">{m.kills}</span>
-                                    <span className="text-[7px] text-gray-500 font-bold leading-none">AVG {m.matches > 0 ? (m.kills/m.matches).toFixed(1) : 0}</span>
-                                </div>
-                            </div>
-                        ))}
-                        {mapStats.length === 0 && <span className="text-xs text-gray-500">Sem dados</span>}
-                    </div>
-                </div>
-
-                {/* Safes (Grid) */}
-                <div className="flex-1 flex flex-col">
-                    <h4 className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1 flex items-center gap-1"><Shield size={10}/> Abates por Safe</h4>
-                    <div className="flex flex-wrap gap-1 content-start">
-                        {safeStats.map(s => (
-                            <div key={s.name} className="w-[calc(16.666%-0.2rem)] min-w-[28px] bg-white/5 rounded-md p-1 border border-white/5 flex flex-col items-center justify-center">
-                                <span className="text-[7px] font-bold text-gray-400 uppercase leading-none mb-0.5">S{s.name.replace(/^S/i, '')}</span>
-                                <span className="text-[10px] font-black text-yellow-400 leading-none">{s.kills}</span>
-                            </div>
-                        ))}
-                        {safeStats.length === 0 && <span className="text-xs text-gray-500">Sem dados</span>}
-                    </div>
-                </div>
-
+             <div className="flex items-center justify-between border-b border-white/10 pb-1.5 mb-2 shrink-0">
+               <h3 className="text-base font-black text-white italic uppercase truncate max-w-[200px]">
+                 {mode === 'team' ? 'Elenco da Equipe' : 'Estatísticas'}
+               </h3>
+               <span className="text-[8px] text-yellow-400 font-black uppercase bg-white/5 px-2 py-0.5 rounded border border-white/10 shrink-0">
+                 {filterLabel}
+               </span>
              </div>
+             
+             {mode === 'team' ? (
+               /* TEAM BACK: PLAYERS ROSTER + COMPACT SUMMARY */
+               <div className="flex-1 flex flex-col gap-2 min-h-0">
+                 
+                 {/* Team Roster / Players List */}
+                 <div className="flex-1 flex flex-col min-h-0 bg-white/5 rounded-xl p-2 border border-white/10">
+                   <div className="flex items-center justify-between pb-1 mb-1 border-b border-white/10 shrink-0">
+                     <h4 className="text-[9px] font-black text-yellow-400 uppercase tracking-wider flex items-center gap-1">
+                       <Users size={11} /> Jogadores da Equipe
+                     </h4>
+                     <div className="flex items-center gap-2 text-[7.5px] font-bold text-gray-400 uppercase tracking-wider px-1">
+                       <span className="w-7 text-center">Kills</span>
+                       <span className="w-10 text-center">Dano</span>
+                       <span className="w-8 text-center">% Time</span>
+                       <span className="w-7 text-center">Média</span>
+                     </div>
+                   </div>
 
-             <div className="mt-2 pt-1.5 border-t border-white/10 text-center shrink-0 group-hover:opacity-100 opacity-60 transition-opacity">
+                   <div className="flex-1 flex flex-col gap-1 overflow-y-auto pr-0.5">
+                     {teamPlayers.map((p, idx) => (
+                       <div 
+                         key={p.name} 
+                         className="flex items-center justify-between bg-black/40 hover:bg-black/60 rounded-lg px-2 py-1 border border-white/5 transition-colors"
+                       >
+                         {/* Player Avatar + Name + Role */}
+                         <div className="flex items-center gap-1.5 min-w-0 flex-1 mr-1">
+                           <span className="text-[8px] font-bold text-gray-500 w-2.5 shrink-0">#{idx + 1}</span>
+                           <div className="w-6 h-6 rounded-full bg-zinc-800 border border-white/10 overflow-hidden shrink-0 flex items-center justify-center">
+                             {p.img ? (
+                               <img src={p.img} alt={p.name} className="w-full h-full object-cover" />
+                             ) : (
+                               <span className="text-[7px] font-black text-gray-400 uppercase">{p.name.substring(0, 2)}</span>
+                             )}
+                           </div>
+                           <div className="flex flex-col min-w-0">
+                             <span className="text-[9px] font-black text-white uppercase truncate leading-tight">{p.name}</span>
+                             {p.role ? (
+                               <span className="text-[7px] font-bold text-yellow-500/90 uppercase tracking-tighter leading-none truncate">{p.role}</span>
+                             ) : (
+                               <span className="text-[7px] font-bold text-gray-500 uppercase leading-none">{p.matches}Q</span>
+                             )}
+                           </div>
+                         </div>
+
+                         {/* Stats columns */}
+                         <div className="flex items-center gap-2 text-[9px] font-black shrink-0">
+                           <span className="w-7 text-center text-yellow-400 font-black italic">{p.kills}</span>
+                           <span className="w-10 text-center text-white/90 font-bold text-[8.5px]">{p.damage.toLocaleString('pt-BR')}</span>
+                           <span className="w-8 text-center text-yellow-300/80 font-bold text-[8px]">{p.killShare}%</span>
+                           <span className="w-7 text-center text-gray-400 font-bold text-[8px]">{p.avgKills}</span>
+                         </div>
+                       </div>
+                     ))}
+                     {teamPlayers.length === 0 && (
+                       <div className="text-center text-gray-500 text-xs py-4 italic">Nenhum jogador registrado no filtro.</div>
+                     )}
+                   </div>
+                 </div>
+
+                 {/* Secondary Stats: Weapon + Victims + Map */}
+                 <div className="grid grid-cols-3 gap-1.5 shrink-0">
+                   {/* Arma Letal */}
+                   <div className="bg-white/5 border border-white/10 rounded-xl p-1.5 flex flex-col justify-between">
+                     <span className="text-[7.5px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                       <TargetIcon size={9} /> Arma Letal
+                     </span>
+                     <div className="flex flex-col items-center justify-center my-0.5">
+                       {info.weaponImg ? (
+                         <img src={info.weaponImg} alt={topWeapon} className="h-5 w-auto object-contain drop-shadow" />
+                       ) : null}
+                       <span className="text-[9px] font-black text-white italic uppercase truncate w-full text-center mt-0.5">{topWeapon}</span>
+                     </div>
+                   </div>
+
+                   {/* Top Vítima Time */}
+                   <div className="bg-white/5 border border-white/10 rounded-xl p-1.5 flex flex-col justify-between">
+                     <span className="text-[7.5px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                       <Swords size={9} /> Top Vítima
+                     </span>
+                     {topVictimTeams.length > 0 ? (
+                       <div className="flex items-center gap-1.5 my-auto">
+                         <div className="w-5 h-5 bg-black rounded overflow-hidden flex items-center justify-center border border-white/10 shrink-0">
+                           {topVictimTeams[0].img ? (
+                             <img src={topVictimTeams[0].img} className="w-full h-full object-contain p-0.5" />
+                           ) : (
+                             <span className="text-[6px] text-gray-500">{topVictimTeams[0].name.substring(0, 3)}</span>
+                           )}
+                         </div>
+                         <div className="flex flex-col min-w-0 flex-1">
+                           <span className="text-[8px] font-black text-white uppercase truncate leading-tight">{topVictimTeams[0].name}</span>
+                           <span className="text-[7.5px] text-yellow-400 font-bold leading-tight">{topVictimTeams[0].count} abates</span>
+                         </div>
+                       </div>
+                     ) : (
+                       <span className="text-[8px] text-gray-500 italic my-auto text-center">Sem dados</span>
+                     )}
+                   </div>
+
+                   {/* Melhor Mapa */}
+                   <div className="bg-white/5 border border-white/10 rounded-xl p-1.5 flex flex-col justify-between">
+                     <span className="text-[7.5px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                       <MapIcon size={9} /> Melhor Mapa
+                     </span>
+                     {mapStats.length > 0 ? (
+                       <div className="flex flex-col items-center justify-center my-auto text-center">
+                         <span className="text-[8.5px] font-black text-white uppercase truncate w-full">{mapStats[0].name}</span>
+                         <span className="text-[7.5px] text-yellow-400 font-bold">{mapStats[0].kills} abates</span>
+                       </div>
+                     ) : (
+                       <span className="text-[8px] text-gray-500 italic my-auto text-center">Sem dados</span>
+                     )}
+                   </div>
+                 </div>
+
+               </div>
+             ) : (
+               /* PLAYER BACK: WEAPON, VICTIMS, MAPS, SAFES */
+               <div className="flex-1 flex flex-col gap-2">
+                  
+                  {/* 1. Arma & Top Victims */}
+                  <div className="grid grid-cols-1 gap-2 shrink-0">
+                      <div className="flex items-center gap-2">
+                          {/* Weapon */}
+                          <div className="flex-1">
+                              <h4 className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1 flex items-center gap-1"><TargetIcon size={10}/> Arma Favorita</h4>
+                              <div className="bg-white/5 border border-white/10 rounded-xl p-1 flex items-center justify-center gap-2 h-10">
+                                  {info.weaponImg && (
+                                  <img src={info.weaponImg} alt={topWeapon} className="h-6 w-auto object-contain drop-shadow-md" />
+                                  )}
+                                  <span className="text-xs font-black text-white italic uppercase truncate">{topWeapon}</span>
+                              </div>
+                          </div>
+                      </div>
+
+                      {/* Top Victims Grid */}
+                      <div className="grid grid-cols-2 gap-2">
+                          <div>
+                              <h4 className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1 flex items-center gap-1"><Swords size={10}/> Vítimas (Times)</h4>
+                              <div className="flex flex-col gap-1">
+                                  {topVictimTeams.map(t => (
+                                      <div key={t.name} className="bg-white/5 rounded-lg p-1 border border-white/10 flex items-center gap-2">
+                                          <div className="w-5 h-5 bg-black rounded overflow-hidden flex items-center justify-center border border-white/10 shrink-0">
+                                          {t.img ? <img src={t.img} className="w-full h-full object-contain p-0.5" /> : <span className="text-[6px] text-gray-500">{t.name.substring(0,3)}</span>}
+                                          </div>
+                                          <div className="flex flex-col min-w-0">
+                                          <span className="text-[8px] font-black text-white uppercase truncate leading-none mb-0.5">{t.name}</span>
+                                          <span className="text-[8px] text-yellow-400 leading-none">{t.count} abates</span>
+                                          </div>
+                                      </div>
+                                  ))}
+                                  {topVictimTeams.length === 0 && <span className="text-xs text-gray-500 italic">Nenhum</span>}
+                              </div>
+                          </div>
+                          <div>
+                              <h4 className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1 flex items-center gap-1"><User size={10}/> Vítimas (Jogadores)</h4>
+                              <div className="flex flex-col gap-1">
+                                  {topVictims.map(p => (
+                                      <div key={p.name} className="bg-white/5 rounded-lg p-1 border border-white/10 flex items-center gap-2">
+                                          <div className="w-5 h-5 bg-black rounded overflow-hidden flex items-center justify-center border border-white/10 shrink-0">
+                                          {p.img ? <img src={p.img} className="w-full h-full object-cover" /> : <span className="text-[6px] text-gray-500">{p.name.substring(0,2)}</span>}
+                                          </div>
+                                          <div className="flex flex-col min-w-0">
+                                          <span className="text-[8px] font-black text-white uppercase truncate leading-none mb-0.5">{p.name}</span>
+                                          <span className="text-[8px] text-yellow-400 leading-none">{p.count} abates</span>
+                                          </div>
+                                      </div>
+                                  ))}
+                                  {topVictims.length === 0 && <span className="text-xs text-gray-500 italic">Nenhum</span>}
+                              </div>
+                          </div>
+                      </div>
+                  </div>
+
+                  {/* Maps (Grid - 3 columns to save space) */}
+                  <div className="shrink-0">
+                      <h4 className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1 flex items-center gap-1"><MapIcon size={10}/> Por Mapa</h4>
+                      <div className="grid grid-cols-3 gap-1">
+                          {mapStats.slice(0, 6).map(m => (
+                              <div key={m.name} className="flex flex-col items-center justify-center bg-white/5 rounded-md p-1 border border-white/5">
+                                  <span className="text-[8px] font-bold text-white uppercase truncate w-full text-center">{m.name}</span>
+                                  <div className="flex items-baseline gap-1 mt-0.5">
+                                      <span className="text-[10px] text-yellow-400 font-black leading-none">{m.kills}</span>
+                                      <span className="text-[7px] text-gray-500 font-bold leading-none">AVG {m.matches > 0 ? (m.kills/m.matches).toFixed(1) : 0}</span>
+                                  </div>
+                              </div>
+                          ))}
+                          {mapStats.length === 0 && <span className="text-xs text-gray-500">Sem dados</span>}
+                      </div>
+                  </div>
+
+                  {/* Safes (Grid) */}
+                  <div className="flex-1 flex flex-col">
+                      <h4 className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1 flex items-center gap-1"><Shield size={10}/> Abates por Safe</h4>
+                      <div className="flex flex-wrap gap-1 content-start">
+                          {safeStats.map(s => (
+                              <div key={s.name} className="w-[calc(16.666%-0.2rem)] min-w-[28px] bg-white/5 rounded-md p-1 border border-white/5 flex flex-col items-center justify-center">
+                                  <span className="text-[7px] font-bold text-gray-400 uppercase leading-none mb-0.5">S{s.name.replace(/^S/i, '')}</span>
+                                  <span className="text-[10px] font-black text-yellow-400 leading-none">{s.kills}</span>
+                              </div>
+                          ))}
+                          {safeStats.length === 0 && <span className="text-xs text-gray-500">Sem dados</span>}
+                      </div>
+                  </div>
+
+               </div>
+             )}
+
+             <div className="mt-auto pt-1.5 border-t border-white/10 text-center shrink-0 group-hover:opacity-100 opacity-60 transition-opacity">
                 <span className="text-[9px] text-yellow-400 uppercase font-black tracking-widest">Clique para virar</span>
              </div>
           </div>
@@ -528,8 +953,7 @@ const FifaCard = ({ data, mode, selectedId }: { data: any, mode: 'player' | 'tea
       </div>
     </div>
   );
-}
-
+};
 
 const Banners: React.FC<BannersProps> = ({ data }) => {
   const [activeTab, setActiveTab] = useState<
@@ -551,6 +975,7 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
   const [selectedMapOrDrop, setSelectedMapOrDrop] = useState<string>('');
   const [selectedTeam, setSelectedTeam] = useState<string>('');
   const [selectedRd, setSelectedRd] = useState<string>('all');
+  const [selectedQueda, setSelectedQueda] = useState<string>('all');
   const [storiesSubtype, setStoriesSubtype] = useState<string>('highlights');
   const bannerRef = useRef<HTMLDivElement>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -564,6 +989,29 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
     });
     return Array.from(rds).sort((a, b) => parseNumber(a) - parseNumber(b));
   }, [data.details]);
+
+  const availableQuedas = useMemo(() => {
+    const qs = new Set<string>();
+    data.details.forEach(d => {
+      if (d.Q) {
+        if (selectedRd === 'all' || !selectedRd || (d.RD && d.RD.toString().trim() === selectedRd.toString().trim())) {
+          qs.add(d.Q.toString().trim());
+        }
+      }
+    });
+    data.players.forEach(p => {
+      if (p.Q) {
+        if (selectedRd === 'all' || !selectedRd || (p.RD && p.RD.toString().trim() === selectedRd.toString().trim())) {
+          qs.add(p.Q.toString().trim());
+        }
+      }
+    });
+    if (qs.size === 0) {
+      data.details.forEach(d => { if (d.Q) qs.add(d.Q.toString().trim()); });
+      data.players.forEach(p => { if (p.Q) qs.add(p.Q.toString().trim()); });
+    }
+    return Array.from(qs).sort((a, b) => parseNumber(a) - parseNumber(b));
+  }, [data.details, data.players, selectedRd]);
 
   const availableTeams = useMemo(() => {
     const teams = new Set<string>();
@@ -1439,8 +1887,13 @@ const handleDownload = async () => {
         filename = `Post_Instagram_${activeTab}_${selectedMapOrDrop.replace(/\//g, '-')}.png`;
       } else if (activeTab === 'map_kings_stories' || activeTab === 'drop_kings_stories' || activeTab === 'role_kings_stories' || activeTab === 'team_map_kings_stories' || activeTab === 'team_drop_kings_stories') {
         filename = `Stories_Instagram_${activeTab}_${storiesSubtype}_${selectedMapOrDrop.replace(/\//g, '-')}.png`;
+      } else if (activeTab === 'fifa_card') {
+        const rdPart = selectedRd === 'all' ? 'Geral' : `RD${selectedRd}`;
+        const qPart = selectedQueda === 'all' ? '' : `_Q${selectedQueda}`;
+        filename = `FIFA_Card_${fifaCardMode}_${fifaCardSelected}_${rdPart}${qPart}.png`;
       } else {
-        filename = activeTab === 'fifa_card' ? `FIFA_Card_${fifaCardSelected}.png` : `Stories_Banner_${activeTab}_${selectedRd}.png`;
+        const rdPart = selectedRd === 'all' ? 'Geral' : `RD_${selectedRd}`;
+        filename = `Stories_Banner_${activeTab}_${rdPart}.png`;
       }
 
       link.download = filename;
@@ -1713,13 +2166,32 @@ const handleDownload = async () => {
                 <span className="text-gray-500 font-bold uppercase tracking-widest text-[11px] leading-none">Rodada</span>
                 <select
                   value={selectedRd}
-                  onChange={(e) => setSelectedRd(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedRd(e.target.value);
+                    setSelectedQueda('all');
+                  }}
                   className="bg-black border border-white/10 rounded-xl px-3 py-2.5 text-white font-bold focus:border-yellow-500 outline-none w-40 text-xs"
                 >
                   <option value="" disabled>Rodada</option>
                   <option value="all">Geral (Todas)</option>
                   {availableRds.map(rd => (
                     <option key={rd} value={rd}>Rodada {rd}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {activeTab === 'fifa_card' && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-gray-500 font-bold uppercase tracking-widest text-[11px] leading-none">Queda</span>
+                <select
+                  value={selectedQueda}
+                  onChange={(e) => setSelectedQueda(e.target.value)}
+                  className="bg-black border border-white/10 rounded-xl px-3 py-2.5 text-white font-bold focus:border-yellow-500 outline-none w-36 text-xs uppercase"
+                >
+                  <option value="all">Todas Quedas</option>
+                  {availableQuedas.map(q => (
+                    <option key={q} value={q}>Queda {q}</option>
                   ))}
                 </select>
               </div>
@@ -1748,7 +2220,7 @@ const handleDownload = async () => {
       <div className="flex md:justify-center bg-white/5 p-4 md:p-8 rounded-3xl border border-white/5 overflow-x-auto">
         
         {/* Banner Real (Scale down for preview, full size for render) */}
-        <div className={`relative origin-top transform scale-[0.4] sm:scale-[0.5] md:scale-[0.6] lg:scale-[0.7] ${isFeedTab ? '-mb-[810px] sm:-mb-[675px] md:-mb-[540px] lg:-mb-[405px]' : '-mb-[1152px] sm:-mb-[960px] md:-mb-[768px] lg:-mb-[576px]'}`}>
+        <div className={`relative origin-top transform scale-[0.3] min-[380px]:scale-[0.35] sm:scale-[0.5] md:scale-[0.6] lg:scale-[0.7] ${isFeedTab ? '-mb-[945px] min-[380px]:-mb-[877px] sm:-mb-[675px] md:-mb-[540px] lg:-mb-[405px]' : '-mb-[1344px] min-[380px]:-mb-[1248px] sm:-mb-[960px] md:-mb-[768px] lg:-mb-[576px]'}`}>
           
           <div 
             ref={bannerRef}
@@ -1763,7 +2235,21 @@ const handleDownload = async () => {
             {!isKingsTab && (
               <div className="text-center mb-12 relative z-10">
                 <h1 className="text-[60px] font-black text-white uppercase tracking-[0.2em] italic mb-4">
-                  {activeTab === 'team_perf' ? 'Desempenho' : 'Rodada'} <span className="text-yellow-500">{activeTab === 'team_perf' ? (selectedRd === 'all' ? 'Geral' : 'Rodada ' + selectedRd) : selectedRd}</span>
+                  {activeTab === 'fifa_card' ? (
+                    <>FIFA CARD <span className="text-yellow-500">{
+                      (selectedRd === 'all' && selectedQueda === 'all')
+                        ? (fifaCardMode === 'player' ? 'JOGADOR' : 'EQUIPE')
+                        : (selectedRd !== 'all' && selectedQueda !== 'all')
+                        ? `RODADA ${selectedRd} • Q${selectedQueda}`
+                        : selectedRd !== 'all'
+                        ? `RODADA ${selectedRd}`
+                        : `QUEDA ${selectedQueda}`
+                    }</span></>
+                  ) : activeTab === 'team_perf' ? (
+                    <>Desempenho <span className="text-yellow-500">{selectedRd === 'all' ? 'Geral' : 'Rodada ' + selectedRd}</span></>
+                  ) : (
+                    <>{selectedRd === 'all' ? 'Classificação' : 'Rodada'} <span className="text-yellow-500">{selectedRd === 'all' ? 'Geral' : selectedRd}</span></>
+                  )}
                 </h1>
                 <div className="h-1 w-32 bg-yellow-500 mx-auto rounded-full"></div>
               </div>
@@ -1868,7 +2354,15 @@ const handleDownload = async () => {
             
             ) : activeTab === 'fifa_card' ? (
               <div className="flex-1 flex flex-col justify-center items-center relative z-10 w-full h-full">
-                <div className="transform scale-[2.5] origin-center"><FifaCard data={data} mode={fifaCardMode} selectedId={fifaCardSelected} /></div>
+                <div className="transform scale-[2.5] origin-center">
+                  <FifaCard 
+                    data={data} 
+                    mode={fifaCardMode} 
+                    selectedId={fifaCardSelected} 
+                    selectedRd={selectedRd}
+                    selectedQueda={selectedQueda}
+                  />
+                </div>
               </div>
 
             ) : activeTab === 'team_perf' && bannerTeamPerfData ? (
