@@ -267,10 +267,10 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
       <thead className="bg-[#0f0f0f] text-gray-400 text-[9px] sm:text-[10px] uppercase font-bold tracking-tight border-b border-gray-800">
         <tr>
           {visibleColumns.rank && <th className="px-1.5 py-2.5 text-center w-6 sm:w-8">#</th>}
-          {visibleColumns.team && <th className="px-1.5 sm:px-2 py-2.5 text-left">Equipe</th>}
+          {visibleColumns.team && <th className="px-1.5 sm:px-2 py-2.5 text-left w-auto">Equipe</th>}
           {visibleColumns.pts && (
             <th 
-              className="px-1 sm:px-2 py-2.5 text-center bg-yellow-900/10 text-yellow-500 font-black cursor-pointer group hover:bg-yellow-900/20"
+              className="px-1 sm:px-2 py-2.5 text-center bg-yellow-900/10 text-yellow-500 font-black cursor-pointer group hover:bg-yellow-900/20 w-12 sm:w-16"
               onClick={() => requestSort('pts')}
               title="Pontos Totais"
             >
@@ -279,7 +279,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
           )}
           {visibleColumns.ptsc && (
             <th 
-              className="px-1 sm:px-1.5 py-2.5 text-center text-orange-400/80 cursor-pointer group hover:bg-white/5"
+              className="px-1 sm:px-1.5 py-2.5 text-center text-orange-400/80 cursor-pointer group hover:bg-white/5 w-12 sm:w-14"
               onClick={() => requestSort('ptsc')}
               title="Pontos de Colocação"
             >
@@ -288,7 +288,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
           )}
           {visibleColumns.avgPts && (
             <th 
-              className="px-1 sm:px-1.5 py-2.5 text-center text-yellow-600/80 cursor-pointer group hover:bg-white/5"
+              className="px-1 sm:px-1.5 py-2.5 text-center text-yellow-600/80 cursor-pointer group hover:bg-white/5 w-12 sm:w-14"
               onClick={() => requestSort('avgPts')}
               title="Média de Pontos por Queda"
             >
@@ -297,7 +297,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
           )}
           {visibleColumns.abts && (
             <th 
-              className="px-1 sm:px-1.5 py-2.5 text-center cursor-pointer group hover:bg-white/5"
+              className="px-1 sm:px-1.5 py-2.5 text-center cursor-pointer group hover:bg-white/5 w-12 sm:w-14"
               onClick={() => requestSort('abts')}
               title="Abates Totais"
             >
@@ -306,16 +306,16 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
           )}
           {visibleColumns.avgAbts && (
             <th 
-              className="px-1 sm:px-1.5 py-2.5 text-center text-red-500/80 cursor-pointer group hover:bg-white/5"
+              className="px-1 sm:px-1.5 py-2.5 text-center text-red-500/80 cursor-pointer group hover:bg-white/5 w-14 sm:w-16"
               onClick={() => requestSort('avgAbts')}
               title="Média de Abates por Queda"
             >
-              <div className="flex items-center justify-center gap-0.5">M.ABTS <SortIcon column="avgAbts" /></div>
+              <div className="flex items-center justify-center gap-0.5 whitespace-nowrap">M.ABTS <SortIcon column="avgAbts" /></div>
             </th>
           )}
           {visibleColumns.b && (
             <th 
-              className="px-1 sm:px-1.5 py-2.5 text-center cursor-pointer group hover:bg-white/5"
+              className="px-1 sm:px-1.5 py-2.5 text-center cursor-pointer group hover:bg-white/5 w-8 sm:w-10"
               onClick={() => requestSort('b')}
               title="Booyahs (Vitórias)"
             >
@@ -324,7 +324,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
           )}
           {visibleColumns.s && (
             <th 
-              className="px-1 sm:px-1.5 py-2.5 text-center cursor-pointer group hover:bg-white/5"
+              className="px-1 sm:px-1.5 py-2.5 text-center cursor-pointer group hover:bg-white/5 w-8 sm:w-10"
               onClick={() => requestSort('s')}
               title="Quedas Jogadas"
             >
@@ -359,32 +359,34 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
           </td>
         )}
         {visibleColumns.team && (
-          <td className="px-2 sm:px-3 py-2.5 font-bold text-white flex items-center gap-2.5 min-w-0">
-            {team.image && (
-              <div className={`rounded-xl overflow-hidden shrink-0 flex items-center justify-center ${
-                isLoud 
-                  ? 'w-9 h-9 sm:w-10 sm:h-10 bg-black p-1 border-2 border-yellow-400 shadow-[0_0_12px_rgba(250,204,21,0.7)] ring-1 ring-yellow-300' 
-                  : 'w-7 h-7 sm:w-8 sm:h-8 bg-black/40 p-0.5 border border-gray-700/60'
-              }`}>
-                <img src={team.image} className="w-full h-full object-contain" alt={team.name}/>
-              </div>
-            )}
-            <div className="flex flex-col min-w-0">
-              <span className={`uppercase italic font-black truncate flex items-center gap-1.5 ${
-                isLoud ? 'text-sm sm:text-base text-yellow-300 drop-shadow-sm tracking-wide' : isTop12 ? 'text-xs sm:text-sm text-yellow-400' : 'text-xs sm:text-sm text-gray-200'
-              }`}>
-                  {formatTeamName(team.name)}
-                  {isLoud && <Star size={13} className="fill-yellow-400 text-yellow-400 shrink-0" />}
-              </span>
-              {isLoud ? (
-                <span className="text-[9px] font-black text-yellow-400 uppercase tracking-widest flex items-center gap-1 truncate">
-                  ★ TIME DESTAQUE (LOUD)
+          <td className="px-2 sm:px-3 py-2.5 font-bold text-white min-w-0">
+            <div className="flex items-center gap-2.5 min-w-0 w-full">
+              {team.image && (
+                <div className={`rounded-xl overflow-hidden shrink-0 flex items-center justify-center ${
+                  isLoud 
+                    ? 'w-9 h-9 sm:w-10 sm:h-10 bg-black p-1 border-2 border-yellow-400 shadow-[0_0_12px_rgba(250,204,21,0.7)] ring-1 ring-yellow-300' 
+                    : 'w-7 h-7 sm:w-8 sm:h-8 bg-black/40 p-0.5 border border-gray-700/60'
+                }`}>
+                  <img src={team.image} className="w-full h-full object-contain" alt={team.name}/>
+                </div>
+              )}
+              <div className="flex flex-col min-w-0 flex-1 overflow-hidden">
+                <span className={`uppercase italic font-black truncate flex items-center gap-1.5 ${
+                  isLoud ? 'text-sm sm:text-base text-yellow-300 drop-shadow-sm tracking-wide' : isTop12 ? 'text-xs sm:text-sm text-yellow-400' : 'text-xs sm:text-sm text-gray-200'
+                }`}>
+                    <span className="truncate">{formatTeamName(team.name)}</span>
+                    {isLoud && <Star size={13} className="fill-yellow-400 text-yellow-400 shrink-0" />}
                 </span>
-              ) : isGeneralFinalist ? (
-                  <span className="text-[7px] font-black text-yellow-600 uppercase tracking-widest flex items-center gap-1 truncate">
-                      <CheckCircle2 size={7} /> FINALISTA
+                {isLoud ? (
+                  <span className="text-[9px] font-black text-yellow-400 uppercase tracking-widest flex items-center gap-1 truncate">
+                    ★ TIME DESTAQUE (LOUD)
                   </span>
-              ) : null}
+                ) : isGeneralFinalist ? (
+                    <span className="text-[7px] font-black text-yellow-600 uppercase tracking-widest flex items-center gap-1 truncate">
+                        <CheckCircle2 size={7} className="shrink-0" /> FINALISTA
+                    </span>
+                ) : null}
+              </div>
             </div>
           </td>
         )}
@@ -722,8 +724,8 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
                     <span className="text-[9px] text-gray-600 uppercase font-bold">Resumo Competitivo</span>
                 </div>
               </div>
-              <div className="overflow-x-auto custom-scrollbar">
-                <table className="w-full text-left whitespace-nowrap">
+              <div className="overflow-x-hidden">
+                <table className="w-full text-left table-fixed">
                   <TableHeader />
                   <tbody className="divide-y divide-gray-800 text-sm font-medium">
                     {leftStats.map((team, index) => (
@@ -747,8 +749,8 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
                   </span>
                   <Shield size={14} className="text-gray-600 opacity-50" />
                 </div>
-                <div className="overflow-x-auto custom-scrollbar">
-                  <table className="w-full text-left whitespace-nowrap">
+                <div className="overflow-x-hidden">
+                  <table className="w-full text-left table-fixed">
                     <TableHeader />
                     <tbody className="divide-y divide-gray-800 text-sm font-medium">
                       {rightStats.map((team, index) => (
