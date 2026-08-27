@@ -156,7 +156,8 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
                 await setDoc(doc(db, 'studies', 'dangers'), {
                     mapId: 'dangers',
                     records: JSON.stringify(records),
-                    updatedAt: Date.now()
+                    updatedAt: Date.now(),
+                    pin: '221120'
                 });
             } catch (error) {
                 console.error('Error syncing dangers to Firestore:', error);
