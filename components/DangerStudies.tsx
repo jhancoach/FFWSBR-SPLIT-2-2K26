@@ -486,32 +486,15 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
                 <div className="lg:col-span-8 space-y-4">
                     <div className="bg-[#1a1a1a] rounded-3xl border border-gray-800 p-4 sm:p-6 flex flex-col items-center gap-4 shadow-2xl relative overflow-hidden">
                         
-                        {/* Map Controls Floating Overlay */}
-                        <div className="absolute top-8 right-8 z-20 flex flex-col gap-2 bg-black/80 p-2 rounded-xl border border-gray-800 backdrop-blur-sm">
-                            <button onClick={() => setZoom(z => Math.min(z + 0.5, 4))} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors" title="Aumentar Zoom">
-                                <ZoomIn size={18} />
-                            </button>
-                            <button onClick={() => setZoom(z => Math.max(z - 0.5, 1))} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors" title="Diminuir Zoom">
-                                <ZoomOut size={18} />
-                            </button>
-                            <button onClick={() => {setZoom(1); setPan({x:0,y:0})}} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors" title="Resetar Posição">
-                                <Move size={18} />
-                            </button>
-                            <div className="h-px bg-white/10 my-1"></div>
-                            <button onClick={handleClearMap} className="p-2 bg-red-500/10 hover:bg-red-500/20 rounded-lg text-red-500 transition-colors" title="Limpar Dangers Deste Mapa">
-                                <Trash2 size={18} />
-                            </button>
-                        </div>
-
                         {/* Safe Zone Quick Filter Bar above Map */}
-                        <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-2 bg-black/60 p-2.5 rounded-2xl border border-white/10 z-20">
+                        <div className="w-full flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-black/60 p-3 rounded-2xl border border-white/10 z-20">
                             <div className="flex items-center gap-2 shrink-0">
                                 <Shield size={16} className="text-amber-400 shrink-0" />
                                 <span className="text-xs font-black uppercase tracking-wider text-gray-200">
                                     Mostrar no Mapa:
                                 </span>
                             </div>
-                            <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto justify-center">
+                            <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto justify-start sm:justify-end flex-1">
                                 <button
                                     type="button"
                                     onClick={() => setSafeFilter('ALL')}
@@ -646,6 +629,23 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
                             onMouseUp={() => setIsDragging(false)}
                             onMouseLeave={() => setIsDragging(false)}
                         >
+                            {/* Map Controls Floating Overlay */}
+                            <div className="absolute top-4 right-4 z-30 flex flex-col gap-2 bg-black/80 p-2 rounded-xl border border-gray-800 backdrop-blur-sm shadow-xl">
+                                <button onClick={() => setZoom(z => Math.min(z + 0.5, 4))} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors" title="Aumentar Zoom">
+                                    <ZoomIn size={18} />
+                                </button>
+                                <button onClick={() => setZoom(z => Math.max(z - 0.5, 1))} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors" title="Diminuir Zoom">
+                                    <ZoomOut size={18} />
+                                </button>
+                                <button onClick={() => {setZoom(1); setPan({x:0,y:0})}} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors" title="Resetar Posição">
+                                    <Move size={18} />
+                                </button>
+                                <div className="h-px bg-white/10 my-1"></div>
+                                <button onClick={handleClearMap} className="p-2 bg-red-500/10 hover:bg-red-500/20 rounded-lg text-red-500 transition-colors" title="Limpar Dangers Deste Mapa">
+                                    <Trash2 size={18} />
+                                </button>
+                            </div>
+
                             <div 
                                 className="relative w-full h-full transition-transform duration-75 ease-out origin-center"
                                 style={{
@@ -682,7 +682,7 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
                                             onClick={(e) => handleMarkerClick(group, e)}
                                             onContextMenu={(e) => handleMarkerRightClick(group, e)}
                                             className={`absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer z-20 group transition-all duration-200 ${
-                                                heatmapMode === 'heatmap' ? 'opacity-40 hover:opacity-100 scale-90' : ''
+                                                heatmapMode === 'heatmap' ? 'hidden' : ''
                                             }`}
                                             style={{ left: `${group.x}%`, top: `${group.y}%` }}
                                             title="Clique para +1 | Botão Direito para -1 | Shift+Clique para Editar"

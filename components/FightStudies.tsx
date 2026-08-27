@@ -1348,7 +1348,7 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
                                             onMouseEnter={() => setHoveredRecordId(group.id)}
                                             onMouseLeave={() => setHoveredRecordId(null)}
                                             className={`absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer z-20 group transition-all duration-200 ${
-                                                heatmapMode === 'heatmap' ? 'opacity-40 hover:opacity-100 scale-90' : ''
+                                                heatmapMode === 'heatmap' ? 'hidden' : ''
                                             } ${
                                                 isHovered ? 'scale-125 z-30' : 'hover:scale-110'
                                             }`}
