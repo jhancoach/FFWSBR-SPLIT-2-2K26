@@ -141,4 +141,5 @@ export interface TeamStats {
   percentPos: number;
   percentAbts: number;
   lastPos: number; // Armazena a posição na última queda para desempate
+  kpm?: number;
 }

@@ -17,6 +17,7 @@ import {
   Layers,
   Sparkles
 } from 'lucide-react';
+import { calculateMapDurationSec } from '../utils/kpmUtils';
 import { normalize, parseNumber, calculateTeamStats, calculatePlayerStats } from '../lib/utils';
 import { findDimImg } from '../utils/skillImages';
 import { findTeamLogo } from '../utils/teamUtils';
@@ -166,6 +167,15 @@ export const TeamVsTeamMapCompare: React.FC<TeamVsTeamMapCompareProps> = ({
 
       const statsA = calculateTeamStats({ details: teamADetails })[0] || { pts: 0, ptsc: 0, abts: 0, b: 0, s: 0, avgPts: '0.00', avgAbts: '0.00', avgPtsc: '0.00' };
       const statsB = calculateTeamStats({ details: teamBDetails })[0] || { pts: 0, ptsc: 0, abts: 0, b: 0, s: 0, avgPts: '0.00', avgAbts: '0.00', avgPtsc: '0.00' };
+      
+      const durationSecA = calculateMapDurationSec(mapName) * (statsA.s || 0);
+      const kpmA = durationSecA > 0 ? (statsA.abts / (durationSecA / 60)).toFixed(2) : '0.00';
+      
+      const durationSecB = calculateMapDurationSec(mapName) * (statsB.s || 0);
+      const kpmB = durationSecB > 0 ? (statsB.abts / (durationSecB / 60)).toFixed(2) : '0.00';
+      
+      const kpmDiff = parseFloat(kpmA) - parseFloat(kpmB);
+      
 
       // Players for Team A in this territory
       const rawPlayersA = filteredPlayers.filter((p: any) => normalize(p.TIME) === normA && normalize(p.MAPA) === normMap);
@@ -411,6 +421,12 @@ const MapCard: React.FC<MapCardProps> = ({
   const totalKillsA = parseNumber(statsA.abts);
   const totalKillsB = parseNumber(statsB.abts);
 
+  const mapDurSec = calculateMapDurationSec(mapName);
+  const totalMinsA = ((statsA.s || 1) * mapDurSec) / 60;
+  const kpmA = totalMinsA > 0 ? (totalKillsA / totalMinsA).toFixed(3) : '0.000';
+  const totalMinsB = ((statsB.s || 1) * mapDurSec) / 60;
+  const kpmB = totalMinsB > 0 ? (totalKillsB / totalMinsB).toFixed(3) : '0.000';
+
   // Calculate MVP for Team A and Team B in this map
   const topPlayerA = playersA && playersA.length > 0 ? playersA[0] : null;
   const topPlayerB = playersB && playersB.length > 0 ? playersB[0] : null;
@@ -508,7 +524,7 @@ const MapCard: React.FC<MapCardProps> = ({
               </div>
 
               {/* Stat Boxes */}
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                 <div className="bg-black/60 rounded-2xl p-3 text-center border border-white/5">
                   <span className="text-[9px] text-gray-500 font-bold uppercase block mb-1">Abates</span>
                   <span className="text-base font-black text-red-500">{totalKillsA}</span>
@@ -521,7 +537,11 @@ const MapCard: React.FC<MapCardProps> = ({
                   <span className="text-[9px] text-gray-500 font-bold uppercase block mb-1">Média Kills</span>
                   <span className="text-base font-black text-white">{statsA.avgAbts || '0.00'}</span>
                 </div>
-                <div className="bg-black/60 rounded-2xl p-3 text-center border border-white/5">
+                <div className="bg-black/60 rounded-2xl p-3 text-center border border-yellow-500/20 bg-yellow-500/[0.03]">
+                  <span className="text-[9px] text-yellow-500 font-bold uppercase block mb-1">KPM</span>
+                  <span className="text-base font-black text-yellow-400 font-mono">{kpmA}</span>
+                </div>
+                <div className="bg-black/60 rounded-2xl p-3 text-center border border-white/5 col-span-2 sm:col-span-1">
                   <span className="text-[9px] text-gray-500 font-bold uppercase block mb-1">Booyahs</span>
                   <span className="text-base font-black text-yellow-500">{statsA.b || 0}</span>
                 </div>
@@ -653,7 +673,7 @@ const MapCard: React.FC<MapCardProps> = ({
               </div>
 
               {/* Stat Boxes */}
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                 <div className="bg-black/60 rounded-2xl p-3 text-center border border-white/5">
                   <span className="text-[9px] text-gray-500 font-bold uppercase block mb-1">Abates</span>
                   <span className="text-base font-black text-red-500">{totalKillsB}</span>
@@ -666,7 +686,11 @@ const MapCard: React.FC<MapCardProps> = ({
                   <span className="text-[9px] text-gray-500 font-bold uppercase block mb-1">Média Kills</span>
                   <span className="text-base font-black text-white">{statsB.avgAbts || '0.00'}</span>
                 </div>
-                <div className="bg-black/60 rounded-2xl p-3 text-center border border-white/5">
+                <div className="bg-black/60 rounded-2xl p-3 text-center border border-blue-500/20 bg-blue-500/[0.03]">
+                  <span className="text-[9px] text-blue-400 font-bold uppercase block mb-1">KPM</span>
+                  <span className="text-base font-black text-blue-400 font-mono">{kpmB}</span>
+                </div>
+                <div className="bg-black/60 rounded-2xl p-3 text-center border border-white/5 col-span-2 sm:col-span-1">
                   <span className="text-[9px] text-gray-500 font-bold uppercase block mb-1">Booyahs</span>
                   <span className="text-base font-black text-blue-400">{statsB.b || 0}</span>
                 </div>

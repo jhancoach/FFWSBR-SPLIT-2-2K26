@@ -3,6 +3,7 @@ import { CSV_URLS, DEFAULT_CONFIG } from '../constants';
 import { parseCSV } from '../utils/csvParser';
 import { DashboardData, PlayerData, KillFeed, MatchDetails, CharacterData, TeamStats, TeamReference, WeaponData, SafeData, GenericDimData, AppConfig } from '../types';
 import { findTeamLogo } from '../utils/teamUtils';
+import { calculateMapDurationSec } from '../utils/kpmUtils';
 
 export const getActiveUrls = () => {
   try {
@@ -358,6 +359,7 @@ const getCanonicalTeamName = (teamName: string, teamsRef: TeamReference[]): stri
 
 export const calculateTeamStats = (data: DashboardData): TeamStats[] => {
   const teamMap = new Map<string, TeamStats>();
+  const teamDurationSeconds = new Map<string, number>();
   const lastMatchTracker = new Map<string, { rd: number, q: number, pos: number }>();
   const teamImages = new Map<string, string>();
   const teamGroups = new Map<string, string>();
@@ -390,8 +392,10 @@ export const calculateTeamStats = (data: DashboardData): TeamStats[] => {
           s: 0, b: 0, ptsc: 0, abts: 0, pts: 0, 
           avgAbts: 0, avgPts: 0, avgPtsc: 0, 
           percentPos: 0, percentAbts: 0, 
-          lastPos: 99
+          lastPos: 99,
+          kpm: 0
         });
+        teamDurationSeconds.set(teamName, 0);
       }
       
       const stats = teamMap.get(teamName)!;
@@ -437,6 +441,10 @@ export const calculateTeamStats = (data: DashboardData): TeamStats[] => {
       stats.b += rowB;
       stats.s += rowS;
 
+      // Accumulate map duration
+      const mapDur = calculateMapDurationSec(row.MAPA);
+      teamDurationSeconds.set(teamName, (teamDurationSeconds.get(teamName) || 0) + (mapDur * rowS));
+
       // Lógica para rastrear a posição na última queda real
       const currentRD = parseNumber(row.RD);
       const currentQ = parseNumber(row.Q);
@@ -467,14 +475,19 @@ export const calculateTeamStats = (data: DashboardData): TeamStats[] => {
           s: 0, b: 0, ptsc: 0, abts: 0, pts: 0,
           avgAbts: 0, avgPts: 0, avgPtsc: 0,
           percentPos: 0, percentAbts: 0,
-          lastPos: 99
+          lastPos: 99,
+          kpm: 0
         });
+        teamDurationSeconds.set(teamName, 0);
       }
 
       const stats = teamMap.get(teamName)!;
       const kills = parseNumber(p.Abates);
       stats.abts += kills;
       stats.pts += kills; // 1 kill = 1 pt in Free Fire
+
+      const mapDur = calculateMapDurationSec(p.MAPA);
+      teamDurationSeconds.set(teamName, (teamDurationSeconds.get(teamName) || 0) + mapDur);
     });
   }
 
@@ -490,8 +503,10 @@ export const calculateTeamStats = (data: DashboardData): TeamStats[] => {
           s: 0, b: 0, ptsc: 0, abts: 0, pts: 0,
           avgAbts: 0, avgPts: 0, avgPtsc: 0,
           percentPos: 0, percentAbts: 0,
-          lastPos: 99
+          lastPos: 99,
+          kpm: 0
         });
+        teamDurationSeconds.set(canonicalName, 0);
       }
     }
   });
@@ -508,6 +523,9 @@ export const calculateTeamStats = (data: DashboardData): TeamStats[] => {
         stats.percentPos = parseFloat(((stats.ptsc / stats.pts) * 100).toFixed(1));
         stats.percentAbts = parseFloat(((stats.abts / stats.pts) * 100).toFixed(1));
       }
+      const totalSec = teamDurationSeconds.get(stats.name) || (stats.s * 1200);
+      const totalMins = totalSec / 60;
+      stats.kpm = totalMins > 0 ? parseFloat((stats.abts / totalMins).toFixed(3)) : 0;
       return stats;
     }).sort((a, b) => {
       if (b.pts !== a.pts) return b.pts - a.pts;

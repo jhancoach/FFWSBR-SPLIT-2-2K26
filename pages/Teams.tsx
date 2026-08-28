@@ -2,6 +2,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { DashboardData, TeamStats, PlayerData, KillFeed, MatchDetails } from '../types';
+import { calculateMapDurationSec, calculateOverallKpm } from '../utils/kpmUtils';
+
 import { calculateTeamStats } from '../services/dataService';
 import { Shield, TrendingUp, Users, ArrowLeft, Target, Award, Crosshair, Map as MapIcon, BarChart3, Star, Disc, Activity, Layers, Zap, ListOrdered, Trophy, ChevronDown, Medal, CheckCircle2, Flame, TrendingDown, LayoutGrid, LayoutList, MapPin, Scale, ArrowUp, ArrowDown, Calendar, User, Search, ArrowUpDown, BarChart2, Swords, AlertTriangle, Crown, Eye, EyeOff, Info, Skull, Sparkles, Filter } from 'lucide-react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, LabelList, PieChart, Pie, Cell, Legend, CartesianGrid, YAxis } from 'recharts';
@@ -11,6 +13,7 @@ import { DropCompositionViewer } from '../components/DropComposition';
 import { getTeamDropComposition, getTeamCharacterSummary, getTeamCharacters, getTeamMapSummaryDetail, isSameTeam } from '../utils/characterUtils';
 import { findDimImg } from '../utils/skillImages';
 import { TeamVsTeamCombatCompare } from '../components/TeamVsTeamCombatCompare';
+import { TeamKpmAnalysis } from "../components/TeamKpmAnalysis";
 import { TeamVsTeamSafeKillsCompare } from '../components/TeamVsTeamSafeKillsCompare';
 import { TeamVsTeamMapCompare } from '../components/TeamVsTeamMapCompare';
 
@@ -1447,6 +1450,10 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
       
       const characteristic = getTeamCharacteristic(percentAbts, percentPos);
       
+      const mapDurSec = calculateMapDurationSec(mapName);
+      const totalMinutes = (mapFilteredMatches.length * mapDurSec) / 60;
+      const kpm = totalMinutes > 0 ? parseFloat((totalAbates / totalMinutes).toFixed(3)) : 0;
+
       return {
           mapName,
           totalMatches: mapFilteredMatches.length,
@@ -1455,7 +1462,9 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
           totalPtsColocacao,
           percentAbts,
           percentPos,
-          characteristic
+          characteristic,
+          kpm,
+          avgAbts: mapFilteredMatches.length > 0 ? (totalAbates / mapFilteredMatches.length).toFixed(2) : "0.00"
       };
     });
   }, [filteredData.details, selectedTeamName]);
@@ -2183,6 +2192,8 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
       // Abates totais da equipe neste mapa
       const totalTeamKills = matchesOnMap.reduce((acc, m) => acc + parseNumber(m.ABTS), 0);
       const avgKillsPerMatch = totalMatches > 0 ? (totalTeamKills / totalMatches).toFixed(2) : '0.00';
+      const mapDurationSec = calculateMapDurationSec(mapName) * totalMatches;
+      const teamKpm = mapDurationSec > 0 ? (totalTeamKills / (mapDurationSec / 60)).toFixed(2) : '0.00';
 
       // Abates por Rodada de Cada Mapa
       const roundKillsMap: Record<string, { totalKills: number; matchesCount: number }> = {};
@@ -3152,6 +3163,12 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                         <Crosshair size={15} /> Fases do Jogo
                     </button>
                     <button 
+                        onClick={() => setActiveTab("kpmAnalysis")}
+                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === "kpmAnalysis" ? "bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black" : "text-gray-400 hover:text-white hover:bg-white/5"}`}
+                    >
+                        <Activity size={15} /> KPM por Safe
+                    </button>
+                    <button
                         onClick={() => setActiveTab('comparison')}
                         className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === 'comparison' ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
                     >
@@ -3530,20 +3547,24 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
 
                                         {/* Stats */}
                                         <div className="p-6 space-y-4">
-                                            <div className="grid grid-cols-3 gap-2 text-center divide-x divide-white/5 bg-white/5 p-3 rounded-xl border border-white/5">
-                                                <div>
-                                                    <span className="block text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Partidas</span>
-                                                    <span className="text-lg font-black text-white">{mapData.totalMatches}</span>
-                                                </div>
-                                                <div>
-                                                    <span className="block text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Pontos</span>
-                                                    <span className="text-lg font-black text-yellow-500">{mapData.totalPts}</span>
-                                                </div>
-                                                <div>
-                                                    <span className="block text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Abates</span>
-                                                    <span className="text-lg font-black text-red-500">{mapData.totalAbates}</span>
-                                                </div>
-                                            </div>
+                                            <div className="grid grid-cols-4 gap-2 text-center divide-x divide-white/5 bg-white/5 p-3 rounded-xl border border-white/5">
+      <div>
+          <span className="block text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Partidas</span>
+          <span className="text-lg font-black text-white">{mapData.totalMatches}</span>
+      </div>
+      <div>
+          <span className="block text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Pontos</span>
+          <span className="text-lg font-black text-yellow-500">{mapData.totalPts}</span>
+      </div>
+      <div>
+          <span className="block text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Abates</span>
+          <span className="text-lg font-black text-red-500">{mapData.totalAbates}</span>
+      </div>
+      <div>
+          <span className="block text-[9px] font-bold text-yellow-500/80 uppercase tracking-widest mb-1">KPM</span>
+          <span className="text-lg font-black text-yellow-400 font-mono">{(mapData.kpm || 0).toFixed(3)}</span>
+      </div>
+  </div>
 
                                             {/* Progress Bars */}
                                             <div className="space-y-3">
@@ -7383,6 +7404,13 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                     </div>
                 )}
             </div>
+        ) : activeTab === "kpmAnalysis" ? (
+            <TeamKpmAnalysis
+                data={data}
+                selectedTeam={selectedTeamName}
+                onSelectTeam={(team) => { setFilters(prev => ({...prev, team: [team]})); }}
+            />
+
         ) : activeTab === 'killfeedPhases' ? (
             <div className="space-y-8 animate-in fade-in duration-500">
                 <div className="bg-[#1a1a1a] rounded-3xl p-8 border border-gray-800 shadow-xl">
@@ -7662,14 +7690,15 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                             <tbody className="divide-y divide-gray-800/30">
                                                 {[
                                                     { label: 'Total de Pontos', key: 'pts', color: 'text-yellow-500' },
-                                                    { label: 'M√©dia de Pontos', key: 'avgPts', color: 'text-white' },
-                                                    { label: 'Total de Booyahs', key: 'b', color: 'text-orange-500' },
-                                                    { label: 'Total de Abates', key: 'abts', color: 'text-red-500' },
-                                                    { label: 'M√©dia de Abates', key: 'avgAbts', color: 'text-white' },
-                                                    { label: 'M√©dia Pts Posi√ß√£o', key: 'avgPtsc', color: 'text-blue-400' },
-                                                    { label: '% Abates no Score', key: 'percentAbts', color: 'text-gray-400' },
-                                                    { label: '% Posi√ß√£o no Score', key: 'percentPos', color: 'text-gray-400' },
-                                                ].map((row, rIdx) => {
+      { label: 'M√©dia de Pontos', key: 'avgPts', color: 'text-white' },
+      { label: 'KPM Geral (Abates/Min)', key: 'kpm', color: 'text-yellow-400' },
+      { label: 'Total de Booyahs', key: 'b', color: 'text-orange-500' },
+      { label: 'Total de Abates', key: 'abts', color: 'text-red-500' },
+      { label: 'M√©dia de Abates', key: 'avgAbts', color: 'text-white' },
+      { label: 'M√©dia Pts Posi√ß√£o', key: 'avgPtsc', color: 'text-blue-400' },
+      { label: '% Abates no Score', key: 'percentAbts', color: 'text-gray-400' },
+      { label: '% Posi√ß√£o no Score', key: 'percentPos', color: 'text-gray-400' },
+  ].map((row, rIdx) => {
                                                     const valA = filteredTeamStats.find(s => s.name === filters.team[0])?.[row.key as keyof TeamStats] as number || 0;
                                                     const valB = filteredTeamStats.find(s => s.name === compareTeamB)?.[row.key as keyof TeamStats] as number || 0;
                                                     const isBetterA = valA > valB;
@@ -7678,13 +7707,13 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                                     return (
                                                         <tr key={rIdx} className="hover:bg-white/[0.02] transition-colors">
                                                             <td className={`px-8 py-4 text-center font-black ${isBetterA ? 'text-yellow-500 scale-110' : 'text-gray-600'} transition-all`}>
-                                                                {valA}{(row.key.includes('percent')) ? '%' : ''}
+                                                                {row.key === 'kpm' ? Number(valA || 0).toFixed(3) : valA}{(row.key.includes('percent')) ? '%' : ''}
                                                             </td>
                                                             <td className="px-8 py-4 text-center text-[10px] font-black text-white uppercase tracking-widest bg-black/20 italic">
                                                                 {row.label}
                                                             </td>
                                                             <td className={`px-8 py-4 text-center font-black ${isBetterB ? 'text-blue-500 scale-110' : 'text-gray-600'} transition-all`}>
-                                                                {valB}{(row.key.includes('percent')) ? '%' : ''}
+                                                                {row.key === 'kpm' ? Number(valB || 0).toFixed(3) : valB}{(row.key.includes('percent')) ? '%' : ''}
                                                             </td>
                                                         </tr>
                                                     );
@@ -7848,1615 +7877,82 @@ const Teams: React.FC<TeamsProps> = ({ data }) => {
                                                 <div className="text-center md:text-right">
                                                     <span className="block text-[8px] text-gray-500 font-bold">TOTAL ABATES ({filters.team[0]})</span>
                                                     <span className="text-lg font-black text-yellow-500 italic">{m.teamA.totalTeamKills} <span className="text-[10px] text-gray-500 font-normal">({m.teamA.avgKillsPerMatch} avg)</span></span>
-                                                </div>
-                                                <div className="text-center md:text-right">
-                                                    <span className="block text-[8px] text-gray-500 font-bold">TOTAL ABATES ({compareTeamB})</span>
-                                                    <span className="text-lg font-black text-blue-400 italic">{m.teamB.totalTeamKills} <span className="text-[10px] text-gray-500 font-normal">({m.teamB.avgKillsPerMatch} avg)</span></span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                                            {/* Team A Players & MVP */}
-                                            <div className="lg:col-span-4 bg-black/20 p-5 rounded-3xl border border-yellow-500/10 space-y-4">
-                                                <span className="text-[10px] text-yellow-500 font-black uppercase tracking-widest block border-b border-white/5 pb-2">MVP & Elenco ({filters.team[0]})</span>
-                                                {m.teamA.mvpPlayer ? (
-                                                    <div className="flex items-center gap-4 bg-yellow-500/5 p-3 rounded-2xl border border-yellow-500/20">
-                                                        <div className="w-12 h-12 bg-black rounded-xl border border-yellow-500/30 overflow-hidden flex items-center justify-center relative shrink-0">
-                                                            {m.teamA.mvpPlayer.playerImg ? (
-                                                                <img src={m.teamA.mvpPlayer.playerImg} alt={m.teamA.mvpPlayer.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                                                            ) : (
-                                                                <User size={20} className="text-yellow-500" />
-                                                            )}
-                                                            <div className="absolute top-0 left-0 bg-yellow-500 text-black px-1 py-0.5 rounded-br text-[6px] font-black uppercase">MVP</div>
-                                                        </div>
-                                                        <div className="min-w-0">
-                                                            <span className="block text-xs font-black text-white truncate">{m.teamA.mvpPlayer.name}</span>
-                                                            <span className="block text-[8px] text-gray-500 font-bold uppercase">{m.teamA.mvpPlayer.kills} kills ({m.teamA.mvpPlayer.avgKills} avg)</span>
-                                                        </div>
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-[10px] text-gray-600 italic block">Nenhum registro de jogador</span>
-                                                )}
-                                                <div className="space-y-2">
-                                                    <span className="text-[8px] text-gray-500 font-bold uppercase tracking-wider block">Lista de Jogadores</span>
-                                                    {m.teamA.playerList.slice(0, 5).map((p, pIdx) => (
-                                                        <div key={pIdx} className="flex justify-between items-center text-xs">
-                                                            <span className="text-gray-400 font-bold truncate max-w-[120px]">{p.name}</span>
-                                                            <span className="text-white font-black">{p.kills} <span className="text-[8px] text-gray-600">({p.avgKills})</span></span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-
-                                            {/* Round comparison list */}
-                                            <div className="lg:col-span-4 bg-black/40 p-5 rounded-3xl border border-white/5 space-y-4">
-                                                <span className="text-[10px] text-white/40 font-black uppercase tracking-widest block border-b border-white/5 pb-2 text-center">Confronto por Rodada</span>
-                                                <div className="space-y-3">
-                                                    {(() => {
-                                                        const allRds = Array.from(new Set([
-                                                            ...m.teamA.roundsList.map(r => r.rd),
-                                                            ...m.teamB.roundsList.map(r => r.rd)
-                                                        ])).sort((x, y) => {
-                                                            const numX = parseInt(x.replace(/\D/g, '')) || 0;
-                                                            const numY = parseInt(y.replace(/\D/g, '')) || 0;
-                                                            if (numX !== numY) return numX - numY;
-                                                            return x.localeCompare(y);
-                                                        });
-
-                                                        if (allRds.length === 0) {
-                                                            return <span className="text-[10px] text-gray-600 italic block text-center py-4">Sem dados por rodada</span>;
-                                                        }
-
-                                                        return allRds.map(rd => {
-                                                            const rdA = m.teamA.roundsList.find(r => r.rd === rd);
-                                                            const rdB = m.teamB.roundsList.find(r => r.rd === rd);
-                                                            const killsA = rdA ? rdA.totalKills : 0;
-                                                            const killsB = rdB ? rdB.totalKills : 0;
-                                                            
-                                                            const isGreaterA = killsA > killsB;
-                                                            const isGreaterB = killsB > killsA;
-
-                                                            return (
-                                                                <div key={rd} className="flex justify-between items-center text-xs">
-                                                                    <span className={`w-8 text-left font-black ${isGreaterA ? 'text-yellow-500 scale-105 font-extrabold' : 'text-gray-500'}`}>{killsA}</span>
-                                                                    <span className="text-[8px] text-gray-600 font-black uppercase bg-black/50 px-2 py-1 rounded-md border border-white/5 min-w-[50px] text-center">{rd}</span>
-                                                                    <span className={`w-8 text-right font-black ${isGreaterB ? 'text-blue-400 scale-105 font-extrabold' : 'text-gray-500'}`}>{killsB}</span>
-                                                                </div>
-                                                            );
-                                                        });
-                                                    })()}
-                                                </div>
-                                            </div>
-
-                                            {/* Team B Players & MVP */}
-                                            <div className="lg:col-span-4 bg-black/20 p-5 rounded-3xl border border-blue-500/10 space-y-4">
-                                                <span className="text-[10px] text-blue-400 font-black uppercase tracking-widest block border-b border-white/5 pb-2">MVP & Elenco ({compareTeamB})</span>
-                                                {m.teamB.mvpPlayer ? (
-                                                    <div className="flex items-center gap-4 bg-blue-500/5 p-3 rounded-2xl border border-blue-500/20">
-                                                        <div className="w-12 h-12 bg-black rounded-xl border border-blue-500/30 overflow-hidden flex items-center justify-center relative shrink-0">
-                                                            {m.teamB.mvpPlayer.playerImg ? (
-                                                                <img src={m.teamB.mvpPlayer.playerImg} alt={m.teamB.mvpPlayer.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                                                            ) : (
-                                                                <User size={20} className="text-blue-400" />
-                                                            )}
-                                                            <div className="absolute top-0 left-0 bg-blue-500 text-white px-1 py-0.5 rounded-br text-[6px] font-black uppercase">MVP</div>
-                                                        </div>
-                                                        <div className="min-w-0">
-                                                            <span className="block text-xs font-black text-white truncate">{m.teamB.mvpPlayer.name}</span>
-                                                            <span className="block text-[8px] text-gray-500 font-bold uppercase">{m.teamB.mvpPlayer.kills} kills ({m.teamB.mvpPlayer.avgKills} avg)</span>
-                                                        </div>
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-[10px] text-gray-600 italic block">Nenhum registro de jogador</span>
-                                                )}
-                                                <div className="space-y-2">
-                                                    <span className="text-[8px] text-gray-500 font-bold uppercase tracking-wider block">Lista de Jogadores</span>
-                                                    {m.teamB.playerList.slice(0, 5).map((p, pIdx) => (
-                                                        <div key={pIdx} className="flex justify-between items-center text-xs">
-                                                            <span className="text-gray-400 font-bold truncate max-w-[120px]">{p.name}</span>
-                                                            <span className="text-white font-black">{p.kills} <span className="text-[8px] text-gray-600">({p.avgKills})</span></span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-
-                        {/* SUB-TAB: Abates por Safe do Kill Feed */}
-                        {(compareSubTab === 'safeKills' || compareSubTab === 'all') && compareSafeKillsData && (
-                            <div className="space-y-6 animate-in fade-in duration-300">
-                                {compareSubTab === 'all' && (
-                                    <div className="flex flex-col items-center pt-8">
-                                        <div className="h-0.5 w-28 bg-gradient-to-r from-transparent via-red-500 to-transparent mb-3" />
-                                        <div className="flex items-center gap-2 text-red-500 font-black uppercase tracking-[0.4em] italic text-xs">
-                                            <Crosshair size={16} /> Abates por Safe do Kill Feed
-                                        </div>
-                                    </div>
-                                )}
-                                <TeamVsTeamSafeKillsCompare
-                                    teamA={filters.team[0]}
-                                    teamB={compareTeamB}
-                                    safeKillsData={compareSafeKillsData}
-                                    onPlayerClick={(pName) => navigate('/players', { state: { player: pName } })}
-                                    onTeamClick={(tName) => setFilters(prev => ({ ...prev, team: [tName] }))}
-                                />
-                            </div>
-                        )}
-
-                        {/* SUB-TAB: Safes */}
-                        {(compareSubTab === 'safes' || compareSubTab === 'all') && (
-                            <div className="space-y-6 animate-in fade-in duration-300">
-                                {compareSubTab === 'all' && (
-                                    <div className="flex flex-col items-center pt-8">
-                                        <div className="h-0.5 w-28 bg-gradient-to-r from-transparent via-blue-500 to-transparent mb-3" />
-                                        <div className="flex items-center gap-2 text-blue-500 font-black uppercase tracking-[0.4em] italic text-xs">
-                                            <MapPin size={16} /> Desempenho por Safe nos Mapas
-                                        </div>
-                                    </div>
-                                )}
-                                {compareSafesMapData.map((m, mIdx) => (
-                                    <div key={mIdx} className="bg-[#1a1a1a] rounded-[40px] border border-gray-800 p-8 space-y-6 shadow-2xl relative overflow-hidden">
-                                        <div className="absolute top-0 right-0 w-96 h-96 bg-blue-500/5 blur-[120px] rounded-full" />
-                                        
-                                        <div className="border-b border-gray-800 pb-4 flex justify-between items-center">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center text-blue-500 border border-blue-500/20">
-                                                    <MapPin size={18} />
-                                                </div>
-                                                <div>
-                                                    <h4 className="text-xl font-black text-white uppercase italic tracking-widest">{m.mapName}</h4>
-                                                    <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Locais onde as equipes mais pontuam ou falham</span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                                            {/* Team A Safes */}
-                                            <div className="space-y-4">
-                                                <span className="text-xs font-black text-yellow-500 uppercase tracking-widest block border-b border-white/5 pb-2">{filters.team[0]}</span>
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                    {/* Best */}
-                                                    <div className="bg-emerald-950/20 p-4 rounded-2xl border border-emerald-500/20 space-y-3">
-                                                        <span className="text-[9px] text-emerald-400 font-black uppercase tracking-wider flex items-center gap-2"><ArrowUp size={12} /> MELHORES SAFES</span>
-                                                        {m.teamA.best.length > 0 ? m.teamA.best.map((s, idx) => (
-                                                            <div key={idx} className="flex justify-between items-center text-xs">
-                                                                <span className="text-gray-300 font-bold truncate max-w-[120px]">{s.localName}</span>
-                                                                <span className="text-emerald-400 font-black">{s.avgPts} pts</span>
-                                                            </div>
-                                                        )) : <span className="text-[10px] text-gray-600 italic block">Sem registros</span>}
-                                                    </div>
-                                                    {/* Worst */}
-                                                    <div className="bg-red-950/20 p-4 rounded-2xl border border-red-500/20 space-y-3">
-                                                        <span className="text-[9px] text-red-400 font-black uppercase tracking-wider flex items-center gap-2"><ArrowDown size={12} /> PIORES SAFES</span>
-                                                        {m.teamA.worst.length > 0 ? m.teamA.worst.map((s, idx) => (
-                                                            <div key={idx} className="flex justify-between items-center text-xs">
-                                                                <span className="text-gray-300 font-bold truncate max-w-[120px]">{s.localName}</span>
-                                                                <span className="text-red-400 font-black">{s.avgPts} pts</span>
-                                                            </div>
-                                                        )) : <span className="text-[10px] text-gray-600 italic block">Sem registros</span>}
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            {/* Team B Safes */}
-                                            <div className="space-y-4">
-                                                <span className="text-xs font-black text-blue-400 uppercase tracking-widest block border-b border-white/5 pb-2">{compareTeamB}</span>
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                    {/* Best */}
-                                                    <div className="bg-emerald-950/20 p-4 rounded-2xl border border-emerald-500/20 space-y-3">
-                                                        <span className="text-[9px] text-emerald-400 font-black uppercase tracking-wider flex items-center gap-2"><ArrowUp size={12} /> MELHORES SAFES</span>
-                                                        {m.teamB.best.length > 0 ? m.teamB.best.map((s, idx) => (
-                                                            <div key={idx} className="flex justify-between items-center text-xs">
-                                                                <span className="text-gray-300 font-bold truncate max-w-[120px]">{s.localName}</span>
-                                                                <span className="text-emerald-400 font-black">{s.avgPts} pts</span>
-                                                            </div>
-                                                        )) : <span className="text-[10px] text-gray-600 italic block">Sem registros</span>}
-                                                    </div>
-                                                    {/* Worst */}
-                                                    <div className="bg-red-950/20 p-4 rounded-2xl border border-red-500/20 space-y-3">
-                                                        <span className="text-[9px] text-red-400 font-black uppercase tracking-wider flex items-center gap-2"><ArrowDown size={12} /> PIORES SAFES</span>
-                                                        {m.teamB.worst.length > 0 ? m.teamB.worst.map((s, idx) => (
-                                                            <div key={idx} className="flex justify-between items-center text-xs">
-                                                                <span className="text-gray-300 font-bold truncate max-w-[120px]">{s.localName}</span>
-                                                                <span className="text-red-400 font-black">{s.avgPts} pts</span>
-                                                            </div>
-                                                        )) : <span className="text-[10px] text-gray-600 italic block">Sem registros</span>}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-
-                        {/* SUB-TAB: Killfeed Phases (Early/Mid/Late Game) */}
-                        {(compareSubTab === 'safeKills' || compareSubTab === 'all') && (
-                            <div className="space-y-6 animate-in fade-in duration-300">
-                                {compareSubTab === 'all' && (
-                                    <div className="flex flex-col items-center pt-8">
-                                        <div className="h-0.5 w-28 bg-gradient-to-r from-transparent via-emerald-500 to-transparent mb-3" />
-                                        <div className="flex items-center gap-2 text-emerald-500 font-black uppercase tracking-[0.4em] italic text-xs">
-                                            <Crosshair size={16} /> Agressividade por Fases do Jogo
-                                        </div>
-                                    </div>
-                                )}
-                                <div className="bg-[#1a1a1a] rounded-[40px] border border-gray-800 p-8 space-y-8 shadow-2xl relative overflow-hidden">
-                                    <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/5 blur-[120px] rounded-full pointer-events-none" />
-                                    
-                                    <div className="border-b border-gray-800 pb-4 flex justify-between items-center relative z-10">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-400 border border-emerald-500/20">
-                                                <Crosshair size={18} />
-                                            </div>
-                                            <div>
-                                                <h4 className="text-xl font-black text-white uppercase italic tracking-widest">Agressividade (Early / Mid / Late)</h4>
-                                                <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Comparativo de kills por fase no Kill Feed</span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 relative z-10">
-                                        {[filters.team[0], compareTeamB].map((teamName, idx) => {
-                                            const phaseStats = allTeamsPhaseStats.find(t => t.name === teamName);
-                                            if (!phaseStats) return null;
-
-                                            return (
-                                                <div key={teamName} className="space-y-6">
-                                                    <h5 className={`text-xl font-black uppercase italic tracking-widest ${idx === 0 ? 'text-yellow-500' : 'text-blue-400'}`}>
-                                                        {teamName}
-                                                    </h5>
-                                                    
-                                                    <div className="space-y-4">
-                                                        {/* Early */}
-                                                        <div className="bg-black/60 p-4 rounded-2xl border border-emerald-500/20 flex items-center justify-between group hover:border-emerald-500/40 transition-colors">
-                                                            <div>
-                                                                <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest block">EARLY GAME (SAFES 1-2)</span>
-                                                                <span className="text-xs text-gray-500 font-bold">Kills no in√≠cio de partida</span>
-                                                            </div>
-                                                            <div className="flex flex-col items-end">
-                                                                <span className="text-2xl font-black text-white italic">{phaseStats.earlyKills} <span className="text-xs text-emerald-400 ml-1 font-bold">KILLS</span></span>
-                                                                <span className="text-[10px] text-emerald-400/80 font-black">{phaseStats.earlyPct}%</span>
-                                                            </div>
-                                                        </div>
-                                                        {/* Mid */}
-                                                        <div className="bg-black/60 p-4 rounded-2xl border border-yellow-500/20 flex items-center justify-between group hover:border-yellow-500/40 transition-colors">
-                                                            <div>
-                                                                <span className="text-[10px] font-black text-yellow-400 uppercase tracking-widest block">MID GAME (SAFES 3-4)</span>
-                                                                <span className="text-xs text-gray-500 font-bold">Kills no meio de jogo</span>
-                                                            </div>
-                                                            <div className="flex flex-col items-end">
-                                                                <span className="text-2xl font-black text-white italic">{phaseStats.midKills} <span className="text-xs text-yellow-400 ml-1 font-bold">KILLS</span></span>
-                                                                <span className="text-[10px] text-yellow-400/80 font-black">{phaseStats.midPct}%</span>
-                                                            </div>
-                                                        </div>
-                                                        {/* Late */}
-                                                        <div className="bg-black/60 p-4 rounded-2xl border border-red-500/20 flex items-center justify-between group hover:border-red-500/40 transition-colors">
-                                                            <div>
-                                                                <span className="text-[10px] font-black text-red-400 uppercase tracking-widest block">LATE GAME (SAFES 5+)</span>
-                                                                <span className="text-xs text-gray-500 font-bold">Kills decisivas</span>
-                                                            </div>
-                                                            <div className="flex flex-col items-end">
-                                                                <span className="text-2xl font-black text-white italic">{phaseStats.lateKills} <span className="text-xs text-red-400 ml-1 font-bold">KILLS</span></span>
-                                                                <span className="text-[10px] text-red-400/80 font-black">{phaseStats.latePct}%</span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="flex items-center justify-between pt-4 border-t border-white/5 px-2">
-                                                        <span className="text-xs font-black text-gray-400 uppercase tracking-widest">Total Registrado</span>
-                                                        <span className="text-lg font-black text-white italic">{phaseStats.totalPhaseKills} KILLS</span>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                ) : (
-                    <div className="bg-[#1a1a1a] rounded-[50px] border-2 border-dashed border-gray-800 py-32 flex flex-col items-center justify-center space-y-6">
-                         <div className="w-20 h-20 bg-gray-900 rounded-full flex items-center justify-center text-gray-700">
-                             <Scale size={40} />
-                         </div>
-                         <div className="text-center">
-                             <h3 className="text-2xl font-black text-white uppercase italic tracking-tighter mb-2">Modo de Compara√ß√£o</h3>
-                             <p className="text-sm text-gray-500 font-medium max-w-xs mx-auto">Selecione duas equipes nos campos acima para comparar estat√≠sticas head-to-head.</p>
-                         </div>
-                    </div>
-                )}
-            </div>
-        ) : activeTab === 'bottomRanking' ? (
-            <div className="space-y-12 animate-in fade-in duration-500">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                    <BottomList title="Piores em Pontos" data={bottomRankings.pts} metric="pts" label="PTS" color="text-yellow-500" onSelect={(name) => setFilters(prev => ({...prev, team: [name]}))} />
-                    <BottomList title="Piores em PTS/C" data={bottomRankings.ptsc} metric="ptsc" label="PTS/C" color="text-orange-500" onSelect={(name) => setFilters(prev => ({...prev, team: [name]}))} />
-                    <BottomList title="Piores em Booyahs" data={bottomRankings.booyahs} metric="b" label="BOOYAHS" color="text-blue-500" onSelect={(name) => setFilters(prev => ({...prev, team: [name]}))} />
-                    <BottomList title="Piores M√©dias (PTS)" data={bottomRankings.avgPts} metric="avgPts" label="AVG PTS" color="text-yellow-400" onSelect={(name) => setFilters(prev => ({...prev, team: [name]}))} />
-                    <BottomList title="Piores M√©dias (KILLS)" data={bottomRankings.avgAbts} metric="avgAbts" label="AVG KILLS" color="text-red-500" onSelect={(name) => setFilters(prev => ({...prev, team: [name]}))} />
-                </div>
-            </div>
-        ) : activeTab === 'pointsTable' ? (
-            <div className="space-y-6 animate-in fade-in duration-500 pb-10">
-                <div className="bg-[#1a1a1a] p-6 rounded-3xl border border-gray-800 shadow-xl overflow-hidden">
-                    <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8">
-                        <div>
-                            <h3 className="text-xl font-black text-white uppercase italic tracking-widest flex items-center gap-3">
-                                <ListOrdered size={20} className="text-yellow-500"/> TABELA DE PONTOS POR RODADA
-                            </h3>
-                            <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mt-1">Classifica√ß√£o Geral & evolu√ß√£o de pontos de todos os times</p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-3">
-                            <span className="text-[9px] text-gray-400 font-black uppercase tracking-widest bg-black/40 px-3 py-1.5 rounded-lg border border-white/5 flex items-center gap-2">
-                                <span className="w-2 h-2 rounded bg-blue-500 inline-block shadow-[0_0_8px_rgba(59,130,246,0.6)]"></span> L√çDER (1¬∫)
-                            </span>
-                            <span className="text-[9px] text-gray-400 font-black uppercase tracking-widest bg-black/40 px-3 py-1.5 rounded-lg border border-white/5 flex items-center gap-2">
-                                <span className="w-2 h-2 rounded bg-[#10b981] inline-block shadow-[0_0_8px_rgba(16,185,129,0.5)]"></span> FINALISTAS (2-12¬∫)
-                            </span>
-                            <span className="text-[9px] text-gray-400 font-black uppercase tracking-widest bg-black/40 px-3 py-1.5 rounded-lg border border-white/5 flex items-center gap-2">
-                                <span className="w-2 h-2 rounded bg-red-700 inline-block shadow-[0_0_8px_rgba(239,68,68,0.4)]"></span> REBAIXAMENTO (13¬∫+)
-                            </span>
-                        </div>
-                    </div>
-
-                    <div className="overflow-x-auto w-full rounded-2xl border border-gray-800/60 shadow-inner scrollbar-thin scrollbar-thumb-gray-800">
-                        <table className="w-full text-left border-collapse table-auto whitespace-nowrap">
-                            <thead className="bg-[#0f0f0f] border-b border-gray-800 text-gray-400 text-[10px] uppercase font-black tracking-wider">
-                                <tr>
-                                    <th className="px-4 py-4 text-center w-16">#</th>
-                                    <th className="px-4 py-4 text-center w-14">TEND</th>
-                                    <th className="px-4 py-4 min-w-[200px]">Equipe</th>
-                                    <th className="px-4 py-4 text-center bg-yellow-900/10 text-yellow-500 w-24">PTS</th>
-                                    {sortedRoundsList.map(round => (
-                                        <th key={round} className="px-4 py-4 text-center min-w-[80px] font-bold text-gray-300">
-                                            {formatRoundHeader(round)}
-                                        </th>
-                                    ))}
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-800/40">
-                                {displayTeamStats.map((team, index) => {
-                                    const rank = index + 1;
-                                    const trend = rankTrends[team.name] || { change: 0, type: 'neutral' };
-                                    
-                                    // Determinar a cor do badge de rank do print do Free Fire
-                                    let rankBadgeClass = "w-6 h-6 rounded flex items-center justify-center font-black text-xs ";
-                                    if (rank === 1) {
-                                        rankBadgeClass += "bg-blue-600 text-white shadow-[0_0_8px_rgba(59,130,246,0.6)]";
-                                    } else if (rank <= 12) {
-                                        rankBadgeClass += "bg-[#10b981] text-black shadow-[0_0_8px_rgba(16,185,129,0.5)]";
-                                    } else {
-                                        rankBadgeClass += "bg-red-950/80 text-white border border-red-800/30";
-                                    }
-
-                                    // Determinar as bordas esquerdas das divis√µes
-                                    let rowBorderClass = "hover:bg-white/[0.03] transition-colors ";
-                                    if (rank <= 12) {
-                                        rowBorderClass += "border-l-[4px] border-[#10b981] bg-emerald-500/[0.01]";
-                                    } else {
-                                        rowBorderClass += "border-l-[4px] border-red-700 bg-red-500/[0.01]";
-                                    }
-
-                                    return (
-                                        <tr key={team.name} className={rowBorderClass}>
-                                            <td className="px-4 py-3 text-center">
-                                                <div className="flex justify-center items-center">
-                                                    <span className={rankBadgeClass}>{rank}</span>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3 text-center">
-                                                <div className="flex items-center justify-center font-bold text-xs">
-                                                    {trend.type === 'up' && (
-                                                        <span className="text-emerald-400 flex items-center gap-0.5">
-                                                            <ArrowUp size={12} className="stroke-[3]" /> {trend.change}
-                                                        </span>
-                                                    )}
-                                                    {trend.type === 'down' && (
-                                                        <span className="text-red-500 flex items-center gap-0.5">
-                                                            <ArrowDown size={12} className="stroke-[3]" /> {trend.change}
-                                                        </span>
-                                                    )}
-                                                    {trend.type === 'neutral' && (
-                                                        <span className="text-gray-600 font-bold">-</span>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3 font-bold text-white">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-8 h-8 rounded-lg bg-black border border-gray-800 p-1 flex-shrink-0 flex items-center justify-center">
-                                                        {team.image ? (
-                                                            <img src={team.image} alt={team.name} className="w-full h-full object-contain" />
-                                                        ) : (
-                                                            <Shield size={16} className="text-gray-700" />
-                                                        )}
-                                                    </div>
-                                                    <div className="flex flex-col">
-                                                        <span className="text-sm font-black uppercase italic tracking-tight">{team.name}</span>
-                                                        {team.grupo && (
-                                                            <span className="text-[8px] font-bold text-gray-500 uppercase tracking-widest">{team.grupo}</span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3 text-center font-black text-sm italic text-yellow-500 bg-yellow-950/10">
-                                                {team.pts}
-                                            </td>
-                                            {sortedRoundsList.map(round => {
-                                                const pts = teamRoundPoints[team.name]?.[round];
-                                                const isExistent = pts !== undefined;
-                                                return (
-                                                    <td key={round} className="px-4 py-3 text-center font-bold text-xs font-mono">
-                                                        {isExistent ? (
-                                                            <span className="text-white font-black">{pts}</span>
-                                                        ) : (
-                                                            <span className="text-gray-700 font-bold">-</span>
-                                                        )}
-                                                    </td>
-                                                );
-                                            })}
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        ) : activeTab === 'teamRounds' ? (
-            <div className="space-y-6 animate-in fade-in duration-500 pb-10">
-                <div className="bg-[#1a1a1a] p-6 rounded-3xl border border-gray-800 shadow-xl overflow-hidden">
-                    <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8">
-                        <div>
-                            <h3 className="text-xl font-black text-white uppercase italic tracking-widest flex items-center gap-3">
-                                <Calendar size={20} className="text-yellow-500"/> HIST√ìRICO DE RODADAS POR EQUIPE
-                            </h3>
-                            <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mt-1">
-                                Visualize quais rodadas uma equipe jogou e os detalhes de sua performance em cada queda
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* Sele√ß√£o de equipe */}
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 bg-black/40 p-4 rounded-2xl border border-white/5">
-                        <div className="flex items-center gap-3 flex-wrap">
-                            <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Selecionar Equipe:</label>
-                            <select 
-                                value={selectedTeamName || ''} 
-                                onChange={(e) => setFilters(prev => ({ ...prev, team: e.target.value ? [e.target.value] : [] }))}
-                                className="bg-black text-white text-xs font-black uppercase tracking-wider py-2 px-4 rounded-xl border border-gray-800 focus:border-yellow-500 outline-none cursor-pointer"
-                            >
-                                <option value="">-- Escolha uma Equipe --</option>
-                                {teamsList.map(t => (
-                                    <option key={t.name} value={t.name}>{t.name}</option>
-                                ))}
-                            </select>
-                        </div>
-                        {selectedTeamName && (
-                            <button 
-                                onClick={() => setFilters(prev => ({ ...prev, team: [] }))}
-                                className="text-[10px] font-black text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 px-4 py-2 rounded-xl border border-red-500/20 uppercase tracking-widest transition-colors scale-100 hover:scale-[1.02] active:scale-95"
-                            >
-                                Limpar Sele√ß√£o
-                            </button>
-                        )}
-                    </div>
-
-                    {selectedTeamName && selectedTeamStats ? (
-                        <div className="space-y-6">
-                            {/* Card de Resumo do Time Selecionado */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                <div className="bg-black/40 rounded-2xl p-4 border border-white/5 flex items-center gap-4">
-                                    <div className="w-14 h-14 bg-black rounded-xl border border-gray-800 p-2 flex items-center justify-center relative shrink-0">
-                                        {selectedTeamStats.image ? (
-                                            <img src={selectedTeamStats.image} alt={selectedTeamStats.name} className="w-full h-full object-contain" />
-                                        ) : (
-                                            <Shield size={24} className="text-gray-700" />
-                                        )}
-                                    </div>
-                                    <div className="min-w-0">
-                                        <span className="text-[8px] text-gray-500 font-black uppercase tracking-widest block">EQUIPE</span>
-                                        <h4 className="text-lg font-black italic uppercase leading-none text-white truncate">{selectedTeamStats.name}</h4>
-                                        {selectedTeamStats.grupo && (
-                                            <span className="text-[8px] text-yellow-500 font-bold uppercase tracking-widest mt-1 block">{selectedTeamStats.grupo}</span>
-                                        )}
-                                    </div>
-                                </div>
-                                <div className="bg-black/40 rounded-2xl p-4 border border-white/5 text-center flex flex-col justify-center">
-                                    <span className="text-[8px] text-gray-500 font-black uppercase tracking-widest block mb-1">PONTOS TOTAIS</span>
-                                    <span className="text-2xl font-black italic leading-none text-yellow-500">{selectedTeamStats.pts}</span>
-                                </div>
-                                <div className="bg-black/40 rounded-2xl p-4 border border-white/5 text-center flex flex-col justify-center">
-                                    <span className="text-[8px] text-gray-500 font-black uppercase tracking-widest block mb-1">ABATES (KILLS)</span>
-                                    <span className="text-2xl font-black italic leading-none text-red-500">{selectedTeamStats.abts}</span>
-                                </div>
-                                <div className="bg-black/40 rounded-2xl p-4 border border-white/5 text-center flex flex-col justify-center">
-                                    <span className="text-[8px] text-gray-500 font-black uppercase tracking-widest block mb-1">BOOYAHS (VIT√ìRIAS)</span>
-                                    <span className="text-2xl font-black italic leading-none text-orange-500">{selectedTeamStats.b}</span>
-                                </div>
-                            </div>
-
-                            {/* Se√ß√£o de Personagens e Line-up da Equipe */}
-                            {teamCharSummary && teamCharSummary.activeSkills.length > 0 && (
-                                <div className="bg-[#0e0e11] p-6 rounded-3xl border border-gray-800 shadow-xl space-y-6">
-                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-4">
-                                        <div>
-                                            <h4 className="text-base font-black text-white uppercase italic tracking-wider flex items-center gap-2">
-                                                <Zap size={18} className="text-yellow-500" />
-                                                S√çNTESE DE PERSONAGENS & HABILIDADES DA EQUIPE
-                                            </h4>
-                                            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mt-0.5">
-                                                Resumo das habilidades ativas, pets e prefer√™ncias da line-up em {teamCharSummary.totalDrops} quedas disputadas
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    {/* Ativas mais usadas pelo time */}
-                                    <div>
-                                        <span className="text-[9px] font-black text-yellow-500 uppercase tracking-widest block mb-3 flex items-center gap-1.5">
-                                            <Zap size={12} /> HABILIDADES ATIVAS MAIS USADAS PELA EQUIPE
-                                        </span>
-                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
-                                            {teamCharSummary.activeSkills.slice(0, 6).map((sk) => (
-                                                <div key={sk.name} className="bg-black/60 p-3 rounded-2xl border border-yellow-500/20 flex flex-col items-center text-center shadow-md">
-                                                    {sk.img ? (
-                                                        <img src={sk.img} alt={sk.name} className="w-9 h-9 object-contain rounded-xl bg-black p-0.5 border border-yellow-500/30 mb-2" />
-                                                    ) : (
-                                                        <div className="w-9 h-9 rounded-xl bg-black border border-yellow-500/30 flex items-center justify-center mb-2">
-                                                            <Zap size={18} className="text-yellow-500" />
-                                                        </div>
-                                                    )}
-                                                    <span className="text-xs font-black italic uppercase text-white truncate max-w-full">{sk.name}</span>
-                                                    <span className="text-[10px] font-bold text-yellow-500 mt-0.5">{sk.count}x ({sk.pct}%)</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* Line-up de Jogadores da Equipe */}
-                                    {teamCharSummary.players.length > 0 && (
-                                        <div>
-                                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest block mb-3 flex items-center gap-1.5">
-                                                <Users size={12} className="text-yellow-500" /> PREFER√äNCIAS POR JOGADOR NA LINE-UP
-                                            </span>
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                                {teamCharSummary.players.map((p) => {
-                                                    const mainActive = p.activeSkills[0];
-                                                    return (
-                                                        <div key={p.name} className="bg-black/60 p-4 rounded-2xl border border-white/5 flex flex-col justify-between space-y-3">
-                                                            <div className="flex items-center justify-between">
-                                                                <div className="flex items-center gap-3">
-                                                                    {p.img ? (
-                                                                        <div className="w-10 h-10 rounded-full border border-yellow-500/30 overflow-hidden flex-shrink-0 bg-black">
-                                                                            <img src={p.img} alt={p.name} className="w-full h-full object-cover" />
-                                                                        </div>
-                                                                    ) : (
-                                                                        <div className="w-10 h-10 rounded-full border border-gray-800 bg-gray-900 flex items-center justify-center flex-shrink-0 text-gray-500">
-                                                                            <Users size={16} />
-                                                                        </div>
-                                                                    )}
-                                                                    <div>
-                                                                        <button
-                                                                            onClick={() => handlePlayerClick(p.name)}
-                                                                            className="text-xs font-black italic uppercase text-white hover:text-yellow-500 transition-colors block text-left"
-                                                                        >
-                                                                            {p.name}
-                                                                        </button>
-                                                                        {p.funcao && (
-                                                                            <span className="text-[8px] font-bold text-gray-500 uppercase tracking-widest block">{p.funcao}</span>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
-                                                                <span className="text-[9px] font-black text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded border border-yellow-500/20">
-                                                                    {p.totalDrops} Quedas
-                                                                </span>
-                                                            </div>
-
-                                                            <div className="space-y-2">
-                                                                {mainActive && (
-                                                                    <div className="bg-yellow-500/5 p-2 rounded-xl border border-yellow-500/20 flex items-center gap-2">
-                                                                        {mainActive.img ? (
-                                                                            <img src={mainActive.img} className="w-6 h-6 object-contain rounded bg-black p-0.5 border border-yellow-500/30" alt={mainActive.name} />
-                                                                        ) : (
-                                                                            <Zap size={14} className="text-yellow-500" />
-                                                                        )}
-                                                                        <div className="min-w-0">
-                                                                            <span className="text-[7px] text-yellow-500 font-black uppercase block leading-none">ATIVA MAIS USADA</span>
-                                                                            <span className="text-[10px] font-black italic text-white uppercase truncate block mt-0.5">{mainActive.name} ({mainActive.pct}%)</span>
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-                                                                
-                                                                {p.passives && p.passives.length > 0 && (
-                                                                    <div className="flex flex-wrap gap-1.5 pt-1">
-                                                                        {p.passives.map(pass => (
-                                                                            <div key={pass.name} className="flex items-center gap-1 bg-black/40 px-1.5 py-1 rounded border border-white/5" title={`${pass.name} (${pass.pct}%)`}>
-                                                                                {pass.img && <img src={pass.img} alt={pass.name} className="w-4 h-4 object-contain rounded-full" />}
-                                                                                <span className="text-[9px] text-gray-300 font-bold truncate max-w-[60px]">{pass.name}</span>
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                )}
-
-                                                                <div className="flex items-center gap-2 pt-1 border-t border-white/5">
-                                                                    {p.topPet && (
-                                                                        <div className="flex items-center gap-1">
-                                                                            {p.topPet.img && <img src={p.topPet.img} alt={p.topPet.name} className="w-4 h-4 object-contain" />}
-                                                                            <span className="text-[9px] text-gray-400 font-bold truncate max-w-[50px]">{p.topPet.name}</span>
-                                                                        </div>
-                                                                    )}
-                                                                    {p.topItem && (
-                                                                        <div className="flex items-center gap-1">
-                                                                            {p.topItem.img && <img src={p.topItem.img} alt={p.topItem.name} className="w-4 h-4 object-contain" />}
-                                                                            <span className="text-[9px] text-gray-400 font-bold truncate max-w-[50px]">{p.topItem.name}</span>
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                                     {/* Composi√ß√µes por Mapa */}
-                                     {teamMapCharacterSummary.length > 0 && (
-                                         <div className="pt-2 border-t border-white/5">
-                                             <span className="text-[9px] font-black text-yellow-500 uppercase tracking-widest block mb-3 flex items-center gap-1.5">
-                                                 <MapIcon size={12} /> COMPOSI√á√ïES DE HABILIDADES POR MAPA
-                                             </span>
-                                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                                 {teamMapCharacterSummary.map((m) => {
-                                                     const isSelected = normalize(teamRoundsMapFilter) === normalize(m.mapName);
-                                                     return (
-                                                         <div
-                                                             key={m.mapName}
-                                                             className={`p-3.5 rounded-2xl border text-left transition-all ${
-                                                                 isSelected
-                                                                     ? 'bg-yellow-500/10 border-yellow-500 shadow-lg shadow-yellow-500/5'
-                                                                     : 'bg-black/60 border-white/5 hover:border-yellow-500/30'
-                                                             }`}
-                                                         >
-                                                             <div 
-                                                                 className="cursor-pointer"
-                                                                 onClick={() => setTeamRoundsMapFilter(isSelected ? 'ALL' : m.mapName)}
-                                                             >
-                                                                 <div className="flex justify-between items-center mb-2">
-                                                                     <span className="text-xs font-black italic uppercase text-white flex items-center gap-1.5">
-                                                                         <MapPin size={12} className="text-yellow-500" /> {m.mapName}
-                                                                     </span>
-                                                                     <span className="text-[9px] font-bold text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded border border-yellow-500/20">
-                                                                         {m.dropCount} Quedas
-                                                                     </span>
-                                                                 </div>
-                                                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                                                     {m.topActives.map((act) => (
-                                                                         <span key={act.name} className="inline-flex items-center gap-1 bg-black/80 px-2 py-1 rounded-lg border border-yellow-500/20 text-[9px] font-bold text-white uppercase">
-                                                                             {act.img && <img src={act.img} alt={act.name} className="w-3.5 h-3.5 object-contain" />}
-                                                                             {act.name} ({act.pct}%)
-                                                                         </span>
-                                                                     ))}
-                                                                 </div>
-                                                             </div>
-                                                             
-                                                             {isSelected && m.players && m.players.length > 0 && (
-                                                                 <div className="mt-4 pt-4 border-t border-yellow-500/20 grid gap-3">
-                                                                     <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest block flex items-center gap-1.5">
-                                                                         <Users size={10} className="text-yellow-500" /> PREFER√äNCIAS NO MAPA
-                                                                     </span>
-                                                                     {m.players.map((p) => {
-                                                                         const mainActive = p.activeSkills?.[0];
-                                                                         return (
-                                                                             <div key={p.name} className="bg-black/60 p-2.5 rounded-xl border border-white/5">
-                                                                                 <div className="flex items-center justify-between mb-2">
-                                                                                     <div className="flex items-center gap-2">
-                                                                                         {p.img ? (
-                                                                                             <img src={p.img} alt={p.name} className="w-6 h-6 object-cover rounded-full border border-yellow-500/30" />
-                                                                                         ) : (
-                                                                                             <div className="w-6 h-6 rounded-full border border-gray-800 bg-gray-900 flex items-center justify-center text-gray-500">
-                                                                                                 <Users size={10} />
-                                                                                         </div>
-                                                                                         )}
-                                                                                         <span className="text-[10px] font-black italic uppercase text-white">{p.name}</span>
-                                                                                     </div>
-                                                                                     {p.funcao && <span className="text-[8px] font-bold text-gray-500 uppercase">{p.funcao}</span>}
-                                                                                 </div>
-                                                                                 <div className="space-y-2">
-                                                                                     {mainActive && (
-                                                                                         <div className="bg-yellow-500/5 p-1.5 rounded-lg border border-yellow-500/20 flex items-center gap-2">
-                                                                                             {mainActive.img ? (
-                                                                                                 <img src={mainActive.img} className="w-5 h-5 object-contain rounded bg-black p-0.5 border border-yellow-500/30" alt={mainActive.name} />
-                                                                                             ) : (
-                                                                                                 <Zap size={12} className="text-yellow-500" />
-                                                                                             )}
-                                                                                             <div className="min-w-0 flex-1 flex justify-between items-center">
-                                                                                                 <div>
-                                                                                                     <span className="text-[6px] text-yellow-500 font-black uppercase block leading-none">ATIVA</span>
-                                                                                                     <span className="text-[9px] font-black italic text-white uppercase truncate block mt-0.5">{mainActive.name}</span>
-                                                                                                 </div>
-                                                                                                 <span className="text-[9px] font-bold text-yellow-500">{mainActive.pct}%</span>
-                                                                                             </div>
-                                                                                         </div>
-                                                                                     )}
-                                                                                     {p.passives && p.passives.length > 0 && (
-                                                                                         <div className="flex flex-wrap gap-1.5 pt-1">
-                                                                                             {p.passives.map(pass => (
-                                                                                                 <div key={pass.name} className="flex items-center gap-1 bg-black/40 px-1.5 py-1 rounded border border-white/5" title={`${pass.name} (${pass.pct}%)`}>
-                                                                                                     {pass.img && <img src={pass.img} alt={pass.name} className="w-3.5 h-3.5 object-contain rounded-full" />}
-                                                                                                     <span className="text-[8px] text-gray-300 font-bold truncate max-w-[50px]">{pass.name}</span>
-                                                                                                 </div>
-                                                                                             ))}
-                                                                                         </div>
-                                                                                     )}
-                                                                                     <div className="flex items-center gap-2 pt-1.5 border-t border-white/5">
-                                                                                         {p.topPet && (
-                                                                                             <div className="flex items-center gap-1">
-                                                                                                 {p.topPet.img && <img src={p.topPet.img} alt={p.topPet.name} className="w-3.5 h-3.5 object-contain" />}
-                                                                                                 <span className="text-[8px] text-gray-400 font-bold truncate max-w-[50px]">{p.topPet.name}</span>
-                                                                                             </div>
-                                                                                         )}
-                                                                                         {p.topItem && (
-                                                                                             <div className="flex items-center gap-1">
-                                                                                                 {p.topItem.img && <img src={p.topItem.img} alt={p.topItem.name} className="w-3.5 h-3.5 object-contain" />}
-                                                                                                 <span className="text-[8px] text-gray-400 font-bold truncate max-w-[50px]">{p.topItem.name}</span>
-                                                                                             </div>
-                                                                                         )}
-                                                                                     </div>
-                                                                                 </div>
-                                                                             </div>
-                                                                         );
-                                                                     })}
-                                                                 </div>
-                                                             )}
-                                                         </div>
-                                                     );
-                                                 })}
-                                             </div>
-                                         </div>
-                                     )}
-
-                             {/* Cabe√ßalho da Se√ß√£o de Rodadas com Filtro de Mapa e Bot√£o de Expandir Todas */}
-                             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mt-8 mb-4">
-                                 <h4 className="text-white font-black uppercase tracking-widest text-xs border-l-2 border-yellow-500 pl-3">
-                                     RODADAS DISPUTADAS ({selectedTeamRounds.length})
-                                 </h4>
-
-                                 <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-                                     {/* Filtro por Mapa */}
-                                     <div className="flex items-center gap-1 bg-black/60 p-1 rounded-xl border border-white/10 overflow-x-auto max-w-full">
-                                         <button
-                                             onClick={() => setTeamRoundsMapFilter('ALL')}
-                                             className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
-                                                 teamRoundsMapFilter === 'ALL'
-                                                     ? 'bg-yellow-500 text-black shadow-md'
-                                                     : 'text-gray-400 hover:text-white'
-                                             }`}
-                                         >
-                                             Todos os Mapas
-                                         </button>
-                                         {teamMapCharacterSummary.map((m) => {
-                                             const isActive = normalize(teamRoundsMapFilter) === normalize(m.mapName);
-                                             return (
-                                                 <button
-                                                     key={m.mapName}
-                                                     onClick={() => setTeamRoundsMapFilter(isActive ? 'ALL' : m.mapName)}
-                                                     className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all whitespace-nowrap ${
-                                                         isActive
-                                                             ? 'bg-yellow-500 text-black shadow-md'
-                                                             : 'text-gray-400 hover:text-white'
-                                                     }`}
-                                                 >
-                                                     {m.mapName}
-                                                 </button>
-                                             );
-                                         })}
-                                     </div>
-
-                                     {/* Bot√£o de Expandir / Recolher Todas as Line-ups */}
-                                     <button
-                                         onClick={() => setExpandAllLineups(!expandAllLineups)}
-                                         className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[9px] font-black uppercase tracking-wider transition-all shadow-sm active:scale-95 cursor-pointer whitespace-nowrap ${
-                                             expandAllLineups
-                                                 ? 'bg-yellow-500 text-black border-yellow-400 shadow-yellow-500/20'
-                                                 : 'bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 hover:text-yellow-300 border-yellow-500/30'
-                                         }`}
-                                     >
-                                         <Zap size={13} /> {expandAllLineups ? 'Recolher Line-ups' : 'Expandir Todas as Line-ups'}
-                                     </button>
-                                 </div>
-                             </div>
-
-                            <div className="space-y-4">
-                                {selectedTeamRounds.map((rdData) => {
-                                    const filteredMatches = rdData.matches.filter(m => {
-                                        if (teamRoundsMapFilter === 'ALL') return true;
-                                        const normF = normalize(teamRoundsMapFilter);
-                                        const normM = normalize(m.MAPA);
-                                        return normM === normF || normM.includes(normF) || normF.includes(normM);
-                                    });
-                                    if (filteredMatches.length === 0) return null;
-
-                                    return (
-                                    <div key={rdData.round} className="bg-black/30 rounded-2xl border border-gray-800 overflow-hidden shadow-lg">
-                                        {/* Cabe√ßalho da Rodada */}
-                                        <div className="p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-[#141414] border-b border-gray-800">
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-10 h-10 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center font-black text-yellow-500 text-sm">
-                                                    RD
-                                                </div>
-                                                <div>
-                                                    <h5 className="text-sm font-black text-white uppercase italic tracking-wider flex items-center gap-2">
-                                                        RODADA {rdData.round}
-                                                    </h5>
-                                                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                                                        <span className="text-[8px] text-gray-600 font-bold uppercase tracking-widest">Confrontos:</span>
-                                                        {rdData.confrontos.map(conf => (
-                                                            <span key={conf} className="bg-white/5 border border-white/5 text-[8px] font-black uppercase text-gray-400 px-2 py-0.5 rounded">
-                                                                {conf}
-                                                            </span>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div className="flex flex-wrap items-center gap-4">
-                                                <div className="text-center bg-black/60 px-3 py-1.5 rounded-xl border border-white/5 min-w-[70px]">
-                                                    <span className="block text-[7px] text-gray-500 font-black uppercase tracking-widest">Pontos</span>
-                                                    <span className="text-xs font-black text-yellow-500 leading-none mt-1 inline-block">{rdData.pts}</span>
-                                                </div>
-                                                <div className="text-center bg-black/60 px-3 py-1.5 rounded-xl border border-white/5 min-w-[70px]">
-                                                    <span className="block text-[7px] text-gray-500 font-black uppercase tracking-widest">Kills</span>
-                                                    <span className="text-xs font-black text-red-500 leading-none mt-1 inline-block">{rdData.abts}</span>
-                                                </div>
-                                                <div className="text-center bg-black/60 px-3 py-1.5 rounded-xl border border-white/5 min-w-[70px]">
-                                                    <span className="block text-[7px] text-gray-500 font-black uppercase tracking-widest">Posi√ß√£o</span>
-                                                    <span className="text-xs font-black text-blue-400 leading-none mt-1 inline-block">{rdData.ptsc}</span>
-                                                </div>
-                                                <div className="text-center bg-black/60 px-3 py-1.5 rounded-xl border border-white/5 min-w-[70px]">
-                                                    <span className="block text-[7px] text-gray-500 font-black uppercase tracking-widest">Booyahs</span>
-                                                    <span className="text-xs font-black text-orange-500 leading-none mt-1 inline-block">{rdData.booyahs}</span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Quedas Jogadas */}
-                                        <div className="p-4 overflow-x-auto w-full">
-                                            <table className="w-full text-left border-collapse table-auto whitespace-nowrap">
-                                                <thead className="bg-black/50 text-gray-500 text-[8px] uppercase font-black tracking-widest border-b border-gray-800">
-                                                    <tr>
-                                                        <th className="px-4 py-2.5">Queda</th>
-                                                        <th className="px-4 py-2.5">Mapa</th>
-                                                        <th className="px-4 py-2.5 text-center">Posi√ß√£o</th>
-                                                        <th className="px-4 py-2.5 text-center text-yellow-500">Pontos</th>
-                                                        <th className="px-4 py-2.5 text-center text-orange-500">Pts Pos</th>
-                                                        <th className="px-4 py-2.5 text-center text-red-500">Abates</th>
-                                                        <th className="px-4 py-2.5 text-center">Booyah</th>
-                                                        <th className="px-4 py-2.5">Onde Fechou</th>
-                                                        <th className="px-4 py-2.5 text-center text-yellow-500">Personagens</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-gray-800/30 text-xs">
-                                                    {filteredMatches.map((m, mIdx) => {
-                                                        const dropKey = `${rdData.round}-${m.Q}`;
-                                                        const isExpanded = expandAllLineups || expandedDropKey === dropKey;
-                                                        const currentTeamName = selectedTeamStats?.name || selectedTeamName || '';
-
-                                                        return (
-                                                            <React.Fragment key={mIdx}>
-                                                                <tr className={`hover:bg-white/[0.02] transition-colors ${isExpanded ? 'bg-yellow-500/5' : ''}`}>
-                                                                    <td className="px-4 py-3 font-semibold text-gray-400">Queda {m.Q}</td>
-                                                                    <td className="px-4 py-3 font-bold text-white uppercase italic tracking-wider text-[10px]">{m.MAPA}</td>
-                                                                    <td className="px-4 py-3 text-center">
-                                                                        <span className={`inline-flex items-center justify-center w-7 h-7 rounded-lg font-black italic text-xs border ${parseInt(m.POS) === 1 ? 'bg-yellow-500 text-black border-yellow-600' : 'bg-gray-950 text-gray-400 border-gray-800'}`}>
-                                                                            {m.POS}¬∫
-                                                                        </span>
-                                                                    </td>
-                                                                    <td className="px-4 py-3 text-center font-black text-yellow-500">{m.PTS}</td>
-                                                                    <td className="px-4 py-3 text-center font-black text-orange-400">{m.PTSC}</td>
-                                                                    <td className="px-4 py-3 text-center font-black text-red-500">{m.ABTS}</td>
-                                                                    <td className="px-4 py-3 text-center">
-                                                                        {parseInt(m.B) > 0 ? (
-                                                                            <span className="bg-yellow-500 text-black px-1.5 py-0.5 rounded font-black text-[8px] uppercase tracking-tighter">BOOYAH</span>
-                                                                        ) : (
-                                                                            <span className="text-gray-700 font-bold">-</span>
-                                                                        )}
-                                                                    </td>
-                                                                    <td className="px-4 py-3">
-                                                                        {m.ONDE_FECHOU ? (
-                                                                            <span className="bg-red-500/10 text-red-400 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded border border-red-500/20 shadow-md">
-                                                                                {m.ONDE_FECHOU}
-                                                                            </span>
-                                                                        ) : (
-                                                                            <span className="text-gray-600 font-bold text-[10px]">-</span>
-                                                                        )}
-                                                                    </td>
-                                                                    <td className="px-4 py-3 text-center">
-                                                                        <button
-                                                                            onClick={() => setExpandedDropKey(isExpanded ? null : dropKey)}
-                                                                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border text-[9px] font-black uppercase tracking-wider transition-all shadow-sm active:scale-95 cursor-pointer ${isExpanded ? 'bg-yellow-500 text-black border-yellow-400' : 'bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 hover:text-yellow-300 border-yellow-500/30'}`}
-                                                                        >
-                                                                            <Zap size={12} /> {isExpanded ? 'Ocultar Line-up' : 'Ver Line-up'}
-                                                                        </button>
-                                                                    </td>
-                                                                </tr>
-
-                                                                {/* Linha Expandida com Composi√ß√£o dos 4 Jogadores na Queda */}
-                                                                {isExpanded && (
-                                                                    <tr className="bg-black/60 border-y border-yellow-500/20">
-                                                                        <td colSpan={9} className="p-4 sm:p-6">
-                                                                            <DropCompositionViewer
-                                                                                teamName={currentTeamName}
-                                                                                round={rdData.round}
-                                                                                drop={m.Q}
-                                                                                mapa={m.MAPA}
-                                                                                playersLoadout={getTeamDropComposition(
-                                                                                    data,
-                                                                                    currentTeamName,
-                                                                                    rdData.round,
-                                                                                    m.Q,
-                                                                                    m.CONFRONTO,
-                                                                                    m.MAPA
-                                                                                )}
-                                                                                onPlayerClick={(pName) => handlePlayerClick(pName)}
-                                                                            />
-                                                                        </td>
-                                                                    </tr>
-                                                                )}
-                                                            </React.Fragment>
-                                                        );
-                                                    })}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                                {selectedTeamRounds.length === 0 && (
-                                    <div className="py-12 text-center text-[10px] text-gray-600 font-black uppercase italic tracking-widest bg-black/10 rounded-2xl border border-dashed border-gray-800">
-                                        Nenhuma rodada encontrada para esta equipe no momento.
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="space-y-6">
-                            <div className="text-center py-12 bg-black/20 rounded-3xl border border-dashed border-gray-800">
-                                <Calendar size={40} className="text-yellow-500 mx-auto opacity-70 mb-4" />
-                                <h4 className="text-white font-black uppercase italic tracking-widest text-sm">Nenhuma Equipe Selecionada</h4>
-                                <p className="text-xs text-gray-500 font-medium mt-1">Escolha uma equipe abaixo ou na barra superior para listar suas rodadas.</p>
-                            </div>
-
-                            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                                {teamsList.map(t => (
-                                    <div 
-                                        key={t.name}
-                                        onClick={() => setFilters(prev => ({ ...prev, team: [t.name] }))}
-                                        className="bg-black/30 rounded-2xl p-4 border border-gray-800/80 hover:border-yellow-500/40 cursor-pointer hover:bg-yellow-500/[0.02] flex flex-col items-center justify-center text-center transition-all group scale-100 hover:scale-[1.03] active:scale-95 shadow-md"
-                                    >
-                                        <div className="w-12 h-12 bg-black rounded-xl border border-gray-800 p-1.5 flex items-center justify-center shrink-0 mb-3 group-hover:border-yellow-500 transition-all">
-                                            {t.image ? (
-                                                <img src={t.image} alt={t.name} className="w-full h-full object-contain" />
-                                            ) : (
-                                                <Shield size={18} className="text-gray-700" />
-                                            )}
-                                        </div>
-                                        <span className="text-xs font-black uppercase tracking-tight text-white group-hover:text-yellow-500 transition-colors">{t.name}</span>
-                                        <span className="text-[8px] text-yellow-500/60 font-black uppercase mt-1 block">{t.pts} PTS</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
-        ) : activeTab === 'activeSkills' ? (
-            <div className="space-y-8 animate-in fade-in duration-300">
-                {/* Header Banner */}
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gradient-to-r from-yellow-500/10 via-amber-500/5 to-transparent p-6 rounded-3xl border border-yellow-500/20 backdrop-blur-md">
-                    <div>
-                        <div className="flex items-center gap-3">
-                            <div className="p-3 bg-yellow-500/20 text-yellow-400 rounded-2xl border border-yellow-500/30 shadow-inner">
-                                <Zap size={24} />
-                            </div>
-                            <div>
-                                <h1 className="text-2xl font-black uppercase italic tracking-widest text-white flex items-center gap-2">
-                                    An√°lise de Habilidades Ativas dos Times
-                                </h1>
-                                <p className="text-xs text-gray-400 mt-1">
-                                    Filtre por habilidade ativa, veja quais times mais utilizam, a quantidade total de vezes, m√©dia por queda e % de utiliza√ß√£o da line-up.
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-2 self-stretch md:self-auto justify-end">
-                        <div className="bg-black/40 p-1.5 rounded-2xl border border-white/10 flex items-center gap-1">
-                            <button
-                                onClick={() => setActiveSkillViewMode('cards')}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${activeSkillViewMode === 'cards' ? 'bg-yellow-500 text-black shadow-md' : 'text-gray-400 hover:text-white'}`}
-                                title="Visualiza√ß√£o em Cards"
-                            >
-                                <LayoutGrid size={14} /> Cards
-                            </button>
-                            <button
-                                onClick={() => setActiveSkillViewMode('table')}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${activeSkillViewMode === 'table' ? 'bg-yellow-500 text-black shadow-md' : 'text-gray-400 hover:text-white'}`}
-                                title="Visualiza√ß√£o em Tabela"
-                            >
-                                <LayoutList size={14} /> Tabela
-                            </button>
-                            <button
-                                onClick={() => setActiveSkillViewMode('chart')}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${activeSkillViewMode === 'chart' ? 'bg-yellow-500 text-black shadow-md' : 'text-gray-400 hover:text-white'}`}
-                                title="Visualiza√ß√£o em Gr√°fico"
-                            >
-                                <BarChart2 size={14} /> Gr√°fico
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                {/* KPIs Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {/* Top Skill Overall */}
-                    <div className="bg-[#1a1a1a] p-5 rounded-3xl border border-white/5 relative overflow-hidden group shadow-xl">
-                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                            <Zap size={80} className="text-yellow-500" />
-                        </div>
-                        <div className="flex items-center gap-4">
-                            <div className="w-14 h-14 rounded-2xl bg-black border border-yellow-500/30 flex items-center justify-center overflow-hidden p-2 flex-shrink-0 shadow-lg">
-                                {activeSkillsAnalysis.kpis.topSkill?.img ? (
-                                    <img src={activeSkillsAnalysis.kpis.topSkill.img} alt={activeSkillsAnalysis.kpis.topSkill.name} className="w-full h-full object-contain" />
-                                ) : (
-                                    <Sparkles size={24} className="text-yellow-400" />
-                                )}
-                            </div>
-                            <div>
-                                <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 block">Ativa Mais Utilizada</span>
-                                <h3 className="text-xl font-black italic text-white uppercase tracking-tight truncate">
-                                    {activeSkillsAnalysis.kpis.topSkill?.name || 'N/A'}
-                                </h3>
-                                <div className="flex items-center gap-2 mt-1">
-                                    <span className="text-xs font-bold text-yellow-400">{activeSkillsAnalysis.kpis.topSkill?.count || 0} escolhas</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Top Team using active skills */}
-                    <div className="bg-[#1a1a1a] p-5 rounded-3xl border border-white/5 relative overflow-hidden group shadow-xl">
-                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                            <Shield size={80} className="text-orange-500" />
-                        </div>
-                        <div className="flex items-center gap-4">
-                            <div className="w-14 h-14 rounded-2xl bg-black border border-orange-500/30 flex items-center justify-center overflow-hidden p-2 flex-shrink-0 shadow-lg">
-                                {activeSkillsAnalysis.kpis.topTeam?.logo ? (
-                                    <img src={activeSkillsAnalysis.kpis.topTeam.logo} alt={activeSkillsAnalysis.kpis.topTeam.teamName} className="w-full h-full object-contain" />
-                                ) : (
-                                    <Shield size={24} className="text-orange-400" />
-                                )}
-                            </div>
-                            <div>
-                                <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 block">Time com Mais Ativas</span>
-                                <h3 className="text-xl font-black italic text-white uppercase tracking-tight truncate">
-                                    {activeSkillsAnalysis.kpis.topTeam?.teamName || 'N/A'}
-                                </h3>
-                                <div className="flex items-center gap-2 mt-1">
-                                    <span className="text-xs font-bold text-orange-400">{activeSkillsAnalysis.kpis.topTeam?.count || 0}x no total</span>
-                                    <span className="text-[10px] text-gray-500">({activeSkillsAnalysis.kpis.topTeam?.avgPerDrop || 0}/queda)</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Average Active Skills per Drop */}
-                    <div className="bg-[#1a1a1a] p-5 rounded-3xl border border-white/5 relative overflow-hidden group shadow-xl">
-                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                            <Activity size={80} className="text-blue-500" />
-                        </div>
-                        <div>
-                            <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-1">M√©dia de Ativas / Queda</span>
-                            <h3 className="text-3xl font-black italic text-blue-400 tracking-tight">
-                                {activeSkillsAnalysis.kpis.avgActivesPerDrop}
-                            </h3>
-                            <p className="text-[10px] text-gray-400 mt-1 font-bold">
-                                Habilidades ativas em uso por time a cada partida
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* Total Mapped Skills */}
-                    <div className="bg-[#1a1a1a] p-5 rounded-3xl border border-white/5 relative overflow-hidden group shadow-xl">
-                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                            <Layers size={80} className="text-purple-500" />
-                        </div>
-                        <div>
-                            <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-1">Total Mapeado</span>
-                            <h3 className="text-3xl font-black italic text-purple-400 tracking-tight">
-                                {activeSkillsAnalysis.kpis.totalEntries}
-                            </h3>
-                            <p className="text-[10px] text-gray-400 mt-1 font-bold">
-                                {activeSkillsAnalysis.allActiveSkills.length} habilidades ativas diferentes registradas
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Filter Bar for Active Skills */}
-                <div className="bg-[#161619] p-6 rounded-3xl border border-white/10 shadow-2xl space-y-4">
-                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                        <div className="flex items-center gap-2 text-yellow-400 text-xs font-black uppercase tracking-widest">
-                            <Filter size={16} /> Filtros de Habilidades Ativas
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-                            {/* Search Team */}
-                            <div className="relative flex-1 md:w-60">
-                                <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
-                                <input
-                                    type="text"
-                                    placeholder="Buscar time..."
-                                    value={activeSkillSearch}
-                                    onChange={(e) => setActiveSkillSearch(e.target.value)}
-                                    className="w-full bg-black/60 border border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs font-bold text-white placeholder-gray-600 outline-none focus:border-yellow-500/50 transition-all"
-                                />
-                            </div>
-
-                            {/* Filter Map */}
-                            <select
-                                value={activeSkillMapFilter}
-                                onChange={(e) => setActiveSkillMapFilter(e.target.value)}
-                                className="bg-black/60 border border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-yellow-500/50 uppercase cursor-pointer"
-                            >
-                                <option value="ALL">Todos os Mapas</option>
-                                {MAPS_CONFIG.map(m => (
-                                    <option key={m.id} value={m.name}>{m.name}</option>
-                                ))}
-                            </select>
-
-                            {/* Filter Skill Selection Dropdown */}
-                            <select
-                                value={selectedActiveSkillFilter}
-                                onChange={(e) => setSelectedActiveSkillFilter(e.target.value)}
-                                className="bg-black/60 border border-yellow-500/40 rounded-xl px-4 py-2 text-xs font-black text-yellow-400 outline-none focus:border-yellow-500 uppercase shadow-lg shadow-yellow-500/10 cursor-pointer"
-                            >
-                                <option value="ALL">Todas as Habilidades Ativas ({activeSkillsAnalysis.allActiveSkills.length})</option>
-                                {activeSkillsAnalysis.allActiveSkills.map(s => (
-                                    <option key={s.key} value={s.name}>
-                                        {s.name} ({s.count}x)
-                                    </option>
-                                ))}
-                            </select>
-
-                            {/* Filter Min Usage Toggle */}
-                            {selectedActiveSkillFilter !== 'ALL' && (
-                                <label className="flex items-center gap-2 px-3 py-2 bg-black/40 border border-white/10 rounded-xl cursor-pointer hover:border-yellow-500/30 transition-all">
-                                    <input
-                                        type="checkbox"
-                                        checked={activeSkillMinUsageFilter}
-                                        onChange={(e) => setActiveSkillMinUsageFilter(e.target.checked)}
-                                        className="accent-yellow-500 rounded"
-                                    />
-                                    <span className="text-[11px] font-bold text-gray-300 uppercase">Apenas Usados (&gt;0)</span>
-                                </label>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Active Skills Selector Pills */}
-                    <div className="pt-2 border-t border-white/5">
-                        <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest block mb-2">
-                            Sele√ß√£o R√°pida de Habilidade Ativa:
-                        </span>
-                        <div className="flex flex-wrap items-center gap-2 max-h-32 overflow-y-auto custom-scrollbar p-1">
-                            <button
-                                onClick={() => setSelectedActiveSkillFilter('ALL')}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${selectedActiveSkillFilter === 'ALL' ? 'bg-yellow-500 text-black shadow-md font-black' : 'bg-black/40 text-gray-400 hover:text-white border border-white/5'}`}
-                            >
-                                <Zap size={13} /> Todas ({activeSkillsAnalysis.allActiveSkills.length})
-                            </button>
-                            {activeSkillsAnalysis.allActiveSkills.map(s => {
-                                const isSelected = normalize(selectedActiveSkillFilter) === normalize(s.name);
-                                return (
-                                    <button
-                                        key={s.key}
-                                        onClick={() => setSelectedActiveSkillFilter(s.name)}
-                                        className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${isSelected ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black scale-105' : 'bg-black/40 text-gray-300 hover:text-white border border-white/5 hover:border-white/20'}`}
-                                    >
-                                        {s.img ? (
-                                            <img src={s.img} alt={s.name} className="w-4 h-4 object-contain rounded" />
-                                        ) : (
-                                            <Sparkles size={12} className={isSelected ? 'text-black' : 'text-yellow-400'} />
-                                        )}
-                                        <span>{s.name}</span>
-                                        <span className={`text-[10px] px-1.5 py-0.2 rounded ${isSelected ? 'bg-black/20 text-black font-black' : 'bg-white/10 text-gray-400 font-normal'}`}>{s.count}</span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Selected Skill Banner / Info */}
-                {selectedActiveSkillFilter !== 'ALL' && (
-                    <div className="bg-gradient-to-r from-yellow-500/20 via-yellow-500/10 to-transparent p-4 rounded-2xl border border-yellow-500/30 flex items-center justify-between shadow-xl">
-                        <div className="flex items-center gap-3">
-                            {findDimImg(data.hab1, selectedActiveSkillFilter) ? (
-                                <img src={findDimImg(data.hab1, selectedActiveSkillFilter)} alt={selectedActiveSkillFilter} className="w-10 h-10 object-contain bg-black rounded-xl p-1 border border-yellow-500/40" />
-                            ) : (
-                                <div className="w-10 h-10 bg-yellow-500/20 rounded-xl flex items-center justify-center border border-yellow-500/40">
-                                    <Zap size={20} className="text-yellow-400" />
-                                </div>
-                            )}
-                            <div>
-                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Habilidade Ativa Filtrada</span>
-                                <h2 className="text-lg font-black text-yellow-400 uppercase italic tracking-wider flex items-center gap-2">
-                                    {selectedActiveSkillFilter}
-                                </h2>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-4 text-xs font-bold text-gray-300">
-                            <span><strong>{activeSkillsAnalysis.teamsList.filter(t => t.count > 0).length}</strong> times utilizam</span>
-                            <button
-                                onClick={() => setSelectedActiveSkillFilter('ALL')}
-                                className="text-[10px] font-black text-yellow-400 hover:underline uppercase cursor-pointer"
-                            >
-                                Limpar Filtro
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {/* VIEW MODE: CHART */}
-                {activeSkillViewMode === 'chart' && (
-                    <div className="bg-[#161619] p-6 rounded-3xl border border-white/10 shadow-2xl space-y-4">
-                        <div className="flex items-center justify-between">
-                            <h3 className="text-sm font-black uppercase text-white tracking-wider flex items-center gap-2">
-                                <BarChart2 size={16} className="text-yellow-400" /> Ranking de Uso por Equipe ({selectedActiveSkillFilter === 'ALL' ? 'Total de Ativas' : selectedActiveSkillFilter})
-                            </h3>
-                            <span className="text-[10px] text-gray-500 uppercase font-bold">Top 15 Equipes</span>
-                        </div>
-                        <div className="h-96 w-full pt-4">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={activeSkillsAnalysis.teamsList.slice(0, 15)} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-                                    <XAxis dataKey="teamName" stroke="#666" tick={{ fill: '#aaa', fontSize: 10, fontWeight: 'bold' }} angle={-30} textAnchor="end" interval={0} />
-                                    <YAxis stroke="#666" tick={{ fill: '#aaa', fontSize: 10 }} />
-                                    <Tooltip
-                                        contentStyle={{ backgroundColor: '#111', borderColor: '#333', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold' }}
-                                        formatter={(value: any, name: any) => [value, name === 'count' ? 'Quantidade' : 'M√©dia/Queda']}
-                                        labelFormatter={(label: any) => `Time: ${label}`}
-                                    />
-                                    <Bar dataKey="count" fill="#EAB308" radius={[6, 6, 0, 0]} name="Quantidade">
-                                        <LabelList dataKey="count" position="top" fill="#EAB308" fontSize={11} fontWeight="bold" />
-                                    </Bar>
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </div>
-                )}
-
-                {/* VIEW MODE: CARDS */}
-                {activeSkillViewMode === 'cards' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {activeSkillsAnalysis.teamsList.length === 0 ? (
-                            <div className="col-span-full p-12 text-center bg-[#161619] rounded-3xl border border-white/5">
-                                <AlertTriangle size={32} className="mx-auto text-yellow-500 mb-3" />
-                                <p className="text-gray-400 text-sm font-bold uppercase">Nenhum time encontrado com os filtros selecionados.</p>
-                            </div>
-                        ) : (
-                            activeSkillsAnalysis.teamsList.map((team, idx) => (
-                                <div key={team.teamName} className="bg-[#18181b] rounded-3xl p-6 border border-white/10 hover:border-yellow-500/40 transition-all shadow-xl space-y-4 relative overflow-hidden group">
-                                    <div className="flex items-center justify-between border-b border-white/5 pb-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-12 h-12 rounded-2xl bg-black border border-white/10 p-2 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
-                                                {team.logo ? (
-                                                    <img src={team.logo} alt={team.teamName} className="w-full h-full object-contain" />
-                                                ) : (
-                                                    <Shield size={24} className="text-gray-700" />
-                                                )}
-                                            </div>
-                                            <div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-[9px] font-black text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded uppercase">#{idx + 1}</span>
-                                                    {team.grupo && <span className="text-[9px] font-bold text-gray-500 uppercase">{team.grupo}</span>}
-                                                </div>
-                                                <h3 className="text-lg font-black italic text-white uppercase tracking-tight group-hover:text-yellow-400 transition-colors">
-                                                    {team.teamName}
-                                                </h3>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => setFilters(prev => ({ ...prev, team: [team.teamName] }))}
-                                            className="p-2 rounded-xl bg-white/5 hover:bg-yellow-500 hover:text-black text-gray-400 transition-all text-xs font-bold cursor-pointer"
-                                            title="Ver Perfil do Time"
-                                        >
-                                            <Eye size={16} />
-                                        </button>
-                                    </div>
-
-                                    {/* Key Skill Metrics Grid */}
-                                    <div className="grid grid-cols-3 gap-2 bg-black/40 p-3 rounded-2xl border border-white/5 text-center">
-                                        <div>
-                                            <span className="text-[8px] font-black text-gray-500 uppercase block mb-0.5">Quantidade</span>
-                                            <span className="text-xl font-black italic text-yellow-400">{team.count}x</span>
-                                        </div>
-                                        <div>
-                                            <span className="text-[8px] font-black text-gray-500 uppercase block mb-0.5">M√©dia / Queda</span>
-                                            <span className="text-xl font-black italic text-blue-400">{team.avgPerDrop}</span>
-                                        </div>
-                                        <div>
-                                            <span className="text-[8px] font-black text-gray-500 uppercase block mb-0.5">% Composi√ß√£o</span>
-                                            <span className="text-xl font-black italic text-emerald-400">{team.pctSlots}%</span>
-                                        </div>
-                                    </div>
-
-                                    {/* Progress bar % of drops */}
-                                    <div className="space-y-1">
-                                        <div className="flex justify-between text-[9px] font-black uppercase text-gray-400">
-                                            <span>% de Quedas Utilizadas</span>
-                                            <span className="text-yellow-400 font-bold">{team.pctDrops}% ({team.dropsWithSkill}/{team.totalDrops} quedas)</span>
-                                        </div>
-                                        <div className="h-2 w-full bg-black rounded-full overflow-hidden border border-white/5">
-                                            <div className="h-full bg-gradient-to-r from-yellow-500 to-amber-500 rounded-full" style={{ width: `${Math.min(team.pctDrops, 100)}%` }} />
-                                        </div>
-                                    </div>
-
-                                    {/* Selected Skill Players Breakdown */}
-                                    {team.playersForSkill.length > 0 && (
-                                        <div className="space-y-1.5 pt-2 border-t border-white/5">
-                                            <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block">
-                                                Jogadores que usaram ({selectedActiveSkillFilter === 'ALL' ? 'Mais Usadas' : selectedActiveSkillFilter}):
-                                            </span>
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {team.playersForSkill.map(p => (
-                                                    <div key={p.name} className="flex items-center gap-1.5 bg-black/50 px-2 py-1 rounded-lg border border-white/5 text-xs font-bold">
-                                                        {p.img && <img src={p.img} alt={p.name} className="w-3.5 h-3.5 rounded-full object-cover" />}
-                                                        <span className="text-gray-300">{p.name}</span>
-                                                        <span className="text-yellow-400 font-black text-[10px]">{p.count}x</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* All Skills Used by Team list (if ALL filter selected) */}
-                                    {selectedActiveSkillFilter === 'ALL' && team.allSkillsList.length > 0 && (
-                                        <div className="space-y-1.5 pt-2 border-t border-white/5">
-                                            <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block">
-                                                Habilidades Ativas em Uso:
-                                            </span>
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {team.allSkillsList.map(s => (
-                                                    <div key={s.name} className="flex items-center gap-1.5 bg-black/60 px-2.5 py-1 rounded-xl border border-white/10 text-xs font-bold">
-                                                        {s.img && <img src={s.img} alt={s.name} className="w-4 h-4 object-contain rounded" />}
-                                                        <span className="text-gray-200">{s.name}</span>
-                                                        <span className="text-yellow-400 font-black text-[10px] bg-yellow-500/10 px-1.5 rounded">{s.count}x</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            ))
-                        )}
-                    </div>
-                )}
-
-                {/* VIEW MODE: TABLE */}
-                {activeSkillViewMode === 'table' && (
-                    <div className="bg-[#161619] rounded-3xl border border-white/10 overflow-hidden shadow-2xl">
-                        <div className="overflow-x-auto custom-scrollbar">
-                            <table className="w-full text-left border-collapse">
-                                <thead className="bg-black/70 text-[9px] text-gray-400 uppercase tracking-widest font-black italic border-b border-gray-800">
-                                    <tr>
-                                        <th className="p-3.5 w-12 text-center">#</th>
-                                        <th
-                                            className="p-3.5 cursor-pointer hover:text-white"
-                                            onClick={() => setActiveSkillSort(prev => ({ field: 'teamName', direction: prev.field === 'teamName' && prev.direction === 'asc' ? 'desc' : 'asc' }))}
-                                        >
-                                            Equipe
-                                        </th>
-                                        <th className="p-3.5 text-center">Ativa Principal</th>
-                                        <th
-                                            className="p-3.5 text-center cursor-pointer hover:text-white"
-                                            onClick={() => setActiveSkillSort(prev => ({ field: 'count', direction: prev.field === 'count' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
-                                        >
-                                            Qtd Vezes
-                                        </th>
-                                        <th
-                                            className="p-3.5 text-center cursor-pointer hover:text-white"
-                                            onClick={() => setActiveSkillSort(prev => ({ field: 'avgPerDrop', direction: prev.field === 'avgPerDrop' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
-                                        >
-                                            M√©dia / Queda
-                                        </th>
-                                        <th
-                                            className="p-3.5 text-center cursor-pointer hover:text-white"
-                                            onClick={() => setActiveSkillSort(prev => ({ field: 'pctSlots', direction: prev.field === 'pctSlots' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
-                                        >
-                                            % Composi√ß√£o
-                                        </th>
-                                        <th
-                                            className="p-3.5 text-center cursor-pointer hover:text-white"
-                                            onClick={() => setActiveSkillSort(prev => ({ field: 'pctDrops', direction: prev.field === 'pctDrops' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
-                                        >
-                                            % Quedas Usadas
-                                        </th>
-                                        <th className="p-3.5 text-center">Jogadores Principais</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-white/5 text-xs">
-                                    {activeSkillsAnalysis.teamsList.map((team, idx) => (
-                                        <tr key={team.teamName} className="hover:bg-white/5 transition-colors">
-                                            <td className="p-3.5 text-center font-mono text-gray-500 text-[10px]">
-                                                {idx + 1}
-                                            </td>
-                                            <td className="p-3.5">
-                                                <div className="flex items-center gap-3 cursor-pointer" onClick={() => setFilters(prev => ({ ...prev, team: [team.teamName] }))}>
-                                                    {team.logo ? (
-                                                        <img src={team.logo} alt={team.teamName} className="w-7 h-7 rounded-lg object-contain bg-black border border-white/5 flex-shrink-0" />
-                                                    ) : (
-                                                        <div className="w-7 h-7 rounded-lg bg-black border border-white/5 flex items-center justify-center flex-shrink-0">
-                                                            <Shield size={12} className="text-gray-700" />
-                                                        </div>
-                                                    )}
-                                                    <span className="text-white font-black italic uppercase tracking-wider hover:text-yellow-500 transition-colors">
-                                                        {team.teamName}
-                                                    </span>
-                                                </div>
-                                            </td>
-                                            <td className="p-3.5 text-center">
-                                                {team.topSkill ? (
-                                                    <div className="flex items-center justify-center gap-1.5">
-                                                        {team.topSkill.img && <img src={team.topSkill.img} alt={team.topSkill.name} className="w-4 h-4 object-contain rounded" />}
-                                                        <span className="text-gray-200 font-bold">{team.topSkill.name}</span>
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-gray-600">-</span>
-                                                )}
-                                            </td>
-                                            <td className="p-3.5 text-center font-black text-yellow-400">
-                                                {team.count}x
-                                            </td>
-                                            <td className="p-3.5 text-center font-black text-blue-400">
-                                                {team.avgPerDrop}
-                                            </td>
-                                            <td className="p-3.5 text-center font-bold text-emerald-400">
-                                                {team.pctSlots}%
-                                            </td>
-                                            <td className="p-3.5 text-center font-bold text-gray-300">
-                                                {team.pctDrops}%
-                                            </td>
-                                            <td className="p-3.5 text-center">
-                                                <div className="flex flex-wrap justify-center gap-1 max-w-xs mx-auto">
-                                                    {team.playersForSkill.slice(0, 4).map(p => (
-                                                        <span key={p.name} className="text-[10px] bg-black/40 px-1.5 py-0.5 rounded border border-white/5 font-bold text-gray-300">
-                                                            {p.name} ({p.count}x)
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                )}
-            </div>
-        ) : (
-            /* Galeria de Times */
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-in fade-in duration-500">
-                {displayTeamStats.map(team => (
-                    <div 
-                        key={team.name} 
-                        onClick={() => setFilters(prev => ({...prev, team: [team.name]}))}
-                        className="bg-[#1a1a1a] rounded-3xl p-6 border border-gray-800 shadow-xl hover:border-yellow-500/40 hover:translate-y-[-5px] transition-all cursor-pointer group flex flex-col"
-                    >
-                        <div className="flex items-center justify-between mb-6">
-                            <div className="w-16 h-16 bg-black rounded-2xl flex items-center justify-center border border-gray-800 p-2 group-hover:scale-110 group-hover:border-yellow-500 transition-all">
-                                {team.image ? <img src={team.image} alt={team.name} className="w-full h-full object-contain" /> : <Shield className="text-gray-800" size={24} />}
-                            </div>
-                            <div className="text-right">
-                                <h3 className="text-xl font-black italic text-white uppercase leading-none group-hover:text-yellow-500 transition-colors">{formatTeamName(team.name)}</h3>
-                                <div className="flex flex-col items-end gap-1 mt-1">
-                                    <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest block">{team.pts} PONTOS</span>
-                                    {(() => {
-                                        const char = getTeamCharacteristic(team.percentAbts, team.percentPos);
-                                        return (
-                                            <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full border ${char.bg} ${char.border} ${char.color} text-[8px] font-black uppercase tracking-widest`}>
-                                                {char.icon}
-                                                {char.label}
-                                            </div>
-                                        );
-                                    })()}
-                                </div>
-                            </div>
-                        </div>
-                        <div className="mt-6 flex justify-center">
-                            <div className="text-[10px] font-black text-yellow-500/50 uppercase tracking-widest group-hover:text-yellow-500 transition-colors">VER PERFIL COMPLETO ‚Üí</div>
-                        </div>
-                    </div>
-                ))}
-            </div>
-        )}
-
-        {/* Modal de Composi√ß√£o por Queda (4 Jogadores) */}
-        {compositionModal && (
-          <DropCompositionViewer
-            isModal
-            teamName={compositionModal.teamName}
-            round={compositionModal.round}
-            drop={compositionModal.drop}
-            mapa={compositionModal.mapa}
-            playersLoadout={getTeamDropComposition(
-              data,
-              compositionModal.teamName,
-              compositionModal.round,
-              compositionModal.drop,
-              compositionModal.confronto,
-              compositionModal.mapa
-            )}
-            onPlayerClick={(pName) => {
-              setCompositionModal(null);
-              handlePlayerClick(pName);
-            }}
-            onClose={() => setCompositionModal(null)}
-          />
-        )}
-    </div>
-  );
-};
-
-const StatBadge = ({ label, value, color }: any) => (
-    <div className="bg-black/60 px-5 py-3 rounded-2xl border border-white/5 text-center min-w-[100px] shadow-inner">
-        <span className="block text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1">{label}</span>
-        <span className={`block text-2xl font-black ${color} italic`}>{value}</span>
-    </div>
-);
-
-const BottomList = ({ title, data, metric, label, color, onSelect }: any) => (
-    <div className="bg-[#1a1a1a] rounded-3xl border border-red-900/20 overflow-hidden shadow-2xl">
-        <div className="bg-gradient-to-r from-red-900/20 to-black p-5 border-b border-gray-800 flex items-center gap-3">
-            <TrendingDown size={18} className="text-red-500" />
-            <h3 className="text-sm font-black text-white uppercase tracking-widest">{title}</h3>
-        </div>
-        <div className="divide-y divide-gray-800/50">
-            {data.map((team: any, idx: number) => (
-                <div key={idx} onClick={() => onSelect(team.name)} className="px-5 py-3 flex items-center justify-between hover:bg-white/5 transition-colors cursor-pointer group">
-                    <div className="flex items-center gap-3">
-                        <span className="text-[10px] font-mono text-gray-600 w-4">#{idx + 1}</span>
-                        <div className="w-8 h-8 bg-black rounded-lg border border-gray-800 p-1 flex items-center justify-center">
-                            {team.image ? <img src={team.image} alt={team.name} className="w-full h-full object-contain" /> : <Shield size={14} className="text-gray-700" />}
-                        </div>
-                        <div className="flex flex-col">
-                            <span className="text-xs font-bold text-gray-300 uppercase italic group-hover:text-white transition-colors leading-none">{team.name}</span>
-                            {(() => {
-                                const char = getTeamCharacteristic(team.percentAbts, team.percentPos);
-                                return (
-                                    <div className={`flex items-center gap-1 mt-1 ${char.color} text-[7px] font-black uppercase tracking-widest`}>
-                                        {char.icon}
-                                        {char.label}
-                                    </div>
-                                );
-                            })()}
-                        </div>
-                    </div>
-                    <div className="text-right">
-                        <span className={`text-sm font-black italic ${color}`}>{team[metric]}</span>
-                        <span className="block text-[8px] text-gray-600 font-black uppercase tracking-tighter">{label}</span>
-                    </div>
-                </div>
-            ))}
-        </div>
-    </div>
-);
-
-export default Teams;
+         xúÏ}Ys„»µÊ˚¸ä4{eãI≠“ï‘A-’-[*…í™mè¶¬).@`I2≠Áâòà˚41?¿qw"Ó„º¯—ı«&O&ñƒû	Äî™Z®Ó*πú<yñÔúÉê–µªÆj˜ˇõÿ√‹◊»∑–HWÁç2≈{ﬂª≠6\l£©∫C?⁄⁄x‚6‰€¶Ì;ñb/ÍÊË¢Ìﬁl[˜Ôÿèc[yhmv:Ë÷4‹÷–‘’∆˛ı˘ı‡◊«W®9ôSK±Ò5V¶è´ªÎ–pM}¢]–«ﬁÀu≈Ô‡Pü·÷ÈïÊ*∫6jÏœßmﬁﬂvMr∫Ú;M◊ù«å&o∫ùå¶=UÙ∆~3hQ˘8¶m]`˚LqGìGDÓ¯√,;⁄D!˘ÔqÒÁcÙ6∂5¡_≠ë©;≠.“«;‹«+Vkõ, û:-«UlYBúØˇ¡B°∫–ïl;Ë[tˆ”˙ı˙£‹ƒƒzN:J˙ÿÇÖim†·òŒzØÉ¨÷&≤Õô°bµ’ø◊—–¥U≤ùÿ?≠¨ÎÊê¬z∑É»◊G∏ı–⁄(±øäâ.|O€3À¬ˆHq0rmÚY3∆≠;M≈éãÿÊÙ::Ù∏õêÈ_ﬂD÷∞’kÏ√‹}ãéulåL≤-o5ù
+áRÒMÁ]˘ùÈÌÑA{˙—b+ÖæGÕr<∂T∑:æ˜H»cm@Ut—∏’ lıÉÖÎÂ-\ØSí¶ıÓ»|˘Dt"Ø˝2?b˚>O4U≈JéÛ/3«’n¸è6÷W˚àë3±5„C´ 0‡JÆY€¢ˇúL«•W/2Wi»±G{yo"¨Rw”û0»¸>íAﬂb€∆ˆÖIx¯√^√0[˛≠Ftng∫NVÇ˛cˇÇG‰(Ñ9n†ıjÛ¥ävÍòå∑YCG˚+ﬁõ˜:èâùGıÀÒ∆DOc$ÆSüπÑ·òV´Ét|Îí"€œ?qÅ¸≠{rX≠N;d§C€∂Äª•q3 öJäAA«+~=6Ó©f¥Ó*Ô≤<ÍﬁIH-î]÷>3Fäã°%±1™àP"]ÀÔ¯eKÈ‡&V—P3Â_\äàIO±Ï%øZû#äö[Åÿ Nı∆˛lLfS¬«ö„⁄&R1˙ã9VT”.;}%∏D|á¯ÚOØ.˝BÜÙ¢ÚèÌO‘)ô¶Á∑lz∞SÖæ‚eÁ4ﬁv»≤‡fgmÆ∂ßä’lZk»:QÔW—ﬁ~ÖÉÇNÓ¸∞7á∆"ê/±{áâº<vR7Ø
+a#≤>BSÂû»õnò0kÅ‹â„è!◊§Ô¸ê´«m'ˆ®nV»Ö™*jAèÀ3¢’2ª±¥~(≠É]¬9éòØ9¶Åt≤•Ñm)aæJ≥XıãΩe£6Âq÷ô∆˛°i‹⁄§aY¶MÊWUT•¥° É-˜K≤Éy≥IyŸºÙNôôE◊/UÌ°ÅM6^õåw⁄4∫¬nÛ¶oh∑€>c¶d‚P∆ÃÿÜé€m[]]´ÁŸo(˝Çw´´m«¥›fÛ~=Túk∏ÿ|≥È…lì=Í‡√mﬁ∑mLŒ-rX≠ˇè£ıÒZYY]E˚Í¸[=o˚ˇ∂áΩMªEM:≤_ÌÌ—óÆ)»ùŸoãﬁ´ˆ
+ØΩ˚6Ÿƒäéô±≤˘∞ZæŸGÚ›“_Ü!≥Õ”÷±1v'hèåΩ≥ZëJºañîAy˛˙·∫Wxä„2 ƒlûâUòπÚÛÊ–õ:∫Y’∫6ó≠µßpù[ÕPC¶@WäÜ:vò≠Ø<XŒ+©$Ö·~3k9îà÷SÁ†/9†/9†/9®ı%5ÙPs~∞1ëomò
+oNˆΩ~◊1A˚~˚~˚É
+|.o‘`∞
+Ù[}m$ËHå_Õﬂﬂµ∂Ÿ;¿≈Àg_œπï˚≠ƒÌË∞˜V∑≥…æD~k+†–¨™[âhú+èÔ˜ÁlEjQg≤Fì©§§ÀùÅîºŸK[8q7êïßjÜ®ÃlY7õ!è˜QX›Eéè[-ÍäÃXÆÉ`πø]©≈:®m0≠âpUî }Ø˘ºUIÍŒ;x&Ó<JkKqÊTΩ(W^=ˆ¿£ΩT?^∞E^º‡¡'Û·=xFºÉ•yRﬂÒ‡¸r=x˛ˇl¸w>-ÛûßÔ]¥’ZºwâMÒ‹ºwEﬁªÉÔzÒﬁ≈⁄˚\ºw/ﬁªÔ]qè?Ô›|¥húÕ¨ÊòvA5ºz{–∫Ï†¡êP'3*_)∑©&ÇµFØ1Vsu≈y”SÉÆf√keH-£+iÇí 
+x#RPt}e}˚m;ˇG
+aF‰~>[»‚´[H1¥)IK#∫Å¢“’ôMT ”hı;"≤…<£ª≈Ω ÍÂFÄt£l»r[€<(ﬁÚÑ
+çw≠ﬁ6ód∑™i∑ÂyÅÔØEXæ·¿h}‘¢®L¸4#øö[})ZL”Ù∞˛KÛıõN{Oﬂ˘«x9Ω{hõé3Q4_kËn=íqÂí˜SÓÓb&∂ÊÖü¯;ÿ$û∑L®'‘y≤óÄ˜`/jÁ˙¢√oÁ†Å»&k»4ò|HH‚√ﬁºiπQπ¡P>jc≤®Õïu&j8+khéà,„‚ÚªπÉË7–#z<0L∆ÈøœﬁÁ`˜5õ√¶e„èTtôÉœ>≠—©⁄A7Ù˘w‰eo+ÿnuqvòuß/fﬂ/lZ§ei6ö	ñ…ßÉ∑.ÉQü)÷Yıó>¬ûZDq3CNmò"œ*ŒÛf”<èsHÅ≈1eg∫Ü¶r N®ÿL„ä!üõØ∫
+¸yãn6®6µöR—}ªÊ¯mn<r6™ÊµÛ¶—òQµ°«Ï^‘˚D˛ΩkΩ⁄B¯+jy&?⁄æ.ålëR4^∫∑qc8e√÷*‘!e)^h+ñê•◊;`\èX¡ﬂ¬ôÿÁQéP∑O ∂˝∑Àp+ÑpñÏıd#°-√\¶ö$CŒÈ3 ®«âZ	áx√Ùˇ…F≠&°WeLBç˝Ss§hÇTå·ügöE§á)‹¥»˜g ô3rfÎe˙Kç≤ÙÇ,ÀVãd"ù¨ﬂ{öb^Áê’|ß	§.Ëmb≠¶jb≠ L\∞f∏Ó:´≥Ñ!„)∂]mΩ⁄Ï0o˘Fé˜’ò1€‡/3¶]*b˛;≈\Áv QBe ∆˛Ó¿∂Õª∑ñœÂ{T»;;>˝Ò¸Ú¯
+]^_U5!—"C≤L>tsu–˜(Ú*ä9kH´lv¶sHh⁄Yûi/≤≠œ}1Î≥√‡∑oÍ2Ag˜*ù®hîè„◊y$JV%œC˛jNÕUUïˆ:<◊w9˘£)…9 ∏÷Lª^∂F<!ñÂY˚ñ∆Æ‡}5±™#ÛŒà2´ãì∞™;Xõt^≈~ı¬¨ûñY%IÍÖQ’=åÂ„?#©;Ä.Vîπ#ñ˚Å˚E‡ÆÌ;»∏^ÓÁpÜΩ‹À∆ã¿˝úÓÉlÅ˚‡E‡~ÃÍE‡^¸0^–oë+Çë T - ›.&Ñâ9®y¨ÿ˙√˙ô¶Æü¬Œ¯Å¢@É{¡Qà¥,ç£‡§˘ÂB)¯?%Ïmlc«—>j*!ä©xMÈ[5Ìm>oHEäLT˚∞]#ˆ°ÓÅ◊,s†dï4†¶˛H® i¶ÅÖÈ¥TÁ+¬ ¬π¸k´+ÉX "¡ØA<ØTÂŸ ÿÜ[XQÊà/'K‘Ñà≤)v¯¢uDé_Ú7¿´Âıb#ÍHùF±h-‡©∑¥¡!äÀ´óµJÒ D∑WöÃob®Ä5ƒõ,ﬂ1≈~›	ı3πÏ2,à¢›ï´∏êãH8Á"∏…2º∏–∫Kcr®(‰øZ25 d˙U¯B.}íÆK&)ù\$‘B˝A<¶ êe\ìÕH âP¥Ò!Özœ-•§	ìN¯Êpöt¢º9 òáíj◊d≥‹Àk±UÒ;¯Ë<åπñµS•ı,»˝∞%i\œ>s}9cL⁄≤–Ñ¥ùî66:àäÙ’wK2Ì }ï3ê–VÚ¨ÒSí*
+¸=ç˝„¡ÂÈü–É≥c‘§F2‘mı*GÁ˜˚ﬁ….:¡Hë√O3>˝◊H£'#·ﬂÆV>∑b§C’3¬à®ßÿPfqÎe
+FAïå§hcÿûπE2¸’‡…f™ì£ô_ïì””´öÇ4ÛG«[æ∏≠o«åyÒ!^å‹«oûÖT¸:pTSüÜüF*,îcß\_7ı$ƒLœNé"¨¥ﬂ⁄x¨tä5?_Å˘∂m‚≥b¢SMb°≠<v(èÅí·}AÏìÿüÜrû”RÃ”ˇ˛ó¡9}'\!€<\G¯ÊÊoûúm™x§9⁄GÂ98
+iü√‘…‚ò>ç<vÈı&èW¬»æ fY˙|∑–ŒguñIès–¬˚“ÈãhoD1êAùL~‘ÿøÜ∆Ëíπ’µ≤¥$\È0{+—¥ ‘¨Ëm(~k<søÑïS4ùÇ`/+ˆıK|+;!ôò◊qìÛ:∂z˛™‚L∞öÙ£=¥˙=î„èπöÑL≥I?W¸\ΩéÁhΩÍt¢ûE1˝Ów≈ÿÅ›+HÏ9´6:˘Œ™¢ıÕ)´ZÿèI_‚ÙÀ∂Iª‡¥Ö*Æ,’´©RÃs˙|˙«ßˇ ‹e“/ÍåïËã3Mì]¶X’fSrE∏ﬂÙæ•Ã\pB:eL#u∆E‡BÑë2µ»? Hõ*`dS<gâb#yO>˝YM264¡ä
+®¯∑Ωªnï[ò¨≠›h±ß`c)#hí°È∫ÊÙR1`öWIR≥››^.∫e3ïBe±ÍwV?7Æw˜Äé2⁄!Wsu“˙ÖÈÚû¢®+„4êJÛ›DFÏ¥-¿∞M±kk£Ω˘–@∫2ƒ:˘˛ıUQu!•"°iPRp˜ÊM#7	M<<˝2–dÌ»¸ë\_≠fd…à
+|çåIT¢1~“¡òÊÉ2…Zó!˚m8¢a0úÉÛÛ?~å≠éüˆ‡iÜsˆÈ?UçlÓ&ôÍ’å˘ÄI@Ïs0™¡O?†,ö€xÚqQA)gdÉalhp#26⁄Bttûäæ®°•»bÜH>˘®cqvòèı€dpùTÁ{ÆDcëÜ≥ìµ"åù"à¶Ú’_¬uÈœ∂yó-¢ï´·πîÏÂ‰ÄŒ[N“$Ü“Ëïàªliv√9L4Ö ‘ÆÔ£Î¡¡ÒÈ £ãÛ7◊ÁW‰üKty~48àœE¬KäÏímw…Ü¸O›V∑±-i∑D°¢˙\CË[Ñ?ö˙å›¢àD86·'◊ÑöF‰?WõB⁄ô•@ñÃ&Ω;[±‰WJD$^gÄØπwOd®&¬e˛& fz=ëÃPäb:ãèÄË
+†*¯Ôå$&◊]3pãÖz€˛¶ÛÁŒü∑≠˚?€„°“‹|µ÷Ìw÷z[kùˆ÷ÍªÜoÒAßü˛˝Ë¯5ªˇ˙g~•6u¯ó1ÔÑwÜØ∂ªÔ&æªµ÷›ﬁ\Îˆ^ëâﬂ‰'˛ı…õ¡È…’ı‡
+5{Dr~ô—˘˘‡;!≤Ôı_≠mm√ùˆ?˘ó«Éì?Œé	;&¥ﬂˇ◊?Smˆãu2°378©ôjâºjŸÓˇ¥«â7öaÄAbdõ∫>TÏñ;Å§]‹«9ç˝ÔÂ .H;)µ'òÅjJyù ÚÅÆX@@ØÁ@
+L2L‡‚E,€Õ7!Ûtn·O`∂Iû£dÕõõC∫Ê•Ñ@¥ò ][≤ÈN¯ﬁì˝≤AÎˇE
+ﬁµ∫[ç˝Øv◊›IΩ≠n4ˆØèﬂ’–∞W´◊ae«‘òQsá…“z“+ÜÍéÁ≠"ªûåàË=‚/ûC©P¨^∆ ê“íºR·Å0V–æ˚X<o∆∂9ç—„c˜dè›ö6QË`~$˚€l$‘≈gN$Ò-i≠`¿˚HOãv˘–T¯)UBNî%‰˝0¥°H(Us k0MµÃÌ>˙xçú*ñ¡{Â$â˙äˆÿó—oPWÃæŒæÎ⁄®ç∂q?;7–äM~Òds4öÄÖeuà≤˙`ëV<#\I_AèbØzh}aBúÑ6Å’—Ü¢°¢é1»Ótî‰ÜeΩ~xmcå^kÇ™uÃ&Í ⁄£z59 t&PNãç◊qıçË.±I ¥6[)¢ùweJæ∆∫˝“o_ñﬁä˘ì§≈˙˚à∞˙®ﬂÌ]“Î^ıná¢®gÌRÑQ©~WÌßøô‡$≤cõñÌõòo5∂˙>0”;?œ0˝â˛OÿèÛÈˇa±ú≈î˛Õª⁄ÛÄ˛=†…ÿìÉo:ÌNˇ]f"M„ÚƒÌ]6…zÎfÉsÉÖÙã¥ÇæwG$¢˝ÛE}èÑ‰{&F"“D*„4º
+n\dEt|íÒªÆö&sÙ£IÂ}Ài6ñ?Æê*9xMLÅõG¬„>ΩQ>±Qôàx∑@*I|câ+P|<≤dÈs*ó¥Aﬁ`÷Ïô%+û:î‚¸5©& rÙTŸ%Û%Òñw◊6?‡÷Mˇƒﬂ˙g2W¥b$H…*Öâ%#'∫±êE*Ω,t¡bYc~KˆXµX˘k
+Ëk-y–OÀãcÃëä\a eS¸ßµEæ'‰ﬁÇÍ”ÕÃá–eÆøn°ZU%⁄ê 3⁄T!Zb’ ∏aU‹∞QØn™‘îU⁄÷pÕ®T-∂za€›´âÜuïÀ‘ë∫!ø´X÷∂$Á©RÕs˙÷u¶b±∆◊’ÿÁË§r^1⁄‘ÿûYf5vú=8VÉ1Õ˛óõâﬂ&Ì[Âq.óÇûç4û∞$J„≥Ûp¶eŒˆº	∂ÁDŒ bzÅM[.•\^ZöOA[æ†ÿŒR˘}˚Üæ„ù\Öös|Oz9õˆË€~E‰!8Òn5´Ú≠ñN® –OÅ=?çñ8µÀÉöÜYÂhÂ&•Ú—*\6ñ–heñR˝ÙÃaø´QÑ•ù-Àˇd∑&}ô%ã‚ÔΩ	˙:QÙbÚ2pÀ‰y∑©gW
+s\
+f$Áe˜KFŸ*:—•[b˜„…’ıßˇ}yrx0;Ü≠c8ª„ﬂø=π8~N8ª¬·ˇ§932£≈ËÁTÒ≤MU≈l™x¡4Œ|Ü0¢H<2˝L!y‰{àºõzèç<ıà|ï¥ÉU•` ¡˜Ú–-4_'÷qÄÙ:ü9úø7ú©ÿﬁ œeÏç(†)7ÃÿC2Ï&√Ac,¿PPt]Qv~H
+ŸB¡±≥ªN_P £ÄÎbÛGEüëç…«Íµó¶	|‹++è≈ﬂ7çCj·€õ7%jı‚6Y·1v€Ùı‰Ñ∏âﬁyGNî¡Ræ)—Á<wKô¸ÃmM$»¢≤$óù0„º∏5G3'ô…ô3ó¢Ÿ w$Õl"˘∑º¥íç‹±pS”Ç£–[≥ë≤ZËÿ![j¢Pñ¬µà≈û¿]¿zÑâ+Q(’ÎÛûyF èöºè˚˛‚˝)N:Ã(µ4B9IÈ≈Äá3◊%#Ÿ^Èjâ™’ÚT.íGÄy∞É[˝®ÎµÎ?¿›ÎuêØEı≤…ü{:nötî;ÆHd7ˇΩÏÛM∑›ÈΩÛDGÔﬁ´Õ™ª‰TÉ∏ºº*†'∂∏ec[”èÀ4„Ô±Lày c¶å\p¯¿I}®ÿ*“óÿôMM¿]k§¡IBn•¸(Â#gsf(ﬂÜpöÃÏ!ù»ën!Òb e—<})˘j7 _ÌFhÃ/> Ôt°8H“Èˇeu&Hß§a?4‰g¥ËYıìø]úâ_ﬁ(5·˜6j2·◊SOçQÉóJeiŒ±OßÈ,Ea ^C™H…h““Gì3x⁄c¯~+*ºûäBºHÊΩÄ:È§&ór8•ïíÇ¬	ÁΩB5ëÃ8Ëâ˛¥gıR⁄Æ∑ÙÏÙ± ¨:bôç(Ñ•ºûãÿ†\ΩﬁÓª>øúHeJ‰mì‰Ê‡!iƒ"c~Y‘ƒ¢◊«W~§ÛÚV’ÇN[Re¯≤¶U÷‘ÀÄö?ùP£·`ôÀ•XH[€aù+íÇäÈ›—;â∞?∆ÜÉ0Qä‹öYH¨E* µN˚j6ù*ˆ¶±[m¶π]—l¸|â/°s7’hﬂ¡‹Ìñ0⁄À¶T_§â2ß0®Lq˘4Ñi2⁄08'j¯œ) 'è/¯Ôä≈ï÷»qîA›\}˙˜7Ñ∑”¿¸„À´Û7Ééﬂ\°o—èÉÉì”ì£¡·¸GB¢Á“≈/R\âe‚nÜr∏M_ıá|D P”iqÅ
+™8k»¬.0À∆∑ÿ˛ÙçëFÉ'êÓq	<Mlñ[Ì»6-Áëy! ‘¬±f.x4$ß4/)R‚·Ö‘⁄ f9†≥Å¶‡ôô9‘1ca›§YÑì¢ m“º∏Óåd πò£4ÏgÏ÷Æ4˝{ï’Ö‰w—‡˙‰ß¡:#í1z{≈úsêCrkIkü˘©^‘ ’è¶ö⁄*˝LÏÄ»iÁ~âõù5¥µÍU∞¸P≤zeX+ƒ˘ê4¥DÍˆÂíßgº„Â;Ô ùñMÜ
+}´R gñ¢ç˘V®îŸ∏kΩÇö^1ÉSƒHÁÓ(‰={ä˙ñlÆ, ≥ò&ixd„JHﬁ
+Ìé,°^5–œBœÓ‡-Â°Øe°B…P&≠+ñóG°†|®és»Ä⁄∏S¬ó†#BHÓ„=j¬rñŒ]&ó©@ja|†Ù`®∏H§<◊ÄÇ¶‚™C›,Yç'áº`/!7£
+!5–^æu08˚“¢ÉRx∫∏<~}|˘ÈΩ9<Ò0>ø=ˇapD˛}3@ß'oé[o/$%Àµﬂñ„Íä_ôDEÖ	´D•5ˇb»]"’*∞ r7"ª‹tJ‡Å·™ÑﬁÖ+u¨"IG ”ìaúÚıÙ:Í±ùñI·]G^˘Ö3≈/≤Ue∏¯ï]	4í9O∂â¡0c±S>µ‘4AøY‘‚D—jÕpÄí>WÉ˝©^¡ø™√ø˘´‘v;>MvqÙtd·#Fî∫W?rÄmI◊ÄÕmª∆ï,NÀ_ıî9	Zc@öZ◊#®ö(Ü™„zP“_4Ÿ∆¨i>¸´ºJ¿°Æ8π<	ábÚWê~-Ò$s’ª|æW„(B[…^§ã∑†Ü’øj@ ~+GÛƒØ∫òB=l™Æf ŸK√–@ÌuS Ÿÿ	ì^ÊYœÍì´x´˘Ô©’ºÜ©≠≠òN≠r±/oWµ7¡5Á‘ó⁄6vä√ë[ıM
+‰ÀÑ˚ï{,ÎÀ∫∏®]8á+t£/ä	π,\∫πU¬÷⁄`r4˜*&P◊(_’+ﬁ¬≈>SPÜ5>„Wç¬Lu ¢–[“yÙwŸòπ¬ÉIC<¿¢±O›Lúó©Ó”2ß„	`=wúF`œ§Êõ`îﬁ‰oU3»féß>£¶¶j†ÂÍGâ’∂ ˛GÏ¿Q~*mæÕª
+‡{∂U(Ú&?(zqc§ˆCãÊ1,„åÃª8Îi?i…0%«≥è”Ò?ê˚ÈÇò∞ÁU*ôøˇö]”˚ƒv–{…å|"kNGBú9»ªÎ[ÑRg‡Æ·YÓIÍ""gEΩÍ*\b˘‚˚‘IÃu≥≈ÚDsC[”≠èI¡%„i ªÍcxK≤˝ˆ(…*Yßc]`∑^ÌZlÑu2H∏Ç¡§lnÓ7Å…◊ª%∏…Îﬂ◊≤5 “ˆÙ¶øß#£y∆ÇGM€ô¯Ñê‘óCπ0ö“ı≈”.Ω˜Âo8ú/õzÎ(˝dïí%ÛË¿%ìK.…ﬁI<.T<°∞5a	ÄFÍöPTT˚Ù»Wé,”Fgä•SàÄ|p à∞LPZµâ38"dÙÍ2>+Î(ô“¬£(ÿ√Û≥ãÛ´ìOˇÛ”ˇ4˘q‡ï≥¡E~∏‰ã ∞≤JÄï~y‡@&±Qƒ ¥b%H6wÂE—†=d@ÊHù”SIëó≥Ñ
+´4…T¯»˙ ≥QÇ—´2≤ÖÆJ5ÊO5Î`$O.o˚{≤ﬁ\≠/N÷‚\îäÆ£ØKÆ#Ö´YœI˝=ZI∏uíŸW<<≥>ˆ‚-¸+ıÙdáˆ$¿*≈@I^bç#x≈◊?æØ@Â s™œ«µd2„]…‰+◊I∆—‰x!®¡ÈÈ
+YŒê}T‹u5Hëπ’¢!hıAº√∑WƒD◊zgví,ÁÖñëÖ>gZWzPß
+R,•ÅΩüâãõ^d~U€¥)Êº.77ΩjõË∫î<A@{S8]úEfôË¡ÃÉ‰¡ÑâV2Ë(Ûb‘He“z“Ä‡’Í,¥ıoáŸÕÆ3ı™g~ÃÌV≥}—°&L+ﬁMœ®í:wT¥ö–ømRA\öÙgÊ©qÌÎdkµXÊÎÿ∂u¥QÌ€sNÍ 6ı±˛ëıª#Ó“ªπaÄ∫õæôBY#æ\ JW"|e9≤FúüΩ6“ÚÊºÑQ ≥+uÓŒ˘¥æÄì‘´0
+Â˚vÈ8î‘´∫
+üvID¨Ù8%ªD⁄j]îâO©UcêÔM›HπƒµÄpñ‘K"V$£˚„`jó%Æ˙Qsâ+)).[_ú»"#C“G?πR5'WÕAëKiófZ†~¿Ö°R¬û.pñ#±
+ï¢R‚∞zãöãE«SØÖ†…SØbàyóì
+‘·'8:·Z4Ú<ıÑ£ÉÆ◊¥ü'=ıZ¬iW,ÉœíÄÎ©◊"O∏2 ÓÃ˙∆Í-ÊZœó"&,ˆ‡éº*˝TŸ™é≈_Ë©+8å8R†`˛“∆µh˘-xOwBtb®]q)≥ËIYd˚ãbmÀXHΩû&ä!ıZNhCÍıÀàwHΩ™Ad˘Dñëzâe Œèéÿ\JtDz˜ópr‘Gëz}é\X&
+#P6áëz-(8#ız‹{ÍU_«]∑ióWzÒÈ›ˇåÌëã
+IΩû›ﬁ©)ê‰K€>ãã0IÔˇg∫f^@ªu∑Y^ødÉ^RØ:W•Uﬁ_f"•'M∂É2œÜ˘∞B|C¸Èä>ÅL¸|méKØ»ú" &€Ù.ç˝¡Ë¿tΩ«éÔ	R5]õtaXP~Mã©*V”Ç<óVv◊mmp@(◊iZäxQ˚º˙ëËÿì•ı0â3_Z∫8>…/#}truÒˆö˛ÿåîla0qœ¿Ú( ©ce!ûÀ∑§§(^bI≤
+w-eÊö¢cÇÛhI>êLPFAQƒK∑Ô“Â≤xﬁ”—DíeKlÕ2…≈"hÄ,kâÑ◊‹∑˙	òk∫¡:≥–GÒ7)aR4JäéØóéá‹∞Q±°ÖJ∂ΩÉV¢Ró;ëèdªR—1íßaø¶⁄aSI €K§;\@êù\‡ñZWèW)ìh-Qt¢±Dﬁî÷Ic,ΩòÌ∏:k°{ã!.ìûAUÇ˝¸)®&Ö.íœ¯W›¸∆øJEÂïîö+—u…‹´2€^XBóJ?	ÇMäLºé.1k'ÿè…^¡Q9Ëâ,ØI≤÷£ÅÆ√€…Àõø¬±;2ÃÄg ˘±6¿|—#z\çQxœô∆Î≥£hËf%>_Úƒù«A¢™√F$A[ïÿ˛;)…^ÙÔ8-≤âÎA2Q4xü*≥"¡õÉıiÑy|µ`ÚÉ≠ËÔ@8Wb˙+∑AWÑÖ0”—ﬁE¯N:QDÒM”)©‡f´Gä´HHoLhª•ÇVœw4¡ë›XC§Qz£ÕhNÂƒBÌ•â~°∫∞ÍKoÆ=√‚ Î4»éØ≈Ã2≠û°®d
+±5ycÚZÚ§‹◊Ëoc∑⁄ö1“g*vöÙ˛™ˇã◊—_ú	æÒQ9Xåÿ:˚@Ëc'XÉËÃˇ&vfJ…ﬁ!Ã¡#.zí§∫Ù;9eY‘~ºrGêîABÂO⁄œò—L¸hG…ΩÜ¨:çb¥dmw˛ºKT}ıßC∂¸¢ê)¶L…°‚í¨Ï\ZéQÑrºtGvZ˙Ÿôñt{]…øúΩ∫<zsw≤ô∞ÇqÍ©kÒ˙3ä¢ËÆ/7–ı…f…)í4èÇ†;≠Ü:ÛnâËu‹∆˛°i‹⁄‰A”Ÿ©Í6ÙWb4IÖ¯XÒ∆≈ıCÉqˆÓgØ…©ü◊çÖÈöuJ&ä:J–nWõÉäT$UñÛ»≠L]Ÿ=X«—√ó†ç¯r⁄U2¨ˇÕwÃâ_ne‚ÃÄ´Ã√e∞è’ÏŒw_5ˆ/ËÊ≠øh4O¸@ÂA˚îI"œ~‡óûÒÿãÂ:•Œ–_ŒÚˇ¬€ó≤˙DeêZze¯≤ˆAø¥ıi:œˇ0ó≤˛C}ÜÈë+±˜G/‡ık!p`ö d9€ﬂ¥cå•8¿êuoô4P.cØî°Ä•cEûEÄ2¸ÎRLqÃÇ<^vï°éSJÜÜY7=öô∫ÆX@LÔïq£z°Àù™Hµ„l∆ÍhÚ~H‹<Ω≈S‘cÏªjW–Ë‹IdÔ!Õ—¯N˚î2v◊›…bö@¿¢ZG£å,ã]2<–ióıÓêµëwª∫XÊÀ=±™±?*d.gÅŸ¡±8R='*zçGsˆD$Ñm«4î16*Ã(˘f	NÔ#¨∞öÍ?\r\ÿz@ﬁ>„”∏wNó‰ÅÛ∏ÄA~÷–ÙDΩØòûã˘P IÁÔ⁄CÔøéö˝Z_œßÌﬂ?æ/èoˆQFÃÁGSx'Ö˚õw´G~Wˆˆ¸nU}˜hf€ÑÙ¿ıKE:¿{„Æ\≈uæß¯~Ëˇ´7ﬁΩïA˜J⁄UK˙±›Ky_€ xJÜ‚Åô»Ú◊˜Iéÿ∏ T3ë˙¶”ÓÙﬁ•‘*˛zŒ-j"	˜&uÙÆ<÷ô∫Î™iÃ•œdOµX^ú`-ÙîGîÑ…V/±œÂªíôõ4√~œe<Ç`{Íª\Fg#gL-Ø¢Øã©(9XïòGËÆıöêˇ9@[FFá  é ⁄vâ·6ßÌãÛ+ÜQÏJ†>∂:ùØ¡ÚâE‡ç{·≥Û˙(⁄øÊ¥Îèˇ˙g}ãPcò“r)1«åI7«≈ı’í˜FñnΩˆË©ªà•§?ÉÉ•OQ≠ı*√˝|∞JZ‘^ﬂ8a›…‚aä>uz|Ú„∫q¿ﬁ]m<a¸˘˘ü?÷^÷Ω˛≤∆©Ê% ¯æ„Ωûç˝÷≥≠Qøh∫Øµêw˚¸Õ—Òü_˛x˛v)tÓ1
+@oåc£ìí_=Z\Q¿QØ‚¥«ù¬ö’}Œ˚5äRààòø‹Ωª(ë∑JTJ∆ï&Ù„fD˜ !/O_Æ9¿ª<%óÂí`Áπzi.˛{eI»ÌJõbWΩL5ñ P›—…<ÕtW	‡‹t∆~
+·›¢mëÆîK…l≠Ó¬åå’KÎøÜ	õ(~–ä™–àÔ∞Í#Ñ¥ò⁄`û+”∆2ÊÕírbeˆÄ[’˙J‹GIçîRhãÆ8DYø©_ë°ÌÕ_=∆˝wŒt«jm’,àÏ—GtÈÄ[˝§·;l◊.Î∏ûAro≥g÷üŒÉ≤ÓΩüyV{‘2W{”S≈Rˆ|SZÌ≠{Â1NM≤1gÓﬁ|ÃÇ@cT∞ò‹A*YêµÖ¥#™≈ºÑß®≈ºÅ–”¢><Û˙Ú¸Õı˘¢^P_EÓZ@∂”∏†[¿QY\3»©r¢Ëò˚m≥ñÍâ±´∆‘‘5*•¸èÒ´‚LÌÆG˝DÕÂúneÚëô_™,vàbb§—C5>Z0E"SëùjÜÖxâÀf	¥Q¡zI∑ªWY#ÕPS∆“úU ÔÒÖ∫n^¿ó™8ì¿&TÙìŸT!Ø†°]ÿÄr6¸h)6˘Ï∏‰ØügöÖëa¢©	ƒn∂k]›¸’+h%Á◊˘v†¨ ”"°5K…h!Xπ^∏r˝˙Vn˜êh„ÜJTC¶>n‰ñDCSAgíÒi.òY)Ê.ôD*ÉíÉ03ü÷é=—Ç|DÄS πú
+ªc•A2S ¢S¨j≥©¶tÏ@`¥Ç‡Õ%+CEª'S2]o®ÿÑ–ùÖf⁄åÏub…M≈ÒvÜ”ﬁ]∑
+(£Dhs¨r|¢√è— Ò[¬¡4áçsJFA!,Æxí\ôiäéRû
+)irc…N”≤ÒG⁄’9j∑€içjc;ËÜΩ‰aˆü@¸¨‘båoE®üöUI|£∑Ö•ŸÆ<@G4‹µ∞|ñˇs‘(7&ù∂≥ƒu#˚|”mw˙Ô÷∫– 4a'|2äµQ¨!ÎÀFè aâﬁ‹)q&∂f|hQ¶’g≥– XïÿîIÊê≥X„RÓ°0á´◊äóΩ55È1Ö Oÿ?…º≠RÔ.ÁÍÿΩöhXW}Û„vÚ¸]ëÚíÄ}KÇ“ ˘Yæa%ƒìP" :ΩjÏœK&t.åqÂ¯ƒVÜdHÉ¸ËóFç°ãÎ+ôÆà `ã¬íß<ªdÕ∏Ÿµ2d91¯∫•+â=ö%Ãm#≈ ˚—≈-Õ@∑äJˇUg∂B◊∏ü*oÅÕ¯G¨ œ:PÉ¸ìf^d¢OëR5rØÂö-›⁄Ê4Ê+˘®)-e:$êï5#œQÍ%‚¿-Æ∫cRˆå˙WÜÑÍ¿F±Lv∂˚8?
+_,gBëW?
+“GÖ˛†lÌ(‚ÚœC÷TDŒ=4Ωç¬¬dM,ç¡Ó§õ`02iâ€‘+%-ü˛Ndaiø~TÜöÆY;h@6#ç¡sr≠Mqq∫("‡w´¯∞⁄πh.VLs±NÇŒ#˙æÜ>‚ø(ËÁô¢ë¿†P≤Éf.yÏØ t—_.˚ékíâÜI¯àˇäù54˝Ùü™¶–ñ¶Æ"åæÅ_{_˜¸J†GPg]±æ,™\î¯uŒØ2˜πHŸÎ∑ÑçŸÿMÄë—œT’Ù9—RsV*•PcX≥'Çò‹ÿAn€rô¸EÅIMeC‡}:3U‹\)∂Íà$∞MÕYçµìjÚí@É1Â!·∑Wí√`«,ä`:HÅåé"xVu©ÒìF‘Ìp˜‡):ÑŒ‰+/<ÂTy0gÓ†h{/ÂÊ¨ıÇ='‚Øôò®µıÀ &6îgBLDíƒ∫R5Åe%JM¨˘ÁGN£	ë3ørbCy&‰ÙÉ˝ÈÔ∑⁄»¨LPäô¶›^îû¸ˆ+Rîº\êe≈µËw'„õB:QÃ∏Ÿç7{Q„ÊFÆqﬁ~mZàí:'+	¥ì–I-næÍ*Áë-6sT#?ªÅMv3Õ,œ§Á‚°›ÁYô‚ΩPÜé©œ\ê&≠Q[¿2—ÍP§oúﬂåò'¸ª›àe¬ª[$‚Ñ⁄ÀvÆÉ ◊ƒS$u÷í(/≈ú∏Êƒç® 8éÄ	”UºBsb|5Aê•öz`gî…î»Û*g`(˙É£9Ì˘ã¨1Ω˝ΩTÔ–éX‹2W$J‡·˙Ìê‚∂«›+K±?ËD«
+’ÈÇ‹¥9V≥W—Gƒ¥Òt3sÓäWR	‹Sû5èÍœË4Œ∑LeòòYow“Oj…zV_≤(s‘0Íï„‘®Öﬁ]y≥>Ä©ÓÆO˙£‘J%ÃÂxçfá&2#¬∂\ò¬x1Û>
+g£°‹™¶Ä‹ hÊÒL∞»°É}9lsV$‚PI;oπdü˜y‰Ÿù∑@πﬂ∑usl÷}ﬁBÀ¥aëÛñ>ÏcàüÓ»Â)2Ì¿Â¢k.X©)ÚüûπÃ|˝˘∏å‚]>Å∆rÊFbøÊÄ;rÔ®FˆRé“<∫ãêTcø)“#Â„¯€ÄUg›ZßéÇ’œBÄ~=∆»+Æƒ∆âE#:ûI {MËîëÁrdö2≤I††'ã`§Ä¬![˝åπøTÏ;◊ëóÂ≠ò∏”∏i?õù˘5£|¥ö∞@ˆ&#m«€¢Eá[∑Lq\&XáÔº‰√˚¡;]6◊ƒsVaóHA#ÆŒ ÇÅ‰x+È‡=S)©>∑xaŸÀpJ„örXÑ5≥-˝3gQ`≤‡ﬁ’Õ®‰pl∏∂ÜùgÀ“˚ØË:Á
+jÈr‡áÄâ®⁄-†πc„±ÊP»ë7¥Û»∏ùÍgä!(êÅ«éâ!"û∆T∂»üWÔ
+∞Pî¿c†˚úÂÅΩ‚¿∞"›]Tè„£ƒ›vN—ﬁŸıV∆sUmQW+yÏ§cÑä(Fn¥95˙≤eõÅ–Æ∞bè&ÃÊUÌÔPp
+—NuŸ{∑Ñ"8º◊Üø¥ìÚ∑˙‡0%GRwΩá¿O4„ΩUKÑ:4√öπB
+ë˚`y<K>n¬¬¬æ∞Ω◊8ò9#Ö…'Ìv[¨Åè
+ı"∂6Mbàb”8úÄ ∏7o‚á8k™â€d'é±€¶/+'-8…Ä˚7·‹ÊñﬁzÖ,õπ‘{(C„evn√∞1sÊR Õ,~kéfNJH¬fˇ^881Hc·&Úx9Èã˜√+ÏYíÇ≤u≈kV@
+aı`ij»ÕπêK˜B´/∫–!˚é¢'*ÉL®«õ˛∆‡Ùƒ8æÚˆÓ:{D@D9\\˝BπO~†AHSâ $Ø^%iM}Ù)b ô˚˛‚˝)Ü∏3⁄'xÜE†Ql¥∑†H	¬®{¯°´WŸ
+WYÕ-h?D√¶¢õb#mS$rRnÚ@n_^ÖîJ≥›x÷Ç∂´∑öõŒ∞fàÔ´{N®]ÿåN…ÕHî$¸ÏF«€çBÌ–zﬂ S‡0õÌ„˝™X/ûp£üizÎÄAÙ⁄èu\∏¡≥∑,˙ï_‡U,‚|W\°à‘1<ê∫¯hJècL◊î
+Øìê8·bRÁhÇGÜÊΩò‡˝V£"Éf–Ueñ˛U$?Döô¶◊Ör·© ìÁe~Ÿ>°÷£Ù≤Ã=›–‹MÌ›Áôjc`aÉ/2|ê	öﬂé›ÎHx4(-Á?ò3{U¸; M]H*-ˆ€nÃ$ôßµöÿ¢Ü¥lÉ[`b+ä·Åa2∏ÍÂßø[ê˘,¢†≥√h'g∫ÛóUV?Ô°©rﬂö¥˙Ω–l˚¿‚E»aÓö”ñ3≤M]ΩqëŸ‚´ªΩt§tùúN •≥Oô†å∏ZöÎßüô18AÚA‘È˙BhµTÙùWıûITí≤SÅ$ »ó™ä+Ñ¯u:|JåîTœ\”’†^∫˜ ï§≤…U"óL± 	Ö2Á´ûÙFYÊL‹ú9≈Ö˜f/-/j∞∏0UKÈEÇ¬˝ƒõ9˚≥/º?£RªŸœñ*%ÔÀ¿ü˝+Ñe9 ŸI1rm#Ü•
+d'ôÏÚ©‚∞f»„ ë_î¬UCS∏|∏ÖÒ≈ëÆJ$Y†á∏?uUìÃﬂÛ¬üµø§'O!˛ G˙…'PN¢'}ê±=Z$PÂ“ à¶∏≠êk¨^X0áÃÃ‰•"XG'∆≠ô*≥VS:S<h˘9z,A‘Æí»B∞!ùü%ı˝ce¸˙Â“Ão5C=“¶'”qÅ∂' ∞ªÜrŒfr5ŸÊ}òiå¡y; ÁÌƒπbZr2ådõÎ
+9®◊LA{]L$w‡˙V.ŒÎ∏ _‡r<dGIâbd0{E∂©Z1≤QFö„ÛçkÖÃ•+ì“KÙ'ZV*nœ-*÷U-oEõ˘Ó˙§∑(‡%˝µà?ÀS‰ãzE
+2]∏]«µMcú°ìƒ±∫á,OúÎÅi˜Qg’◊£∞Üº\~ö!Xœ≥P’s˜H¢∏  ¸sµùjSrHzÿâäZ™º‡A¶.UË¯È‰¯ËÏ¸Ëx˛8∏ºN4ä"¥eÑåE¬t“^Y(fÌ´êö3Õ0ÙÑjXm‹-/æUtn°K≈ÄwÉ˝Ô≠áıRp6EmH◊~Ê¬ô=õ≈Y]
+as¬X¸D•l
+üÉ0∂Ó¶7∆¬0Iv=iΩ⁄Ú°Fñ[luâÀ42EáLÉ
+åöÍNˆ›NÁõö` -zü$Ä¶®œàE
+9ªCx*nv÷»Ñ1r™ÿcÕÿõœT¥Éz‰>Ö∫Ó†>˘GÏÊ–$g∫É∂:ËQ–Ω∑{H˙ÑM1X™¬÷>‡#ÖlWõ,÷^£è˙ÔÓ^„´^Ø'¨ùÔ˛qpØ9t∏ø√@,ﬁÖknkk´Aé&8=Êàf:Q)øReeç“≈Ÿ);®€aü˛ÄŸêWÄZV» ëbåu≤ï»±˙HÈk`å&¶Ω◊ÄFà≤˚èäæ7ÔkÈª¢]ñÌÙEÙ◊¶©ªö%n#Ô!¨Ê }Ä°Œi÷∑1Â∑áêÍ:‘ÌvW÷<Ü‹Ï˜˚¡ÕK¢Œr∑€≥Ó#}ÁÔ$ÊW∏è∑†Êªd∫â@]Ã;di÷/ËèT2∏°øbwΩs ß~‰Ï¢f®∞NÉVﬁâwÑz™^sΩ°7¬.ºáx≤Ùıúﬁµõâ.-‡^jßckP¢!Ñt<8Ëw∂»¶+±7øŸZC‰?BŸùwètFˆ·H§@›=Öë–º6ÒW˚Ö6»Œ3≠DO| 'Q˜ë[r∫3Ù:µàäÂ≥ø"=ÖÔ.[Ç\]…JP,ˇñ∞%ïb•O•åºÁEßI$e~ëÕ#ﬁW“á≈ﬁŸOõÉ@DN Åém˜⁄÷({˜ƒ•~ƒH€≥£'≤¶[}1ù?	Ò4Ó®pq4¯…–YOêuﬂ§1™¶õåb™ù G∫)ûÅ<Î◊≈∆öÇÂ'W>Æ!MΩ_√Q2`â¬3#£Ÿ⁄oì?√Ë⁄ÉRê°‰‰ÊN/h«k1D¢Ê#YÂ¬ƒ0Óê±ÜBy›≈_,bÊ,j5ÃÎ-ê X?ƒ?◊tÕ¿Vû.~Èè î®(∆»N*-@bb¬Ùﬁ±L Ÿ$]kûo∏ ó5-NP:ﬂ7Ìò\%…ºﬂÙ+“ﬂø%Äú+Y§.CIç›å,â¢ói%~πc‚´9·¥Ë7®+Ìº„/Fßc{fô [˜=jn‹å¬¿∏÷¸^ï)FTnQSÏ/QK≥D2Ü¨\Èπ‡+LΩ[∫Ñ†X™ÜË7‰ÎK>^¢oπä¸ºI˛Ä+íFº©H1é!" é“¸(1·"i¶ó1«/?ﬂ$aND.—tDdBP6≈õë$ñ„	Áì†ô≤±"¡D˛ESM‚œÛ}Ü][9àöïDK≤ËI}∏Õ9›/Ã8ΩY≤≤µ¸ñW?B 5†D…±“ÿ-eëåú-ôÅŸë|it{Hi¯â$gz⁄IˆíbH§¬ÎNqnö√î3ÚHüœj™øâp^∆T„)dúU˘Ÿ∂FÓïn∫Œ„7úlY∂yaõc;T5Cﬂ ÛñVˇÕπ'ﬁóQHE4øSZTÓé+¬È“rÃwÊüπ≤z,]ZêÅÓE.…¶p“ØD{9N6ﬁ˜–lCBD≤°wË2¸As'ÙP{\˜ƒBp´±'Y!	G8ú"Ëú¸Œç∫≥z(’úÇLsçŸG Z„Ú;·w s≤†ÊM§ó‡
+Ú¸‘∑∂Éﬁ=?S‹I{™Õ»í¨°nß≥˙¯Õ{	gã‰<Àn⁄‘èUıu–ÅçïB•Acl§Ï˚ØMõ•˛ıå∂˚2UNÈ0≤xÄ>À√§æFBëçè)°´˝÷+™Ix'lD4s[ôä˚«Y*_8LÅo<;‚&ur ∞´¸»/ú§¥%-N^`∂ƒ√IS{KÕ√VﬂùHÓõ°	•}ú'æÛ⁄ZI≠ûNáE¡Ì`O	ÏÉáWOœMË1°Gπ¨o$‹åpÂ´Sßoß5Êw´ä9)˚=âC1‹ªøA;PRàºæú˘H÷à∞8[Jö1Ì¢ÒãêgÄ/æu†hKYejQSªEÑ°[/5è«zV≈OG®úÈ∫Œz¬˚_éñ‹+% ûÎ≥?¢‘ ôX µØ^@Yôì`ãù,$•1¯•{™j=ú‰aP9xi!ß@èû%#ÇƒﬁSx
+§∫A∏0ΩFÊÛã?%jhm5ëôÒÇÚ®óÎ¡¡È±$Í≈+V7,ÄéÎ∞!ÜX94rüµ^•ÉLÒ3æŒ∫iO±Ù÷Æ;¡äööáÁªocI1≈~oQàÑ+ÄÍ‚Ü´˛JX¬](‘ÿˇjw›ùHµZﬁq‘Oﬁ«clÂ<<πu€ÆL€Â}b∑‡∑ß·¢Ã∂≤ÜTÕf˘¶v<ÿ¶èx€»
+v˝e∞WDŸQmï,ıà‚#È)œö3el	∆(πÆ…µä
+f∫∞5c§Yê~©d√É€ûûÑF6ó~<mÒ0¢˘ﬁ#öˇ∆©Á˜Æä~ÇÇªã#†/iÖC˜O˛2sœ=üµézœ^\d¡}T˛rO=ü≈é˙Ô^[p±©ˇ¢p±ŸSœi±}'úSòcúøÍBø/hé¯;»ìB·	T ‹á¶˙¿˜òhDo= Ôáò≈∫RΩ†äÓ∞”vê;¿S›Ø£€u’¸ùI5ñ©iò13^ƒÊ,oﬁÚQóív W`Ì#ﬂH^âÓ
+‚¡„–¥⁄ÄyU†ëïêŸt•–Ÿﬂ°	˘üseeÀHw$E Ï•`”pï«t”Å'˙âA	åBß_¡<JªÅ°G≥%’ C^SŒÊó§Ÿ/xc™îaèìïÃdcIÚfç8d∏™bëÈ`KöcÀ¿˛kaß%!õ˛ÂuXq◊Ú!$¬°BQ˜Fı’Ê EG›â_G∏fN·Ëßr[$qV—^>Öß†|PNˆP∑¿∫⁄*9öˇ  ˇˇ‘]ÕN1æÛ>Ùê†Pö8îîVï†â Í!±∞]) èÇÌµ–GÏìtfÏ›µΩˆ⁄ª	àÓ≤qºÎü±g∆3ﬂW=g”BVØR[˛ƒY–[kYÅ[˜ 5Ÿ}mÀîà◊∫°BYàÏkú'àíÈ“<ˇøÕ`⁄áªyâgÂ"az≠d(=Ç,√(9hÆMFÌ£ï’R¶ùBÁÈöeûâgQõ76õîŒôd‰ìj‰∆^Xc3¨z˛Õü˜¬˙ùü/ü◊á⁄–„ ßßC€„Fîî*™ª€Ï[0à¶únµOËk€ªjÎaB<§è"Ç£xàDc†ÿ=!˝”ÄÃêC„L_ÖÒ”ÆÁ¡úCb£º€•ôﬁ‹⁄ππ´âãÖµ†è√Ëƒ¿zoK]ü6¢“råÇÙå\B(A+vüDÓv≥sHáˆj¶°ÊÉÊdß
+ı†ŸÌ‚‡∆/ﬁó‚áò*]ÓÏ!ä¿Q1¡`ø: g÷µòæg¿ÿS—äAïYL¯qxä¿˙”Ã'∫-€Ms© $>uåçµê2˜]÷ïo∏6@Ù¨©'s™)ˇ⁄û6•Á_¢ Dá±8Ÿ≤Ø-^èGáÍÔE#ÎÓf≤ù}∆⁄…ß`4
+Sçg]R{#^ùs>3∫hœ¨◊˝—Ô^WŸ—Wæ∫Ÿ“ã≥ Ç#;eOı3- Ñ1H‰É»£Å∑¡¸|?üÒ≈4Ω”œ<ÿ“´+Azi#∏∫≥DÖö@Dä_Lﬁ≠∞°ÔÔüíÏ_˙"˚Hì.aÊ$EÎ–›’pÑÛÁ≈–˝’u.˛[éAVQÛ™§¨yék“ll&^q≥ ª …GLIBÙ2ùåÀd9ÄlÅûQÌäKﬁœÛ+÷;ø˙˙˝Çu∫óΩãÛ~ó˝˝˝ß~˜ÿîRáV*E}b¥ÁÂ8‰`†Ú)>¡ä“I/k‰ŸTj¬ÍÅˇ[…k—b>O–™Ó‰Ö0N4ö*/œËó Ω‘•}ZxÄ≈€MãÇ°4›WãbÊ¶°dXŸÄæ
+‚mµ†∞/∆–EPƒj´5]_ñØ•›≥∂÷YêÍ,ÖçtÇ•Îq
+1vñƒÆP hÛn<‚πè©:?¡¶˜1–Ò;ZÌç,ÖïÍW0
+ëT≠®T-óËÔ—ågëdPò&ˇjWë¸ìI<,9ﬁ⁄‚;,⁄FgA ‰)Æ“‚›b“íü%9–$üÜ¯g9ÂÅº¡+ÿ0Ì,q=£M*1íLHÎbA≥·y¯.˝¶|óD#T+Åù©k5EŒÈô˚™™	õ5ﬂßπŒâÏ ‘ëJ•böŸú∏-A]“ÊJãÀ⁄H+™øÇÁËzçŸJTGd
+w?r∆Ø‡t?z©V∏…˚h”√√m¡°÷q„N˙S–ãa ø`2≤8æmΩj¯xπ3ª¨)•)X—Hi⁄æ∂WÈ•á’§Má}ZkÂä®8≤ =áœüÿhÅYÁñhô<m	 &∫3"ù9≤π¢8t3ÒuﬂÓ‡£è¿¢Á¨è!ËÊ°–‚rêÃ|â@á˛®fEoBlÈv—óPH˘ï<{N/ÉãÊ’| B∫}µHà¨Éûπè
+±3≈ PQ‰¯(®ø8æ6çe?Aj	{Ò˙€æØdÛVc‡Ûµq—Aa4W?ºÑπZ«L≠lûzö•NéÆ23¥∫uD_’ÒôYË”‘≠OàF™ †É3ÏÜ+"∑Ó≤LEk´⁄ëSC#\D\-⁄ôGwnÀˆ•Ùµ§ôEœ`>Œ¡¶|É9e∑œé∑˛  ˇˇ N≠*œ

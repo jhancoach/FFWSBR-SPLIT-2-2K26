@@ -4,10 +4,12 @@ import { useLocation } from 'react-router-dom';
 import { DashboardData, PlayerData, CharacterData } from '../types';
 import { Trophy, Crown, User, Users, Swords, Zap, BarChart2, Scale, Map as MapIcon, Skull, ChevronRight, ChevronDown, ChevronUp, Sparkles, X, Activity, Info, Crosshair, Shield, ShieldAlert, ArrowLeft, Disc, Flame, Target, AlertCircle, LayoutGrid, MapPin, Hash, Target as TargetIcon, CheckCircle2, AlertTriangle, Search, Star, ListOrdered, Eye, EyeOff, Gamepad2, LayoutList, Layers, TrendingUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, LabelList, Cell, YAxis, CartesianGrid, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts';
+import { calculateOverallKpmFromMapStats, calculateMapDurationSec, getMapGroup, SAFE_DURATIONS_SEC } from '../utils/kpmUtils';
 import FilterBar from '../components/FilterBar';
 import InstagramPostModal from '../components/InstagramPostModal';
 import { PlayerVsTeamCompare } from '../components/PlayerVsTeamCompare';
 import { PlayerVsPlayerCompare } from '../components/PlayerVsPlayerCompare';
+import PlayerKpmAnalysis from '../components/PlayerKpmAnalysis';
 import { Camera } from 'lucide-react';
 import { findTeamLogo } from '../utils/teamUtils';
 import { findDimImg } from '../utils/skillImages';
@@ -30,10 +32,11 @@ const parseNumber = (val: string | undefined | null): number => {
 
 const Players: React.FC<PlayersProps> = ({ data }) => {
   const location = useLocation();
-  const [activeTab, setActiveTab] = useState<'ranking' | 'playerRounds' | 'playerDrops' | 'chars' | 'report' | 'auditoria' | 'stats' | 'roles' | 'compare' | 'mapKings'>('ranking');
+  const [activeTab, setActiveTab] = useState<'ranking' | 'kpmSafes' | 'playerRounds' | 'playerDrops' | 'chars' | 'report' | 'auditoria' | 'stats' | 'roles' | 'compare' | 'mapKings'>('ranking');
   const [mapKingsSubTab, setMapKingsSubTab] = useState<"maps" | "drops">("maps");
   const [instagramPost, setInstagramPost] = useState<{ group: any; type: "map" | "drop" } | null>(null);
-  const [rankingSubTab, setRankingSubTab] = useState<'general' | 'maps' | 'safes'>('general');
+  const [rankingSubTab, setRankingSubTab] = useState<'general' | 'maps' | 'safes' | 'kpmSafes'>('general');
+  const [rolesViewMode, setRolesViewMode] = useState<'table' | 'kpm'>('table');
   const [activeRole, setActiveRole] = useState<string>('TODAS AS FUNÇÕES');
   const [roleSearch, setRoleSearch] = useState<string>('');
   const [roleSort, setRoleSort] = useState<{ field: string, direction: 'asc' | 'desc' }>({ field: 'kills', direction: 'desc' });
@@ -328,6 +331,8 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             kills: stat.kills, 
             deaths,
             kd: (stat.kills / (deaths || 1)).toFixed(2),
+            kpm: parseFloat(calculateOverallKpmFromMapStats(stat.kills, stat.mapStats).toFixed(3)),
+            mapStats: stat.mapStats,
             diff: stat.kills - stat.matches,
             damage: stat.damage,
             hs: stat.hs,
@@ -453,6 +458,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             knocks: stats?.knocks || 0,
             avgKnocks: stats?.avgKnocks || '0.00',
             matches: stats?.matches || 0,
+            kpm: stats?.kpm || 0,
             assists: stats?.assists || 0,
             gelos: stats?.gelos || 0,
             gelosDestruidos: stats?.gelosDestruidos || 0,
@@ -527,6 +533,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
         bestKills: getTopMetric(allRolePlayers, 'kills'),
         bestDamage: getTopMetric(allRolePlayers, 'damage'),
         bestAvgKills: getTopMetric(allRolePlayers, 'avg', true),
+        bestKPM: getTopMetric(allRolePlayers, 'kpm', true),
         bestAssists: getTopMetric(allRolePlayers, 'assists'),
         bestHS: getTopMetric(allRolePlayers, 'hs'),
         bestKnocks: getTopMetric(allRolePlayers, 'knocks'),
@@ -552,6 +559,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             bestKills: getTopMetric(rolePlayers, 'kills'),
             bestDamage: getTopMetric(rolePlayers, 'damage'),
             bestAvgKills: getTopMetric(rolePlayers, 'avg', true),
+            bestKPM: getTopMetric(rolePlayers, 'kpm', true),
             bestAssists: getTopMetric(rolePlayers, 'assists'),
             bestHS: getTopMetric(rolePlayers, 'hs'),
             bestKnocks: getTopMetric(rolePlayers, 'knocks'),
@@ -805,7 +813,10 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             zeroKills: 0,
             withKills: 0,
             mapKills: {} as Record<string, number>,
+            mapMatches: {} as Record<string, number>,
             safeKills: {} as Record<string, number>,
+            mapKpm: {} as Record<string, number>,
+            safeKpm: {} as Record<string, number>,
         };
 
         // Aggregation maps for victims and killers
@@ -872,6 +883,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             }
             const m = normalize(p.MAPA) || 'N/A';
             stats.mapKills[m] = (stats.mapKills[m] || 0) + pKills;
+            stats.mapMatches[m] = (stats.mapMatches[m] || 0) + 1;
 
             // Identificar personagem nesta queda
             const matchChar = (data.characters || []).find(c => 
@@ -1150,8 +1162,40 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
         const playerDim = (data.playersDimension || []).find(d => normalize(d.Name) === normalize(pName));
         const teamDim = (data.teamsReference || []).find(t => normalize(t.TIME) === normalize(stats.team));
 
+        let totalPlayedSeconds = 0;
+        const safeDurationsSpentSec: Record<string, number> = {};
+
+        Object.keys(stats.mapMatches).forEach(mapName => {
+            const count = stats.mapMatches[mapName] || 0;
+            const durSec = calculateMapDurationSec(mapName);
+            totalPlayedSeconds += count * durSec;
+            
+            const mapMins = (count * durSec) / 60;
+            stats.mapKpm[mapName] = mapMins > 0 ? parseFloat(((stats.mapKills[mapName] || 0) / mapMins).toFixed(3)) : 0;
+            
+            const group = getMapGroup(mapName);
+            const durs = (SAFE_DURATIONS_SEC as any)[group] || {};
+            for (let s = 1; s <= 8; s++) {
+                const sSec = (durs[s] || 120) * count;
+                safeDurationsSpentSec[String(s)] = (safeDurationsSpentSec[String(s)] || 0) + sSec;
+            }
+        });
+
+        for (let s = 1; s <= 8; s++) {
+            const sStr = String(s);
+            const sMins = (safeDurationsSpentSec[sStr] || 0) / 60;
+            const sKills = stats.safeKills[sStr] || 0;
+            stats.safeKpm[sStr] = sMins > 0 ? parseFloat((sKills / sMins).toFixed(3)) : 0;
+        }
+
+        const totalPlayerMins = totalPlayedSeconds / 60;
+        const overallKpm = totalPlayerMins > 0 ? (stats.kills / totalPlayerMins).toFixed(3) : '0.000';
+
         return {
             ...stats,
+            kpm: overallKpm,
+            mapKpm: stats.mapKpm,
+            safeKpm: stats.safeKpm,
             avg: stats.matches > 0 ? (stats.kills / stats.matches).toFixed(2) : '0.00',
             avgDmg: stats.matches > 0 ? (stats.damage / stats.matches).toFixed(0) : '0',
             zeroKillsPct: stats.matches > 0 ? ((stats.zeroKills / stats.matches) * 100).toFixed(1) : '0.0',
@@ -2179,6 +2223,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
       <div className="flex flex-wrap gap-2 border-b border-gray-700 pb-2 no-print">
         {[
             { id: "ranking", label: "Ranking Geral", icon: <Trophy size={18} /> },
+            { id: "kpmSafes", label: "KPM por Safe", icon: <Flame size={18} /> },
             { id: "mapKings", label: "Reis do Mapa", icon: <Crown size={18} /> },
             { id: 'playerRounds', label: 'Kills por Rodada', icon: <ListOrdered size={18} /> },
             { id: 'playerDrops', label: 'Kills por Queda', icon: <Target size={18} /> },
@@ -3210,24 +3255,51 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                           })}
                       </div>
 
-                      {/* Busca dentro da Função */}
-                      <div className="relative min-w-[240px]">
-                          <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
-                          <input
-                              type="text"
-                              value={roleSearch}
-                              onChange={(e) => setRoleSearch(e.target.value)}
-                              placeholder="Buscar jogador ou equipe..."
-                              className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50 transition-colors"
-                          />
-                          {roleSearch && (
+                      {/* Busca dentro da Função & Toggle de Modo */}
+                      <div className="flex flex-wrap items-center gap-3">
+                          <div className="flex items-center gap-1.5 bg-black/40 p-1 rounded-xl border border-white/10">
                               <button
-                                  onClick={() => setRoleSearch('')}
-                                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+                                  onClick={() => setRolesViewMode('table')}
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                                      rolesViewMode === 'table'
+                                          ? 'bg-yellow-500 text-black shadow-md shadow-yellow-500/20'
+                                          : 'text-gray-400 hover:text-white'
+                                  }`}
                               >
-                                  <X size={12} />
+                                  <LayoutGrid size={13} />
+                                  <span>Tabela</span>
                               </button>
-                          )}
+                              <button
+                                  onClick={() => setRolesViewMode('kpm')}
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                                      rolesViewMode === 'kpm'
+                                          ? 'bg-emerald-500 text-black shadow-md shadow-emerald-500/20 font-black'
+                                          : 'text-gray-400 hover:text-white'
+                                  }`}
+                              >
+                                  <Flame size={13} />
+                                  <span>KPM por Safe</span>
+                              </button>
+                          </div>
+
+                          <div className="relative min-w-[200px]">
+                              <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                              <input
+                                  type="text"
+                                  value={roleSearch}
+                                  onChange={(e) => setRoleSearch(e.target.value)}
+                                  placeholder="Buscar jogador ou equipe..."
+                                  className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50 transition-colors"
+                              />
+                              {roleSearch && (
+                                  <button
+                                      onClick={() => setRoleSearch('')}
+                                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+                                  >
+                                      <X size={12} />
+                                  </button>
+                              )}
+                          </div>
                       </div>
                   </div>
 
@@ -3243,6 +3315,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                                   { label: 'Abates (Kills)', field: 'kills', icon: Skull },
                                   { label: 'Dano Total', field: 'damage', icon: Flame },
                                   { label: 'Média Kills', field: 'avg', icon: Target },
+                                  { label: 'KPM Geral', field: 'kpm', icon: Flame },
                                   { label: 'Knocks (Deitados)', field: 'knocks', icon: Zap },
                                   { label: 'MVP', field: 'mvp', icon: AwardIcon => <Crown size={12} /> },
                                   { label: 'Assistências', field: 'assists', icon: Users },
@@ -3308,6 +3381,16 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                       )}
                   </div>
 
+                  {rolesViewMode === 'kpm' ? (
+                      <PlayerKpmAnalysis
+                          data={data}
+                          initialRole={activeRole === 'TODAS AS FUNÇÕES' ? 'ALL' : activeRole}
+                          onSelectPlayer={(p) => {
+                              setFilters(prev => ({ ...prev, players: [p] }));
+                              setActiveTab('report');
+                          }}
+                      />
+                  ) : (
                   <div className="grid grid-cols-1 gap-8">
                       {/* Agrupamento por Função */}
                       {rolesData.bestsByRole
@@ -3358,11 +3441,12 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                               </div>
 
                               {/* Destaques da Função (Cards Clicáveis para Ordenar) */}
-                              <div className="bg-black/30 p-5 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-10 gap-2.5 border-b border-white/5">
+                              <div className="bg-black/30 p-5 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-11 gap-2.5 border-b border-white/5">
                                   {[
                                       { label: 'Top Kills', field: 'kills', best: group.bestKills, val: group.bestKills?.kills, color: 'text-red-500', icon: Skull },
                                       { label: 'Top Dano', field: 'damage', best: group.bestDamage, val: group.bestDamage?.damage?.toLocaleString(), color: 'text-orange-400', icon: Flame },
                                       { label: 'Top AVG K', field: 'avg', best: group.bestAvgKills, val: group.bestAvgKills?.avg, color: 'text-yellow-400', icon: Target },
+                                      { label: 'Top KPM', field: 'kpm', best: group.bestKPM, val: group.bestKPM?.kpm, color: 'text-emerald-400', icon: Flame },
                                       { label: 'Top Knocks', field: 'knocks', best: group.bestKnocks, val: group.bestKnocks?.knocks, color: 'text-amber-500', icon: Zap },
                                       { label: 'Top Assists', field: 'assists', best: group.bestAssists, val: group.bestAssists?.assists, color: 'text-blue-400', icon: Users },
                                       { label: 'Top HS', field: 'hs', best: group.bestHS, val: group.bestHS?.hs, color: 'text-purple-400', icon: Crosshair },
@@ -3520,6 +3604,20 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                                                       <div className="flex items-center justify-center gap-1">
                                                           <span>AVG K</span>
                                                           {roleSort.field === 'avg' && (roleSort.direction === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)}
+                                                      </div>
+                                                  </th>
+
+                                                  {/* KPM */}
+                                                  <th
+                                                      className={`px-2 py-3 text-center cursor-pointer transition-colors ${
+                                                          roleSort.field === 'kpm' ? 'text-emerald-300 bg-emerald-500/20 rounded-md font-black' : 'text-emerald-400/90 hover:text-emerald-300'
+                                                      }`}
+                                                      onClick={() => handleRoleSort('kpm')}
+                                                      title="Clique para ordenar por KPM (Kills Por Minuto)"
+                                                  >
+                                                      <div className="flex items-center justify-center gap-1">
+                                                          <span>KPM</span>
+                                                          {roleSort.field === 'kpm' && (roleSort.direction === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)}
                                                       </div>
                                                   </th>
 
@@ -3837,6 +3935,13 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                                                               {p.avg}
                                                           </td>
 
+                                                          {/* KPM */}
+                                                          <td className={`px-2 py-2.5 text-center text-[10px] font-black italic ${
+                                                              roleSort.field === 'kpm' ? 'text-emerald-300 bg-emerald-500/20 font-black' : 'text-emerald-400 bg-emerald-500/5'
+                                                          }`}>
+                                                              {p.kpm || 0}
+                                                          </td>
+
                                                           {/* Dano (DMG) */}
                                                           <td className={`px-2 py-2.5 text-center text-[10px] font-mono ${
                                                               roleSort.field === 'damage' ? 'text-yellow-300 bg-yellow-500/10 font-black' : 'text-gray-300'
@@ -3960,6 +4065,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                           );
                         })}
                   </div>
+                  )}
               </div>
           )}
 
@@ -4219,6 +4325,18 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             </div>
           )}
 
+          {activeTab === 'kpmSafes' && (
+            <div className="space-y-6 animate-in fade-in duration-300">
+                <PlayerKpmAnalysis 
+                    data={data} 
+                    onSelectPlayer={(p) => { 
+                        setFilters(prev => ({...prev, players: [p]})); 
+                        setActiveTab('report'); 
+                    }} 
+                />
+            </div>
+          )}
+
           {activeTab === 'ranking' && (
             <div className="space-y-6 animate-in fade-in duration-300">
                 {/* Sub-tabs para Ranking Geral */}
@@ -4227,6 +4345,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                         { id: 'general', label: 'Estatísticas Gerais', icon: <BarChart2 size={14} /> },
                         { id: 'maps', label: 'Abates por Mapa', icon: <MapIcon size={14} /> },
                         { id: 'safes', label: 'Abates por Safe', icon: <Target size={14} /> },
+                        { id: 'kpmSafes', label: 'KPM por Safe & Mapa', icon: <Flame size={14} /> },
                     ].map(sub => (
                         <button
                             key={sub.id}
@@ -4243,6 +4362,15 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                     ))}
                 </div>
 
+                {rankingSubTab === 'kpmSafes' ? (
+                    <PlayerKpmAnalysis 
+                        data={data} 
+                        onSelectPlayer={(p) => { 
+                            setFilters(prev => ({...prev, players: [p]})); 
+                            setActiveTab('report'); 
+                        }} 
+                    />
+                ) : (
                 <div className="bg-[#1a1a1a] rounded-2xl overflow-hidden border border-gray-800 shadow-xl">
                 <div className="overflow-x-auto custom-scrollbar">
                     <table className="w-full text-left whitespace-nowrap border-separate border-spacing-0">
@@ -4284,6 +4412,12 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                                             <div className="flex items-center justify-center gap-1">
                                                 AVG K
                                                 {rankingSort.field === 'avg' && (rankingSort.direction === 'desc' ? <ChevronDown size={8} /> : <ChevronUp size={8} />)}
+                                            </div>
+                                        </th>
+                                        <th className="px-2 py-4 text-center text-emerald-500 border-b border-gray-800 cursor-pointer hover:text-emerald-400 transition-colors" onClick={() => handleRankingSort('kpm')}>
+                                            <div className="flex items-center justify-center gap-1">
+                                                KPM
+                                                {rankingSort.field === 'kpm' && (rankingSort.direction === 'desc' ? <ChevronDown size={8} /> : <ChevronUp size={8} />)}
                                             </div>
                                         </th>
                                         <th className="px-2 py-4 text-center text-green-400 border-b border-gray-800 cursor-pointer hover:text-green-300 transition-colors" onClick={() => handleRankingSort('withKills')}>
@@ -4480,6 +4614,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                                                 </div>
                                             </td>
                                             <td className="px-2 py-3 text-center text-yellow-500 font-black italic bg-yellow-500/5">{player.avg}</td>
+                                            <td className="px-2 py-3 text-center text-emerald-500 font-black italic bg-emerald-500/5">{player.kpm || 0}</td>
                                             <td className="px-2 py-3 text-center w-24">
                                                 <div className="flex flex-col items-center">
                                                     <span className="text-[11px] font-black text-green-400">{player.withKills}</span>
@@ -4535,6 +4670,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                     </table>
                 </div>
             </div>
+            )}
           </div>
           )}
 
@@ -5260,7 +5396,7 @@ const PlayerRadarComponent: React.FC<{
 
 
 const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: any) => {
-    const [profileSubTab, setProfileSubTab] = useState<'all' | 'zeradas' | 'rounds' | 'history'>('all');
+    const [profileSubTab, setProfileSubTab] = useState<'all' | 'zeradas' | 'rounds' | 'history' | 'kpm'>('all');
     const [showDetails, setShowDetails] = useState<boolean>(true);
     const [playerVisibleSections, setPlayerVisibleSections] = useState({
         header: true,
@@ -5276,6 +5412,7 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
         safeKills: true,
         victimsKillers: true,
         loadout: true,
+        kpm: true,
     });
     const [showPlayerSectionMenu, setShowPlayerSectionMenu] = useState<boolean>(false);
 
@@ -5298,6 +5435,7 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
             safeKills: val,
             victimsKillers: val,
             loadout: val,
+            kpm: val,
         });
     };
     const normalize = (val: string | undefined) => (val || '').trim().toUpperCase();
@@ -5783,6 +5921,17 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                     >
                         <Sparkles size={15} className={profileSubTab === 'history' ? 'text-white' : 'text-amber-300'} /> Histórico Loadouts
                     </button>
+
+                    <button
+                        onClick={() => setProfileSubTab('kpm')}
+                        className={`px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 ${
+                            profileSubTab === 'kpm'
+                                ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20'
+                                : 'bg-black/40 text-gray-400 hover:text-white hover:bg-white/5'
+                        }`}
+                    >
+                        <Target size={15} className={profileSubTab === 'kpm' ? 'text-black' : 'text-yellow-400'} /> KPM por Safe & Mapa
+                    </button>
                 </div>
 
                 <div className="flex items-center gap-2 relative">
@@ -5957,7 +6106,7 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                     </div>
 
                     {/* Matriz Estatística Organizada (Grade Perfeita e Proporcional) */}
-                    <div className="flex-1 w-full grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 lg:gap-3">
+                    <div className="flex-1 w-full grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 lg:gap-3">
                         {/* 1. Abates */}
                         <MetricCard 
                             icon={Skull}
@@ -5967,6 +6116,16 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                             subtext={`Média ${stats.avg}/Q`}
                             subColor="text-red-400/80"
                             highlight="red"
+                        />
+                        {/* KPM */}
+                        <MetricCard 
+                            icon={Activity}
+                            label="KPM" 
+                            value={rankingData.find((p: any) => p.name === playerName)?.kpm || 0} 
+                            color="text-emerald-500" 
+                            subtext="Kills por Minuto"
+                            subColor="text-emerald-400/80"
+                            highlight="emerald"
                         />
 
                         {/* 2. Salas / Partidas */}
@@ -6138,6 +6297,17 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
 
             {/* Conteúdo: Visão Geral ou Abas Específicas */}
             
+            {(profileSubTab === 'all' || profileSubTab === 'kpm') && playerVisibleSections.kpm && (
+                <div className="space-y-6 pt-2">
+                    <PlayerKpmAnalysis 
+                        data={data} 
+                        selectedPlayer={playerName} 
+                        singlePlayerOnly={true}
+                        hideTopControls={true} 
+                    />
+                </div>
+            )}
+
             {/* Rankings Section */}
             {playerVisibleSections.rankings && showDetails && profileSubTab === 'all' && rankings && (
                 <div className="bg-gradient-to-br from-[#1a1a1a] to-[#121215] p-6 rounded-3xl border border-yellow-500/20 shadow-2xl space-y-6 relative overflow-hidden">

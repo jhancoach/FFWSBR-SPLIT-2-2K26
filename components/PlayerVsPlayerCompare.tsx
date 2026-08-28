@@ -1471,6 +1471,7 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
             <div className="p-8 space-y-6">
               {[
                 { label: 'Abates Totais', key: 'kills' },
+                { label: 'KPM (Abates p/ Minuto)', key: 'kpm' },
                 { label: 'Abates por Queda (Média)', key: 'avg' },
                 { label: 'Mortes Totais', key: 'deaths', lowerIsBetter: true },
                 { label: 'K/D Ratio (Abates / Morte)', key: 'kd' },
@@ -1584,6 +1585,91 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
                     </div>
 
                     <div className="h-2 bg-black rounded-full overflow-hidden flex">
+                      <div 
+                        className={`h-full transition-all duration-1000 ${isP1Better ? 'bg-yellow-500' : 'bg-gray-800'}`} 
+                        style={{ width: `${(val1 / (val1 + val2 || 1)) * 100}%` }}
+                      />
+                      <div 
+                        className={`h-full transition-all duration-1000 ${isP2Better ? 'bg-blue-500' : 'bg-gray-800'}`} 
+                        style={{ width: `${(val2 / (val1 + val2 || 1)) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ========================================================================= */}
+          {/* SEÇÃO 10: KPM POR MAPA */}
+          {/* ========================================================================= */}
+          <div id="map-kpm-compare-card" className="bg-[#1a1a1a] rounded-3xl border border-yellow-500/20 overflow-hidden shadow-2xl">
+            <div className="bg-gradient-to-r from-yellow-500/10 via-black/40 to-yellow-500/10 px-8 py-6 border-b border-white/5 text-center">
+              <h3 className="text-sm font-black text-yellow-500 uppercase tracking-[0.3em] italic flex items-center justify-center gap-2">
+                <Target size={16} /> KPM por Mapa (Abates / Minuto)
+              </h3>
+            </div>
+
+            <div className="p-8 space-y-6">
+              {Array.from(new Set([...Object.keys(p1.mapKpm || p1.mapKills || {}), ...Object.keys(p2.mapKpm || p2.mapKills || {})])).sort().map(mapName => {
+                const val1 = Number(p1.mapKpm?.[mapName] || 0);
+                const val2 = Number(p2.mapKpm?.[mapName] || 0);
+                const isP1Better = val1 > val2;
+                const isP2Better = val2 > val1;
+
+                return (
+                  <div key={mapName} className="space-y-2">
+                    <div className="flex justify-between text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                      <span className={isP1Better ? 'text-yellow-400 font-black font-mono' : 'font-mono'}>{val1.toFixed(3)}</span>
+                      <span className="text-white font-bold">{mapName}</span>
+                      <span className={isP2Better ? 'text-blue-400 font-black font-mono' : 'font-mono'}>{val2.toFixed(3)}</span>
+                    </div>
+
+                    <div className="h-2.5 bg-black rounded-full overflow-hidden flex border border-white/5">
+                      <div 
+                        className={`h-full transition-all duration-1000 ${isP1Better ? 'bg-yellow-500' : 'bg-gray-800'}`} 
+                        style={{ width: `${(val1 / (val1 + val2 || 1)) * 100}%` }}
+                      />
+                      <div 
+                        className={`h-full transition-all duration-1000 ${isP2Better ? 'bg-blue-500' : 'bg-gray-800'}`} 
+                        style={{ width: `${(val2 / (val1 + val2 || 1)) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ========================================================================= */}
+          {/* SEÇÃO 11: KPM POR SAFE */}
+          {/* ========================================================================= */}
+          <div id="safe-kpm-compare-card" className="bg-[#1a1a1a] rounded-3xl border border-yellow-500/20 overflow-hidden shadow-2xl">
+            <div className="bg-gradient-to-r from-yellow-500/10 via-black/40 to-yellow-500/10 px-8 py-6 border-b border-white/5 text-center">
+              <h3 className="text-sm font-black text-yellow-500 uppercase tracking-[0.3em] italic flex items-center justify-center gap-2">
+                <Target size={16} /> KPM por Safe (Abates / Minuto da Safe)
+              </h3>
+            </div>
+
+            <div className="p-8 space-y-6">
+              {[1, 2, 3, 4, 5, 6, 7, 8].map(safeNum => {
+                const sKey = String(safeNum);
+                const val1 = Number(p1.safeKpm?.[sKey] || 0);
+                const val2 = Number(p2.safeKpm?.[sKey] || 0);
+                const isP1Better = val1 > val2;
+                const isP2Better = val2 > val1;
+
+                if (val1 === 0 && val2 === 0 && safeNum > 6) return null;
+
+                return (
+                  <div key={safeNum} className="space-y-2">
+                    <div className="flex justify-between text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                      <span className={isP1Better ? 'text-yellow-400 font-black font-mono' : 'font-mono'}>{val1.toFixed(3)}</span>
+                      <span className="text-white font-bold">Safe {safeNum}</span>
+                      <span className={isP2Better ? 'text-blue-400 font-black font-mono' : 'font-mono'}>{val2.toFixed(3)}</span>
+                    </div>
+
+                    <div className="h-2.5 bg-black rounded-full overflow-hidden flex border border-white/5">
                       <div 
                         className={`h-full transition-all duration-1000 ${isP1Better ? 'bg-yellow-500' : 'bg-gray-800'}`} 
                         style={{ width: `${(val1 / (val1 + val2 || 1)) * 100}%` }}
