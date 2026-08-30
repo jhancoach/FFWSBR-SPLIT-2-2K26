@@ -4074,6 +4074,7 @@ className="flex items-center gap-2 px-5 py-2.5 bg-yellow-500/10 hover:bg-yellow-
 filters={filters}
 setFilters={setFilters}
 options={filterOptions}
+defaultOpen={false}
 />
 </div>
 </div>

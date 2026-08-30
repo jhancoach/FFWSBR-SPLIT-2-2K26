@@ -483,7 +483,7 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
             </div>
         </div>
         
-        <FilterBar filters={filters} setFilters={setFilters} options={filterOptions} />
+        <FilterBar filters={filters} setFilters={setFilters} options={filterOptions} defaultOpen={false} />
 
         {/* BARRA DE FILTRO RÁPIDO POR FASE DE JOGO (EARLY, MID & LATE GAME) */}
         <div className="bg-[#111111] p-4 rounded-2xl border border-white/10 shadow-xl space-y-3">

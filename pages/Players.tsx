@@ -2244,7 +2244,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
         ))}
       </div>
 
-      <FilterBar filters={filters} setFilters={setFilters} options={filterOptions} />
+      <FilterBar filters={filters} setFilters={setFilters} options={filterOptions} defaultOpen={false} />
 
       <div className="flex justify-between items-center no-print bg-black/20 p-4 rounded-2xl border border-white/5">
         <div className="flex items-center gap-2">
