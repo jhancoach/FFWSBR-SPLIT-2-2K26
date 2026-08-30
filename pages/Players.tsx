@@ -6,6 +6,7 @@ import { Trophy, Crown, User, Users, Swords, Zap, BarChart2, Scale, Map as MapIc
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, LabelList, Cell, YAxis, CartesianGrid, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts';
 import { calculateOverallKpmFromMapStats, calculateMapDurationSec, getMapGroup, SAFE_DURATIONS_SEC } from '../utils/kpmUtils';
 import FilterBar from '../components/FilterBar';
+import PlayerMomentum from '../components/PlayerMomentum';
 import InstagramPostModal from '../components/InstagramPostModal';
 import { PlayerVsTeamCompare } from '../components/PlayerVsTeamCompare';
 import { PlayerVsPlayerCompare } from '../components/PlayerVsPlayerCompare';
@@ -32,7 +33,7 @@ const parseNumber = (val: string | undefined | null): number => {
 
 const Players: React.FC<PlayersProps> = ({ data }) => {
   const location = useLocation();
-  const [activeTab, setActiveTab] = useState<'ranking' | 'kpmSafes' | 'playerRounds' | 'playerDrops' | 'chars' | 'report' | 'auditoria' | 'stats' | 'roles' | 'compare' | 'mapKings'>('ranking');
+  const [activeTab, setActiveTab] = useState<'ranking' | 'momentum' | 'kpmSafes' | 'playerRounds' | 'playerDrops' | 'chars' | 'report' | 'auditoria' | 'stats' | 'roles' | 'compare' | 'mapKings'>('ranking');
   const [mapKingsSubTab, setMapKingsSubTab] = useState<"maps" | "drops">("maps");
   const [instagramPost, setInstagramPost] = useState<{ group: any; type: "map" | "drop" } | null>(null);
   const [rankingSubTab, setRankingSubTab] = useState<'general' | 'maps' | 'safes' | 'kpmSafes'>('general');
@@ -2223,6 +2224,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
       <div className="flex flex-wrap gap-2 border-b border-gray-700 pb-2 no-print">
         {[
             { id: "ranking", label: "Ranking Geral", icon: <Trophy size={18} /> },
+            { id: "momentum", label: "Termômetro", icon: <Flame size={18} /> },
             { id: "kpmSafes", label: "KPM por Safe", icon: <Flame size={18} /> },
             { id: "mapKings", label: "Reis do Mapa", icon: <Crown size={18} /> },
             { id: 'playerRounds', label: 'Kills por Rodada', icon: <ListOrdered size={18} /> },
@@ -2313,6 +2315,16 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
       )}
 
       <div className="min-h-[600px]">
+          {activeTab === 'momentum' && (
+            <PlayerMomentum 
+              data={data} 
+              onSelectPlayer={(pName) => {
+                setFilters(prev => ({ ...prev, players: [pName] }));
+                setActiveTab('report');
+              }}
+            />
+          )}
+
           {activeTab === 'playerRounds' && (
             <div className="space-y-6 animate-in fade-in duration-500">
               {/* Summary KPI Cards */}
