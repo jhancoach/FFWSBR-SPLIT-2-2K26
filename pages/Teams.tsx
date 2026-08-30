@@ -71,6 +71,7 @@ CartesianGrid,
 YAxis,
 } from "recharts";
 import FilterBar from "../components/FilterBar";
+import { TeamMomentum } from "../components/TeamMomentum";
 import { formatTeamName, findTeamLogo } from "../utils/teamUtils";
 import { DropCompositionViewer } from "../components/DropComposition";
 import {
@@ -3983,6 +3984,10 @@ className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider t
 >
 <MapIcon size={15} /> Por Mapa
 </button>
+<button
+onClick={() => setActiveTab("momentum")}
+className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === "momentum" ? "bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black" : "text-gray-400 hover:text-white hover:bg-white/5"}`}
+><Flame size={15} /> Termômetro</button>
 <button
 onClick={() => setActiveTab("mapStats")}
 className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === "mapStats" ? "bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black" : "text-gray-400 hover:text-white hover:bg-white/5"}`}
@@ -8320,7 +8325,7 @@ direction: "desc",
 </div>
 )}
 </div>
-) : activeTab === "mapStats" ? (
+) : activeTab === "momentum" ? (<TeamMomentum data={data} />) : activeTab === "mapStats" ? (
 <div className="space-y-8 animate-in fade-in duration-300">
 {/* Header Banner */}
 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gradient-to-r from-yellow-500/10 via-amber-500/5 to-transparent p-6 rounded-3xl border border-yellow-500/20 backdrop-blur-md">
