@@ -7,6 +7,29 @@ import { OFFICIAL_SCHEDULE, TeamSchedule } from '../utils/scheduleData';
 
 const normalize = (val: string | undefined | number) => String(val || '').trim().toUpperCase();
 
+const matchTeamName = (teamNameA: string, teamNameB: string) => {
+  const normA = normalize(teamNameA);
+  const normB = normalize(teamNameB);
+  if (!normA || !normB) return false;
+  if (normA === normB) return true;
+  if (normA.includes(normB) || normB.includes(normA)) return true;
+  if (normA.includes('LOUD') && normB.includes('LOUD')) return true;
+  if (normA.includes('SOLID') && normB.includes('SOLID')) return true;
+  if (normA.includes('FLUXO') && (normB.includes('FLUXO') || normB.includes('FX') || normB.includes('W7M'))) return true;
+  if (normA.includes('ALPHA') && normB.includes('ALPHA')) return true;
+  if (normA.includes('AFRO') && normB.includes('AFRO')) return true;
+  if (normA.includes('RUSH') && normB.includes('RUSH')) return true;
+  if (normA.includes('CIVIS') && normB.includes('CIVIS')) return true;
+  if (normA.includes('VOX') && normB.includes('VOX')) return true;
+  if (normA.includes('INTZ') && normB.includes('INTZ')) return true;
+  if (normA.includes('TET') && normB.includes('TET')) return true;
+  if (normA.includes('LOOPS') && normB.includes('LOOPS')) return true;
+  if (normA.includes('INFLUENCE') && normB.includes('INFLUENCE')) return true;
+  if (normA.includes('RISE') && normB.includes('RISE')) return true;
+  if (normA.includes('LOS') && normB.includes('LOS')) return true;
+  return false;
+};
+
 const getTeamCharacteristic = (percentAbts: number, percentPos: number) => {
   const diff = Math.abs(percentAbts - percentPos);
   if (diff <= 5) return { label: 'Equilibrado', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30' }; 
@@ -15,17 +38,23 @@ const getTeamCharacteristic = (percentAbts: number, percentPos: number) => {
 };
 
 const getTeamRoundLiveStyle = (teamName: string, roundNum: number, details: any[]) => {
-    const normName = normalize(teamName);
+    if (!details || !Array.isArray(details)) return null;
     const roundMatches = details.filter((d: any) => {
-        if (!d.RD) return false;
+        if (!d || !d.RD) return false;
         const num = parseInt(String(d.RD).replace(/\D/g, ''), 10);
-        const nameMatches = normalize(d.TIME) === normName || normalize(d.TIME).includes(normName) || normName.includes(normalize(d.TIME));
+        if (num !== roundNum) return false;
+        
+        const nameMatches = matchTeamName(teamName, d.TIME);
+        if (!nameMatches) return false;
+
         const abts = typeof d.ABTS === 'number' ? d.ABTS : parseFloat(String(d.ABTS || '0').replace(',', '.'));
         const ptsc = typeof d.PTSC === 'number' ? d.PTSC : parseFloat(String(d.PTSC || '0').replace(',', '.'));
         const pts = typeof d.PTS === 'number' ? d.PTS : parseFloat(String(d.PTS || '0').replace(',', '.'));
         const pos = typeof d.POS === 'number' ? d.POS : parseFloat(String(d.POS || '0').replace(',', '.'));
-        const hasScoreOrMap = (isNaN(pts) ? 0 : pts) > 0 || (isNaN(abts) ? 0 : abts) > 0 || (isNaN(ptsc) ? 0 : ptsc) > 0 || (isNaN(pos) ? 0 : pos) > 0 || (d.MAPA && d.MAPA.trim().length > 1);
-        return num === roundNum && nameMatches && hasScoreOrMap;
+        const mapa = d.MAPA ? String(d.MAPA).trim() : '';
+
+        const hasScoreOrMap = (isNaN(pts) ? 0 : pts) > 0 || (isNaN(abts) ? 0 : abts) > 0 || (isNaN(ptsc) ? 0 : ptsc) > 0 || (isNaN(pos) ? 0 : pos) > 0 || mapa.length > 1;
+        return hasScoreOrMap;
     });
     
     if (roundMatches.length === 0) return null;
@@ -33,18 +62,33 @@ const getTeamRoundLiveStyle = (teamName: string, roundNum: number, details: any[
     let totalPts = 0;
     let totalAbates = 0;
     let totalPtsColocacao = 0;
+    let totalBooyahs = 0;
+    const quedasSet = new Set<string>();
     
     roundMatches.forEach((m: any) => {
         const abts = typeof m.ABTS === 'number' ? m.ABTS : parseFloat(String(m.ABTS || '0').replace(',', '.'));
         const ptsc = typeof m.PTSC === 'number' ? m.PTSC : parseFloat(String(m.PTSC || '0').replace(',', '.'));
         const pts = typeof m.PTS === 'number' ? m.PTS : parseFloat(String(m.PTS || '0').replace(',', '.'));
+        const pos = typeof m.POS === 'number' ? m.POS : parseInt(String(m.POS || '0'), 10);
         
-        totalAbates += isNaN(abts) ? 0 : abts;
-        totalPtsColocacao += isNaN(ptsc) ? 0 : ptsc;
-        totalPts += isNaN(pts) ? 0 : pts;
+        const validAbts = isNaN(abts) ? 0 : abts;
+        const validPtsc = isNaN(ptsc) ? 0 : ptsc;
+        const validPts = isNaN(pts) ? 0 : pts;
+        
+        totalAbates += validAbts;
+        totalPtsColocacao += validPtsc;
+        
+        const matchPts = validPts > 0 ? validPts : validPtsc + validAbts;
+        totalPts += matchPts;
+        
+        const booyahVal = String(m.B || '').trim();
+        const isBooyah = booyahVal === '1' || booyahVal.toLowerCase() === 'true' || booyahVal.toLowerCase() === 'sim' || booyahVal.toLowerCase() === 'b!' || pos === 1;
+        if (isBooyah) totalBooyahs += 1;
+        
+        if (m.Q) quedasSet.add(String(m.Q).trim());
     });
     
-    if (totalPts === 0 && totalAbates === 0) return null;
+    if (totalPts === 0 && totalAbates === 0 && quedasSet.size === 0) return null;
     
     const percentAbts = totalPts > 0 ? Math.round((totalAbates / totalPts) * 100) : 0;
     const percentPos = totalPts > 0 ? Math.round((totalPtsColocacao / totalPts) * 100) : 0;
@@ -53,9 +97,11 @@ const getTeamRoundLiveStyle = (teamName: string, roundNum: number, details: any[
     
     return {
         totalMatches: roundMatches.length,
+        quedasCount: quedasSet.size || roundMatches.length,
         totalPts,
         totalAbates,
         totalPtsColocacao,
+        totalBooyahs,
         percentAbts,
         percentPos,
         characteristic
@@ -231,6 +277,62 @@ const Schedule: React.FC<ScheduleProps> = ({ data }) => {
   const upcomingRounds = React.useMemo(() => {
     return roundsList.filter(r => !playedRounds.has(r));
   }, [playedRounds]);
+
+  // Comprehensive LOUD round-by-round statistics and summary
+  const loudScheduleSummary = React.useMemo(() => {
+    const roundScores: { [round: number]: { played: boolean; isRest: boolean; pts: number; abts: number; ptsc: number; booyahs: number; matches: number; quedasCount: number } } = {};
+    let totalPts = 0;
+    let totalKills = 0;
+    let totalBooyahs = 0;
+    let playedRoundsCount = 0;
+
+    for (let r = 1; r <= 14; r++) {
+      const isRest = r === 3 || r === 10;
+      const stats = getTeamRoundLiveStyle('Loud Snickers', r, data.details);
+      const hasPlayed = !isRest && stats !== null && (stats.totalPts > 0 || stats.totalAbates > 0 || stats.totalMatches > 0);
+
+      if (hasPlayed && stats) {
+        roundScores[r] = {
+          played: true,
+          isRest: false,
+          pts: stats.totalPts,
+          abts: stats.totalAbates,
+          ptsc: stats.totalPtsColocacao,
+          booyahs: stats.totalBooyahs || 0,
+          matches: stats.totalMatches,
+          quedasCount: stats.quedasCount || stats.totalMatches
+        };
+        totalPts += stats.totalPts;
+        totalKills += stats.totalAbates;
+        totalBooyahs += stats.totalBooyahs || 0;
+        playedRoundsCount += 1;
+      } else {
+        roundScores[r] = {
+          played: false,
+          isRest,
+          pts: 0,
+          abts: 0,
+          ptsc: 0,
+          booyahs: 0,
+          matches: 0,
+          quedasCount: 0
+        };
+      }
+    }
+
+    const avgPtsPerPlayedRound = playedRoundsCount > 0 ? (totalPts / playedRoundsCount).toFixed(1) : '0.0';
+    const avgKillsPerPlayedRound = playedRoundsCount > 0 ? (totalKills / playedRoundsCount).toFixed(1) : '0.0';
+
+    return {
+      roundScores,
+      totalPts,
+      totalKills,
+      totalBooyahs,
+      playedRoundsCount,
+      avgPtsPerPlayedRound,
+      avgKillsPerPlayedRound
+    };
+  }, [data.details]);
 
   // Helper to find team logo
   const getTeamLogo = (teamName: string) => {
@@ -466,6 +568,11 @@ const Schedule: React.FC<ScheduleProps> = ({ data }) => {
         <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 text-xs font-bold font-display uppercase tracking-wider">
           <span className="text-gray-400 text-[10px] font-black tracking-widest mr-1">LEGENDA:</span>
           
+          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-yellow-500/20 border border-yellow-500/60 rounded-xl text-yellow-400 shadow-[0_0_15px_rgba(234,179,8,0.2)]">
+            <Star size={14} className="fill-yellow-400 text-yellow-400" />
+            <span className="text-yellow-400 font-black">LOUD (PTS NO DIA JOGADO)</span>
+          </div>
+
           <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400">
             <span className="text-emerald-400 font-black">JOGA</span>
             <Check size={14} className="stroke-[3]" />
@@ -474,11 +581,6 @@ const Schedule: React.FC<ScheduleProps> = ({ data }) => {
           <div className="flex items-center gap-1.5 px-2.5 py-1 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400">
             <span className="text-red-400 font-black">FOLGA</span>
             <X size={14} className="stroke-[3]" />
-          </div>
-
-          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-yellow-500/20 border border-yellow-500/50 rounded-xl text-yellow-400 shadow-[0_0_15px_rgba(234,179,8,0.2)]">
-            <Star size={14} className="fill-yellow-400 text-yellow-400" />
-            <span className="text-yellow-400 font-black">LOUD</span>
           </div>
 
           <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/20 border border-emerald-400/50 rounded-xl text-emerald-300">
@@ -515,44 +617,129 @@ const Schedule: React.FC<ScheduleProps> = ({ data }) => {
         </div>
       </div>
 
-      {/* LOUD Highlight Banner Card */}
-      <div className="bg-gradient-to-r from-yellow-500/20 via-amber-500/10 to-transparent border-2 border-yellow-500/50 rounded-2xl p-5 shadow-[0_0_30px_rgba(234,179,8,0.15)] flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative overflow-hidden">
+      {/* LOUD Highlight Banner Card with Round-by-Round Score Tracking */}
+      <div className="bg-gradient-to-r from-yellow-500/20 via-amber-500/10 to-transparent border-2 border-yellow-500/50 rounded-2xl p-5 shadow-[0_0_30px_rgba(234,179,8,0.15)] flex flex-col gap-5 relative overflow-hidden">
         <div className="absolute -right-6 -bottom-6 text-yellow-500/10 pointer-events-none">
           <Flame size={180} />
         </div>
 
-        <div className="flex items-center gap-4 z-10">
-          <div className="w-14 h-14 bg-gradient-to-br from-yellow-400 to-amber-600 rounded-2xl p-1 shadow-lg shrink-0 flex items-center justify-center border border-yellow-300">
-            <img 
-              src={getTeamLogo('Loud Snickers') || "https://i.ibb.co/d04qyJhF/image.png"} 
-              alt="LOUD" 
-              className="w-full h-full object-contain"
-            />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 bg-yellow-500 text-black font-black text-[10px] uppercase tracking-widest rounded-md">
-                ★ TIME DESTAQUE LOUD
-              </span>
-              <span className="text-xs text-yellow-400 font-bold">12 Jogadas • 2 Folgas</span>
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 z-10">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 bg-gradient-to-br from-yellow-400 to-amber-600 rounded-2xl p-1 shadow-lg shrink-0 flex items-center justify-center border border-yellow-300">
+              <img 
+                src={getTeamLogo('Loud Snickers') || "https://i.ibb.co/d04qyJhF/image.png"} 
+                alt="LOUD" 
+                className="w-full h-full object-contain"
+              />
             </div>
-            <h3 className="text-lg font-black uppercase italic text-white font-display mt-0.5">
-              Agenda de Jogos da LOUD SNICKERS
-            </h3>
-            <p className="text-xs text-gray-300 mt-0.5">
-              A LOUD folga apenas nas rodadas <strong className="text-red-400">R3</strong> e <strong className="text-red-400">R10</strong>. Em todas as outras 12 rodadas a LOUD entra em campo!
-            </p>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 bg-yellow-500 text-black font-black text-[10px] uppercase tracking-widest rounded-md">
+                  ★ TIME DESTAQUE LOUD SNICKERS
+                </span>
+                <span className="text-xs text-yellow-400 font-bold">12 Jogadas • 2 Folgas</span>
+              </div>
+              <h3 className="text-lg font-black uppercase italic text-white font-display mt-0.5">
+                Agenda &amp; Pontuação por Dia Jogado da LOUD
+              </h3>
+              <p className="text-xs text-gray-300 mt-0.5">
+                Pontos computados da LOUD nos dias jogados. Nos dias que ainda não jogou, os pontos ficam ocultos até a realização das partidas.
+              </p>
+            </div>
+          </div>
+
+          {/* Quick Metrics of LOUD */}
+          <div className="flex flex-wrap items-center gap-2 self-stretch lg:self-auto justify-start lg:justify-end">
+            <div className="bg-black/60 px-3.5 py-2 rounded-xl border border-yellow-500/40 text-center min-w-[90px] shadow-[0_0_15px_rgba(234,179,8,0.15)]">
+              <span className="text-[9px] text-yellow-400 uppercase font-black block">Pontos Totais</span>
+              <span className="text-lg font-black text-yellow-300 font-mono">{loudScheduleSummary.totalPts} <span className="text-[10px] font-bold">PTS</span></span>
+            </div>
+            <div className="bg-black/60 px-3 py-2 rounded-xl border border-gray-800 text-center min-w-[85px]">
+              <span className="text-[9px] text-gray-400 uppercase font-bold block">Média / Jogo</span>
+              <span className="text-base font-black text-white font-mono">{loudScheduleSummary.avgPtsPerPlayedRound} <span className="text-[10px] text-gray-400 font-normal">pts</span></span>
+            </div>
+            <div className="bg-black/60 px-3 py-2 rounded-xl border border-gray-800 text-center min-w-[80px]">
+              <span className="text-[9px] text-gray-400 uppercase font-bold block">Abates</span>
+              <span className="text-base font-black text-red-400 font-mono">{loudScheduleSummary.totalKills}</span>
+            </div>
+            <div className="bg-black/60 px-3 py-2 rounded-xl border border-gray-800 text-center min-w-[75px]">
+              <span className="text-[9px] text-gray-400 uppercase font-bold block">Booyahs</span>
+              <span className="text-base font-black text-yellow-400 font-mono">{loudScheduleSummary.totalBooyahs} 🏆</span>
+            </div>
+            <div className="bg-black/60 px-3 py-2 rounded-xl border border-gray-800 text-center min-w-[85px]">
+              <span className="text-[9px] text-gray-400 uppercase font-bold block">Jogadas</span>
+              <span className="text-base font-black text-emerald-400 font-mono">{loudScheduleSummary.playedRoundsCount}/12</span>
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 z-10 self-stretch md:self-auto justify-end">
-          <div className="bg-black/60 px-4 py-2.5 rounded-xl border border-gray-800 text-center">
-            <span className="text-[10px] text-gray-400 uppercase font-bold block">Folgas LOUD</span>
-            <span className="text-sm font-black text-red-400 font-mono">R3 &amp; R10</span>
+        {/* LOUD Round-by-Round Score Timeline Cards */}
+        <div className="z-10 pt-3 border-t border-white/10">
+          <div className="text-[10px] font-black uppercase tracking-wider text-yellow-400/90 mb-2 flex items-center justify-between">
+            <span>PONTOS DA LOUD POR RODADA (1 A 14):</span>
+            <span className="text-gray-400 font-medium lowercase">clique para filtrar na tabela</span>
           </div>
-          <div className="bg-black/60 px-4 py-2.5 rounded-xl border border-gray-800 text-center">
-            <span className="text-[10px] text-gray-400 uppercase font-bold block">Aproveitamento</span>
-            <span className="text-sm font-black text-yellow-400 font-mono">85.7%</span>
+          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 lg:grid-cols-14 gap-2">
+            {roundsList.map(r => {
+              const loudData = loudScheduleSummary.roundScores[r];
+              const isRest = loudData.isRest;
+              const hasPlayed = loudData.played;
+              const isNext = r === nextRound;
+              const isSelected = selectedRound === r;
+
+              return (
+                <button
+                  key={r}
+                  onClick={() => setSelectedRound(r)}
+                  className={`p-2 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-between min-h-[64px] relative ${
+                    isSelected
+                      ? 'ring-2 ring-yellow-400 border-yellow-300 scale-105 z-10'
+                      : ''
+                  } ${
+                    isRest
+                      ? 'bg-red-500/10 border-red-500/30 text-red-400'
+                      : hasPlayed
+                      ? 'bg-yellow-500/15 border-yellow-500/50 text-yellow-300 shadow-[0_0_10px_rgba(234,179,8,0.15)] hover:bg-yellow-500/25'
+                      : isNext
+                      ? 'bg-yellow-400 text-black border-yellow-300 shadow-[0_0_12px_rgba(234,179,8,0.5)]'
+                      : 'bg-black/50 border-gray-800 text-gray-500 hover:border-gray-700'
+                  }`}
+                  title={
+                    isRest 
+                      ? `LOUD: Rodada ${r} é FOLGA` 
+                      : hasPlayed 
+                      ? `LOUD na Rodada ${r}: ${loudData.pts} Pontos (${loudData.abts} Abates, ${loudData.quedasCount} Quedas)` 
+                      : `LOUD na Rodada ${r}: Ainda não jogou (Aguardando partida)`
+                  }
+                >
+                  <span className={`text-[10px] font-black font-display uppercase tracking-wider ${isNext && !hasPlayed ? 'text-black' : isRest ? 'text-red-400' : hasPlayed ? 'text-yellow-400' : 'text-gray-400'}`}>
+                    R{r}
+                  </span>
+
+                  {isRest ? (
+                    <div className="flex flex-col items-center">
+                      <span className="text-[9px] font-black text-red-400">FOLGA</span>
+                    </div>
+                  ) : hasPlayed ? (
+                    <div className="flex flex-col items-center">
+                      <span className="text-xs font-black font-mono text-white leading-none">
+                        {loudData.pts} <span className="text-[8px] text-yellow-400 uppercase">pts</span>
+                      </span>
+                      <span className="text-[8px] font-mono text-gray-400 mt-0.5">
+                        {loudData.abts}K • {loudData.quedasCount}Q
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center">
+                      <span className={`text-[8px] font-black uppercase tracking-tighter ${isNext ? 'text-black font-black' : 'text-gray-500'}`}>
+                        {isNext ? 'PRÓXIMA' : 'A JOGAR'}
+                      </span>
+                      <span className="text-[7px] text-gray-600">sem pontos</span>
+                    </div>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -666,42 +853,104 @@ const Schedule: React.FC<ScheduleProps> = ({ data }) => {
                       const isNext = r === nextRound;
                       const isCompleted = playedRounds.has(r);
                       const isSelected = selectedRound === r;
+                      const teamRoundStats = getTeamRoundLiveStyle(team.name, r, data.details);
+                      const hasPlayedWithScore = teamRoundStats !== null && (teamRoundStats.totalPts > 0 || teamRoundStats.totalAbates > 0 || teamRoundStats.totalMatches > 0);
 
                       return (
                         <td 
                           key={r}
-                          className={`py-3 px-2 text-center transition-colors ${
+                          className={`py-2 px-1 text-center transition-colors ${
                             isNext ? 'bg-yellow-500/10 border-x border-yellow-500/20' : isSelected ? 'bg-yellow-500/10' : ''
                           }`}
                         >
                           <div className="flex items-center justify-center">
                             {isLoudRow ? (
                               plays ? (
-                                <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${
-                                  isNext 
-                                    ? 'bg-yellow-400 text-black border border-yellow-300 shadow-[0_0_12px_rgba(234,179,8,0.6)] scale-110' 
-                                    : 'bg-yellow-500/20 border border-yellow-400/60 text-yellow-400 shadow-[0_0_10px_rgba(234,179,8,0.3)]'
-                                }`}>
-                                  <Star size={14} className={isNext ? "fill-black text-black" : "fill-yellow-400 text-yellow-400"} />
-                                </div>
+                                hasPlayedWithScore && teamRoundStats ? (
+                                  /* LOUD JOGOU ESTE DIA: MOSTRAR PONTUAÇÃO */
+                                  <div 
+                                    className={`w-full min-w-[58px] py-1 px-1 rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer ${
+                                      isNext 
+                                        ? 'bg-yellow-400 text-black border-2 border-yellow-300 shadow-[0_0_12px_rgba(234,179,8,0.6)] scale-105' 
+                                        : 'bg-yellow-500/20 border border-yellow-400/80 text-yellow-300 shadow-[0_0_10px_rgba(234,179,8,0.25)] hover:bg-yellow-500/30'
+                                    }`}
+                                    title={`LOUD Snickers na Rodada ${r}: ${teamRoundStats.totalPts} Pontos, ${teamRoundStats.totalAbates} Abates, ${teamRoundStats.quedasCount} Quedas`}
+                                  >
+                                    <div className="flex items-center gap-0.5 leading-none">
+                                      <Star size={9} className={isNext ? "fill-black text-black" : "fill-yellow-400 text-yellow-400"} />
+                                      <span className={`text-[12px] font-black font-mono leading-none ${isNext ? 'text-black' : 'text-yellow-300'}`}>
+                                        {teamRoundStats.totalPts}
+                                      </span>
+                                      <span className={`text-[7px] font-black uppercase ${isNext ? 'text-black/80' : 'text-yellow-400'}`}>PTS</span>
+                                    </div>
+                                    <span className={`text-[8px] font-mono font-bold leading-none mt-1 ${isNext ? 'text-black/80' : 'text-gray-300'}`}>
+                                      {teamRoundStats.totalAbates}K • {teamRoundStats.quedasCount}Q
+                                    </span>
+                                  </div>
+                                ) : (
+                                  /* LOUD AINDA NÃO JOGOU ESTE DIA: NÃO COLOCAR OS PONTOS */
+                                  <div 
+                                    className={`w-full min-w-[58px] py-1.5 px-1 rounded-lg flex flex-col items-center justify-center transition-all ${
+                                      isNext 
+                                        ? 'bg-yellow-400 text-black border border-yellow-300 shadow-[0_0_12px_rgba(234,179,8,0.6)] scale-105' 
+                                        : 'bg-yellow-500/10 border border-yellow-400/30 text-yellow-400/70 hover:border-yellow-400/60'
+                                    }`}
+                                    title={`LOUD Snickers: Rodada ${r} ainda a disputar (Sem pontuação)`}
+                                  >
+                                    <Star size={13} className={isNext ? "fill-black text-black" : "fill-yellow-500/40 text-yellow-500"} />
+                                    <span className={`text-[7px] font-black uppercase tracking-tighter leading-none mt-0.5 ${isNext ? 'text-black' : 'text-gray-500'}`}>
+                                      {isNext ? 'PRÓXIMA' : 'A JOGAR'}
+                                    </span>
+                                  </div>
+                                )
                               ) : (
-                                <div className="w-7 h-7 rounded-lg bg-red-500/20 border border-red-500/50 flex items-center justify-center text-red-400">
-                                  <X size={16} className="stroke-[3]" />
+                                /* LOUD FOLGA */
+                                <div 
+                                  className="w-full min-w-[58px] py-1.5 px-1 rounded-lg bg-red-500/15 border border-red-500/40 flex flex-col items-center justify-center text-red-400"
+                                  title={`LOUD Snickers: Folga na Rodada ${r}`}
+                                >
+                                  <X size={13} className="stroke-[3]" />
+                                  <span className="text-[7px] font-black uppercase tracking-tighter text-red-400/90 leading-none mt-0.5">FOLGA</span>
                                 </div>
                               )
                             ) : (
+                              /* OUTROS TIMES */
                               plays ? (
-                                <div className={`w-6 h-6 rounded-md flex items-center justify-center ${
-                                  isNext
-                                    ? 'bg-yellow-400/20 border border-yellow-400 text-yellow-300 shadow-[0_0_8px_rgba(234,179,8,0.3)] font-bold'
-                                    : isCompleted
-                                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                                    : 'bg-emerald-500/10 text-emerald-400/80'
-                                }`}>
-                                  <Check size={14} className="stroke-[3]" />
-                                </div>
+                                hasPlayedWithScore && teamRoundStats ? (
+                                  <div 
+                                    className={`w-full min-w-[50px] py-1 px-1 rounded-lg flex flex-col items-center justify-center transition-all ${
+                                      isNext
+                                        ? 'bg-yellow-400/20 border border-yellow-400 text-yellow-300 shadow-[0_0_8px_rgba(234,179,8,0.3)] font-bold'
+                                        : isCompleted
+                                        ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                                        : 'bg-emerald-500/10 text-emerald-400'
+                                    }`}
+                                    title={`${team.name} - R${r}: ${teamRoundStats.totalPts} pts (${teamRoundStats.totalAbates} kills)`}
+                                  >
+                                    <span className="text-[11px] font-mono font-black leading-tight">
+                                      {teamRoundStats.totalPts} <span className="text-[7px] font-normal uppercase text-gray-400">pts</span>
+                                    </span>
+                                    <span className="text-[8px] font-mono text-gray-400 leading-none">
+                                      {teamRoundStats.totalAbates}K • {teamRoundStats.quedasCount}Q
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <div 
+                                    className={`w-6 h-6 rounded-md flex items-center justify-center ${
+                                      isNext
+                                        ? 'bg-yellow-400/20 border border-yellow-400 text-yellow-300 shadow-[0_0_8px_rgba(234,179,8,0.3)] font-bold'
+                                        : 'bg-emerald-500/10 text-emerald-400/80'
+                                    }`}
+                                    title={`${team.name} - Rodada ${r}: Joga (Aguardando disputa)`}
+                                  >
+                                    <Check size={14} className="stroke-[3]" />
+                                  </div>
+                                )
                               ) : (
-                                <div className="w-6 h-6 rounded-md bg-red-500/10 text-red-400 flex items-center justify-center">
+                                <div 
+                                  className="w-6 h-6 rounded-md bg-red-500/10 text-red-400 flex items-center justify-center"
+                                  title={`${team.name} - Rodada ${r}: Folga`}
+                                >
                                   <X size={14} className="stroke-[3]" />
                                 </div>
                               )
