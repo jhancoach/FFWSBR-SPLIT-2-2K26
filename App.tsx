@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { HashRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, useLocation } from 'react-router-dom';
 import Layout from './components/Layout';
 import Leaderboard from './pages/Leaderboard';
 import Schedule from './pages/Schedule';
@@ -14,6 +14,40 @@ import SplashScreen from './components/SplashScreen';
 import { fetchDashboardData, getAppConfig } from './services/dataService';
 import { DashboardData } from './types';
 import { DEFAULT_CONFIG } from './constants';
+
+const AppContent: React.FC<{ data: DashboardData; loadData: () => void }> = ({ data, loadData }) => {
+  const location = useLocation();
+  const path = location.pathname;
+
+  return (
+    <>
+      <div className={path === '/' ? 'block' : 'hidden'}>
+        <Leaderboard data={data} />
+      </div>
+      <div className={path === '/cronograma' ? 'block' : 'hidden'}>
+        <Schedule data={data} />
+      </div>
+      <div className={path === '/players' ? 'block' : 'hidden'}>
+        <Players data={data} />
+      </div>
+      <div className={path === '/teams' ? 'block' : 'hidden'}>
+        <Teams data={data} />
+      </div>
+      <div className={path === '/killfeed' ? 'block' : 'hidden'}>
+        <KillFeedPage data={data} />
+      </div>
+      <div className={path === '/estudos' ? 'block' : 'hidden'}>
+        <Studies data={data} />
+      </div>
+      <div className={path === '/banners' ? 'block' : 'hidden'}>
+        <Banners data={data} />
+      </div>
+      <div className={path === '/admin' ? 'block' : 'hidden'}>
+        <Admin onRefresh={loadData} />
+      </div>
+    </>
+  );
+};
 
 const App: React.FC = () => {
   const [data, setData] = useState<DashboardData>({
@@ -63,16 +97,7 @@ const App: React.FC = () => {
   return (
     <HashRouter>
       <Layout onRefresh={loadData} loading={data.loading} lastUpdated={data.lastUpdated} config={config}>
-        <Routes>
-          <Route path="/" element={<Leaderboard data={data} />} />
-          <Route path="/cronograma" element={<Schedule data={data} />} />
-          <Route path="/players" element={<Players data={data} />} />
-          <Route path="/teams" element={<Teams data={data} />} />
-          <Route path="/killfeed" element={<KillFeedPage data={data} />} />
-          <Route path="/estudos" element={<Studies data={data} />} />
-          <Route path="/banners" element={<Banners data={data} />} />
-          <Route path="/admin" element={<Admin onRefresh={loadData} />} />
-        </Routes>
+        <AppContent data={data} loadData={loadData} />
       </Layout>
     </HashRouter>
   );

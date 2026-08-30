@@ -23,7 +23,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
   
   // Section visibility states
   const [visibleSections, setVisibleSections] = useState({
-    filters: true,
+    filters: false,
     top3: true,
     legend: true,
     table: true
