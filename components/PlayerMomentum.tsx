@@ -48,12 +48,12 @@ export const PlayerMomentum: React.FC<PlayerMomentumProps> = ({ data, onSelectPl
     });
 
     // 2. Extrair rodadas únicas com jogos reais
-    const uniqueRounds = Array.from(new Set(validEntries.map(p => p.RD!.trim()))).filter(Boolean);
+    const uniqueRounds: string[] = Array.from(new Set<string>(validEntries.map(p => String(p.RD || '').trim()).filter(Boolean)));
 
     // Ordenar rodadas de forma numérica decrescente (Rodada 10, 9, 8...)
     const sortedRounds = uniqueRounds.sort((a, b) => {
-      const numA = parseInt(a.replace(/\D/g, '')) || 0;
-      const numB = parseInt(b.replace(/\D/g, '')) || 0;
+      const numA = parseInt(String(a).replace(/\D/g, '')) || 0;
+      const numB = parseInt(String(b).replace(/\D/g, '')) || 0;
       return numB - numA;
     });
 
