@@ -23,6 +23,28 @@ interface PlayersProps {
 const normalize = (val: string | undefined) => (val || '').trim().toUpperCase();
 const cleanKey = (s: string) => s.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "").trim();
 
+const matchRd = (filterVal: string, itemVal: string | undefined | null): boolean => {
+  if (!itemVal) return false;
+  const normF = normalize(filterVal);
+  const normI = normalize(itemVal);
+  if (normF === normI) return true;
+  const numF = normF.replace(/\D/g, '');
+  const numI = normI.replace(/\D/g, '');
+  if (numF && numI && numF === numI) return true;
+  return false;
+};
+
+const matchQ = (filterVal: string, itemVal: string | undefined | null): boolean => {
+  if (!itemVal) return false;
+  const normF = normalize(filterVal);
+  const normI = normalize(itemVal);
+  if (normF === normI) return true;
+  const numF = normF.replace(/\D/g, '');
+  const numI = normI.replace(/\D/g, '');
+  if (numF && numI && numF === numI) return true;
+  return false;
+};
+
 // Helper para converter strings numéricas em inteiros, removendo pontos e vírgulas de formatação
 const parseNumber = (val: string | undefined | null): number => {
   if (!val) return 0;
@@ -99,17 +121,17 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
     
     // Filtramos os dados base para pegar as opções de queda baseadas na rodada selecionada
     const baseDataForDrops = data.players.filter(p => 
-        filters.rodada.length === 0 || filters.rodada.some(r => normalize(r) === normalize(p.RD))
+        filters.rodada.length === 0 || filters.rodada.some(r => matchRd(r, p.RD))
     );
 
     const maps = Array.from(new Set([...data.players.map(p => p.MAPA), ...data.killFeed.map(k => k.MAPA)])).filter(Boolean).sort();
     const rounds = Array.from(new Set([...data.players.map(p => p.RD), ...data.killFeed.map(k => k.RD)])).filter(Boolean).sort((a, b) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0));
     const quedas = Array.from(new Set([
         ...baseDataForDrops.map(p => p.Q),
-        ...data.killFeed.filter(k => filters.rodada.length === 0 || filters.rodada.some(r => normalize(r) === normalize(k.RD))).map(k => k.Q)
+        ...data.killFeed.filter(k => filters.rodada.length === 0 || filters.rodada.some(r => matchRd(r, k.RD))).map(k => k.Q)
     ])).filter(Boolean).sort((a, b) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0));
     const activeHabs = Array.from(new Set(data.characters.map(c => c.Hab1))).filter(Boolean).sort();
-    const grupos = Array.from(new Set(data.teamsReference.map(t => t.GRUPO))).filter(Boolean).sort() as string[];
+    const grupos = Array.from(new Set((Array.isArray(data.teamsReference) ? data.teamsReference : []).map(t => t.GRUPO))).filter(Boolean).sort() as string[];
 
     const confrontations = Array.from(new Set([
       ...data.confrontationsDimension.map(c => c.CONFRONTO),
@@ -177,8 +199,8 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
         }
 
         // FILTRO ESTRITO: Se selecionar RD e Q, deve bater os dois simultaneamente no registro
-        const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => normalize(r) === normalize(p.RD));
-        const matchQ = filters.queda.length === 0 || filters.queda.some(q => normalize(q) === normalize(p.Q));
+        const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => matchRd(r, p.RD));
+        const matchQ = filters.queda.length === 0 || filters.queda.some(q => matchQ(q, p.Q));
         
         return matchRD && matchQ;
     });
@@ -249,8 +271,8 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
     });
 
     const filteredKillFeed = data.killFeed.filter(k => {
-        const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => normalize(r) === normalize(k.RD));
-        const matchQ = filters.queda.length === 0 || filters.queda.some(q => normalize(q) === normalize(k.Q));
+        const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => matchRd(r, k.RD));
+        const matchQ = filters.queda.length === 0 || filters.queda.some(q => matchQ(q, k.Q));
         return matchRD && matchQ;
     });
 
@@ -289,8 +311,8 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             const teamGroup = teamGroupMap.get(normalize(p.TIME));
             if (!teamGroup || !filters.grupo.some(g => normalize(g) === teamGroup)) return;
         }
-        const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => normalize(r) === normalize(p.RD));
-        const matchQ = filters.queda.length === 0 || filters.queda.some(q => normalize(q) === normalize(p.Q));
+        const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => matchRd(r, p.RD));
+        const matchQ = filters.queda.length === 0 || filters.queda.some(q => matchQ(q, p.Q));
         if (!matchRD || !matchQ) return;
 
         const t = p.TIME;
@@ -585,12 +607,42 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
   const auditData = useMemo(() => {
     if (activeTab !== 'auditoria') return [];
 
+    const teamGroupMap = new Map<string, string>();
+    (Array.isArray(data.teamsReference) ? data.teamsReference : []).forEach(t => {
+        if (t.TIME && t.GRUPO) teamGroupMap.set(normalize(t.TIME), normalize(t.GRUPO));
+    });
+
+    const playerToTeamMap = new Map<string, string>();
+    data.players.forEach(p => {
+      if (p.PLAYER && p.TIME) playerToTeamMap.set(normalize(p.PLAYER), p.TIME);
+    });
+    (data.playersDimension || []).forEach(d => {
+      if (d.Name && d.Time) playerToTeamMap.set(normalize(d.Name), d.Time);
+    });
+
     const feedFiltered = data.killFeed.filter(k => {
+        if (!k.PLAYER) return false;
+        const pNorm = normalize(k.PLAYER);
+        const pTeam = playerToTeamMap.get(pNorm) || '';
+
+        // Filtro de Equipe
+        if (filters.team.length > 0 && (!pTeam || !filters.team.includes(pTeam))) return false;
+
+        // Filtro de Grupo
+        if (filters.grupo.length > 0) {
+            const teamGroup = pTeam ? teamGroupMap.get(normalize(pTeam)) : null;
+            if (!teamGroup || !filters.grupo.some(g => normalize(g) === teamGroup)) return false;
+        }
+
+        // Filtro de Jogador
+        if (filters.players.length > 0 && !filters.players.some(p => normalize(p) === pNorm)) return false;
+
+        // Filtro de Mapa
         if (filters.map.length > 0 && !filters.map.some(m => normalize(m) === normalize(k.MAPA))) return false;
         
         // FILTRO ESTRITO NO FEED: RD AND Q
-        const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => normalize(r) === normalize(k.RD));
-        const matchQ = filters.queda.length === 0 || filters.queda.some(q => normalize(q) === normalize(k.Q));
+        const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => matchRd(r, k.RD));
+        const matchQ = filters.queda.length === 0 || filters.queda.some(q => matchQ(q, k.Q));
         
         return matchRD && matchQ;
     });
@@ -630,11 +682,12 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             const feedKills = feedKillsMap.get(pNorm) || 0;
             const factKills = 0;
             const diff = factKills - feedKills;
+            const pTeam = playerToTeamMap.get(pNorm) || 'N/A';
             list.push({
                 name: k.PLAYER,
                 playerImg: findDimImg(data.playersDimension, k.PLAYER),
-                teamImg: '',
-                team: 'N/A',
+                teamImg: findTeamLogo(pTeam, data.teamsReference),
+                team: pTeam,
                 factKills,
                 feedKills,
                 diff,
@@ -644,7 +697,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
     });
 
     return list.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff) || b.factKills - a.factKills || b.feedKills - a.feedKills);
-  }, [rankingData, data.killFeed, data.playersDimension, filters, activeTab]);
+  }, [rankingData, data.killFeed, data.players, data.playersDimension, data.teamsReference, filters, activeTab]);
 
 
   const activeHabStats = useMemo(() => {
@@ -5048,7 +5101,8 @@ const PlayerRadarComponent: React.FC<{
   p1Name: string;
   p2Name?: string;
   title?: string;
-}> = ({ p1Stats, p2Stats, p1Name, p2Name, title }) => {
+  onHide?: () => void;
+}> = ({ p1Stats, p2Stats, p1Name, p2Name, title, onHide }) => {
   const [showExplanation, setShowExplanation] = useState(false);
 
   const calcScore = (stats: any) => {
@@ -5184,6 +5238,17 @@ const PlayerRadarComponent: React.FC<{
             <Info size={13} />
             {showExplanation ? 'Ocultar Guia' : 'Entender o Radar'}
           </button>
+
+          {onHide && (
+            <button
+              onClick={onHide}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider bg-white/5 text-gray-400 hover:text-red-400 hover:bg-red-500/10 border border-white/5 transition-all"
+              title="Ocultar Gráfico Radar"
+            >
+              <EyeOff size={13} />
+              <span>Ocultar</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -5470,6 +5535,7 @@ const PlayerRatingGauge: React.FC<{
   avgKillsPerRound: string | number;
   uniqueRoundsCount?: number;
   totalMatches?: number;
+  onHide?: () => void;
 }> = ({
   kills,
   avgKillsPerMatch,
@@ -5479,6 +5545,7 @@ const PlayerRatingGauge: React.FC<{
   avgDeathsPerRound,
   avgDamagePerRound,
   avgKillsPerRound,
+  onHide,
 }) => {
   const numericKd = typeof kdRatio === 'number' ? kdRatio : parseFloat(String(kdRatio)) || 0;
 
@@ -5526,11 +5593,22 @@ const PlayerRatingGauge: React.FC<{
   const strokeDashoffset = circumference * (1 - progressRatio);
 
   return (
-    <div className="bg-[#101318]/95 p-6 md:p-7 rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden backdrop-blur-xl space-y-6">
+    <div className="bg-[#101318]/95 p-6 md:p-7 rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden backdrop-blur-xl space-y-6 group">
       {/* Ambient background glows */}
       <div className="absolute top-0 left-1/4 w-48 h-48 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute top-0 right-1/4 w-48 h-48 bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-32 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none" />
+
+      {onHide && (
+        <button
+          onClick={onHide}
+          className="absolute top-3.5 right-3.5 z-20 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 px-2.5 rounded-xl bg-black/60 hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-white/10 text-[10px] font-bold uppercase flex items-center gap-1.5 shadow-md"
+          title="Ocultar Card de Rating K/D"
+        >
+          <EyeOff size={12} />
+          <span>Ocultar</span>
+        </button>
+      )}
 
       {/* Main HLTV Rating Section (Top Bar with Left Wing, Center Semicircle, Right Wing) */}
       <div className="relative z-10 flex flex-col sm:flex-row items-center justify-between gap-5 md:gap-8">
@@ -5686,8 +5764,6 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
         ratingGauge: true,
         records: true,
         rankings: true,
-        zeradas: true,
-        rounds: true,
         overviewMetrics: true,
         radar: true,
         maps: true,
@@ -5696,6 +5772,9 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
         safeKills: true,
         victimsKillers: true,
         loadout: true,
+        characterHistory: true,
+        zeradas: true,
+        rounds: true,
         kpm: true,
     });
     const [showPlayerSectionMenu, setShowPlayerSectionMenu] = useState<boolean>(false);
@@ -5710,8 +5789,6 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
             ratingGauge: val,
             records: val,
             rankings: val,
-            zeradas: val,
-            rounds: val,
             overviewMetrics: val,
             radar: val,
             maps: val,
@@ -5720,6 +5797,9 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
             safeKills: val,
             victimsKillers: val,
             loadout: val,
+            characterHistory: val,
+            zeradas: val,
+            rounds: val,
             kpm: val,
         });
     };
@@ -6257,7 +6337,7 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                             title="Personalizar seções visíveis do jogador"
                         >
                             <Layers size={14} className="text-yellow-400" />
-                            <span>Seções ({Object.values(playerVisibleSections).filter(Boolean).length}/13)</span>
+                            <span>Seções ({Object.values(playerVisibleSections).filter(Boolean).length}/16)</span>
                             <ChevronDown size={14} className={`text-gray-400 transition-transform ${showPlayerSectionMenu ? 'rotate-180' : ''}`} />
                         </button>
 
@@ -6290,8 +6370,6 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                                         { key: 'ratingGauge', label: 'Card Rating K/D & Médias' },
                                         { key: 'records', label: 'Recordes (Partida & Rodada)' },
                                         { key: 'rankings', label: 'Classificações no Campeonato' },
-                                        { key: 'zeradas', label: 'Detalhes Quedas Zeradas' },
-                                        { key: 'rounds', label: 'Matriz por Rodada (RD x Q)' },
                                         { key: 'overviewMetrics', label: 'Métricas Avançadas' },
                                         { key: 'radar', label: 'Gráfico Radar de Desempenho' },
                                         { key: 'maps', label: 'Performance por Mapa' },
@@ -6299,7 +6377,11 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                                         { key: 'dropKills', label: 'Abates por Queda' },
                                         { key: 'safeKills', label: 'Abates por Safe' },
                                         { key: 'victimsKillers', label: 'Vítimas & Algozes' },
-                                        { key: 'loadout', label: 'Loadout & Personagens' },
+                                        { key: 'loadout', label: 'Configuração Atual de Loadout' },
+                                        { key: 'characterHistory', label: 'Histórico de Personagens Utilizados' },
+                                        { key: 'zeradas', label: 'Detalhes Quedas Zeradas' },
+                                        { key: 'rounds', label: 'Matriz por Rodada (RD x Q)' },
+                                        { key: 'kpm', label: 'KPM por Minuto & Safe' },
                                     ].map((sec) => (
                                         <label
                                             key={sec.key}
@@ -6342,9 +6424,36 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                 </div>
             </div>
 
+            {/* Banner de Seções Ocultas */}
+            {Object.values(playerVisibleSections).some(v => !v) && (
+                <div className="bg-yellow-500/10 border border-yellow-500/20 px-4 py-2.5 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs shadow-inner">
+                    <span className="text-yellow-400 font-bold flex items-center gap-2">
+                        <EyeOff size={14} />
+                        {16 - Object.values(playerVisibleSections).filter(Boolean).length} seção(ões) oculta(s) no perfil
+                    </span>
+                    <button
+                        onClick={() => setAllPlayerSections(true)}
+                        className="px-3 py-1 rounded-xl bg-yellow-500 text-black font-black text-[10px] uppercase hover:bg-yellow-400 transition-all shadow"
+                    >
+                        Restaurar Todas as Seções
+                    </button>
+                </div>
+            )}
+
             {/* Cabeçalho do Jogador */}
             {playerVisibleSections.header && (
-            <div className="bg-[#121215] p-6 lg:p-8 rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden">
+            <div className="bg-[#121215] p-6 lg:p-8 rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden group">
+                {/* Botão de Ocultar Cabeçalho */}
+                <div className="absolute top-4 right-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                        onClick={() => togglePlayerSection('header')}
+                        className="p-1.5 px-2.5 rounded-xl bg-black/60 hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-white/10 text-[10px] font-bold uppercase flex items-center gap-1.5 transition-all shadow-md"
+                        title="Ocultar Cabeçalho"
+                    >
+                        <EyeOff size={12} />
+                        <span>Ocultar</span>
+                    </button>
+                </div>
                 {/* Background ambient lighting */}
                 <div className="absolute top-0 right-0 w-96 h-96 bg-yellow-500/5 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
                 <div className="absolute bottom-0 left-0 w-80 h-80 bg-red-500/5 rounded-full blur-3xl pointer-events-none -ml-20 -mb-20" />
@@ -6551,97 +6660,80 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                     avgKillsPerRound={stats.avgKillsPerRound}
                     uniqueRoundsCount={stats.uniqueRoundsCount}
                     totalMatches={stats.matches}
+                    onHide={() => togglePlayerSection('ratingGauge')}
                 />
             )}
 
             {/* Banner de Recordes Individuais do Jogador */}
             {playerVisibleSections.records && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-gradient-to-r from-red-950/40 via-black to-black p-5 rounded-2xl border border-red-500/30 shadow-xl flex items-center gap-4 relative overflow-hidden">
-                    <div className="p-3.5 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-500 flex-shrink-0">
-                        <Trophy size={28} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        <span className="text-[10px] font-black text-red-400 uppercase tracking-widest block mb-0.5">RECORDE DE KILLS EM 1 PARTIDA</span>
-                        <div className="flex items-baseline gap-2">
-                            <span className="text-3xl font-black text-white italic">{stats.maxMatchRecord ? stats.maxMatchRecord.kills : 0}</span>
-                            <span className="text-xs font-bold text-red-400 uppercase">Kills</span>
-                            {stats.maxMatchRecord?.isBooyah && (
-                                <span className="px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 text-[9px] font-black uppercase inline-flex items-center gap-1">
-                                    <Crown size={10} /> Booyah!
-                                </span>
-                            )}
-                        </div>
-                        {stats.maxMatchRecord ? (
-                            <p className="text-[11px] text-gray-400 font-medium truncate mt-1">
-                                <span className="text-white font-bold">{stats.maxMatchRecord.rd} • Q{stats.maxMatchRecord.q}</span> ({stats.maxMatchRecord.mapa}) • <span className="text-amber-400 font-mono">{stats.maxMatchRecord.dano} Dano</span>
-                            </p>
-                        ) : (
-                            <p className="text-[11px] text-gray-500 italic mt-1">Sem registros no período</p>
-                        )}
-                    </div>
+            <div className="relative group">
+                <div className="absolute -top-3 right-0 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                        onClick={() => togglePlayerSection('records')}
+                        className="p-1 px-2.5 rounded-lg bg-black/80 hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-white/10 text-[10px] font-bold uppercase flex items-center gap-1 shadow-md transition-all"
+                        title="Ocultar Recordes"
+                    >
+                        <EyeOff size={11} />
+                        <span>Ocultar Recordes</span>
+                    </button>
                 </div>
-
-                <div className="bg-gradient-to-r from-yellow-950/40 via-black to-black p-5 rounded-2xl border border-yellow-500/30 shadow-xl flex items-center gap-4 relative overflow-hidden">
-                    <div className="p-3.5 rounded-2xl bg-yellow-500/10 border border-yellow-500/30 text-yellow-500 flex-shrink-0">
-                        <Crown size={28} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        <span className="text-[10px] font-black text-yellow-400 uppercase tracking-widest block mb-0.5">RECORDE DE KILLS EM 1 RODADA (RD)</span>
-                        <div className="flex items-baseline gap-2">
-                            <span className="text-3xl font-black text-white italic">{stats.maxRoundRecord ? stats.maxRoundRecord.kills : 0}</span>
-                            <span className="text-xs font-bold text-yellow-400 uppercase">Kills Acumuladas</span>
-                            {stats.maxRoundRecord && (
-                                <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/40 text-[9px] font-black uppercase">
-                                    Média {stats.maxRoundRecord.avgKills}/Q
-                                </span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-gradient-to-r from-red-950/40 via-black to-black p-5 rounded-2xl border border-red-500/30 shadow-xl flex items-center gap-4 relative overflow-hidden">
+                        <div className="p-3.5 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-500 flex-shrink-0">
+                            <Trophy size={28} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <span className="text-[10px] font-black text-red-400 uppercase tracking-widest block mb-0.5">RECORDE DE KILLS EM 1 PARTIDA</span>
+                            <div className="flex items-baseline gap-2">
+                                <span className="text-3xl font-black text-white italic">{stats.maxMatchRecord ? stats.maxMatchRecord.kills : 0}</span>
+                                <span className="text-xs font-bold text-red-400 uppercase">Kills</span>
+                                {stats.maxMatchRecord?.isBooyah && (
+                                    <span className="px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 text-[9px] font-black uppercase inline-flex items-center gap-1">
+                                        <Crown size={10} /> Booyah!
+                                    </span>
+                                )}
+                            </div>
+                            {stats.maxMatchRecord ? (
+                                <p className="text-[11px] text-gray-400 font-medium truncate mt-1">
+                                    <span className="text-white font-bold">{stats.maxMatchRecord.rd} • Q{stats.maxMatchRecord.q}</span> ({stats.maxMatchRecord.mapa}) • <span className="text-amber-400 font-mono">{stats.maxMatchRecord.dano} Dano</span>
+                                </p>
+                            ) : (
+                                <p className="text-[11px] text-gray-500 italic mt-1">Sem registros no período</p>
                             )}
                         </div>
-                        {stats.maxRoundRecord ? (
-                            <p className="text-[11px] text-gray-400 font-medium truncate mt-1">
-                                <span className="text-white font-bold">{stats.maxRoundRecord.rd}</span> ({stats.maxRoundRecord.matches} Quedas disputadas) • <span className="text-amber-400 font-mono">{stats.maxRoundRecord.damage.toLocaleString()} Dano Total</span>
-                            </p>
-                        ) : (
-                            <p className="text-[11px] text-gray-500 italic mt-1">Sem registros no período</p>
-                        )}
+                    </div>
+
+                    <div className="bg-gradient-to-r from-yellow-950/40 via-black to-black p-5 rounded-2xl border border-yellow-500/30 shadow-xl flex items-center gap-4 relative overflow-hidden">
+                        <div className="p-3.5 rounded-2xl bg-yellow-500/10 border border-yellow-500/30 text-yellow-500 flex-shrink-0">
+                            <Crown size={28} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <span className="text-[10px] font-black text-yellow-400 uppercase tracking-widest block mb-0.5">RECORDE DE KILLS EM 1 RODADA (RD)</span>
+                            <div className="flex items-baseline gap-2">
+                                <span className="text-3xl font-black text-white italic">{stats.maxRoundRecord ? stats.maxRoundRecord.kills : 0}</span>
+                                <span className="text-xs font-bold text-yellow-400 uppercase">Kills Acumuladas</span>
+                                {stats.maxRoundRecord && (
+                                    <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/40 text-[9px] font-black uppercase">
+                                        Média {stats.maxRoundRecord.avgKills}/Q
+                                    </span>
+                                )}
+                            </div>
+                            {stats.maxRoundRecord ? (
+                                <p className="text-[11px] text-gray-400 font-medium truncate mt-1">
+                                    <span className="text-white font-bold">{stats.maxRoundRecord.rd}</span> ({stats.maxRoundRecord.matches} Quedas disputadas) • <span className="text-amber-400 font-mono">{stats.maxRoundRecord.damage.toLocaleString()} Dano Total</span>
+                                </p>
+                            ) : (
+                                <p className="text-[11px] text-gray-500 italic mt-1">Sem registros no período</p>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
             )}
 
-            {!showDetails && (
-                <div className="bg-[#121215] p-5 rounded-2xl border border-white/5 text-center flex flex-col sm:flex-row items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                        <Info size={18} className="text-yellow-500 flex-shrink-0" />
-                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider text-left">
-                            O detalhamento avançado de Quedas Zeradas e Matriz por Rodada está <strong className="text-red-400">oculto</strong> no momento.
-                        </span>
-                    </div>
-                    <button
-                        onClick={() => setShowDetails(true)}
-                        className="px-4 py-2 rounded-xl bg-emerald-500 text-black font-black text-xs uppercase tracking-wider hover:bg-emerald-400 transition-all shadow-lg flex items-center gap-2 flex-shrink-0"
-                    >
-                        <Eye size={14} /> Expandir Detalhamento
-                    </button>
-                </div>
-            )}
-
-            {/* Conteúdo: Visão Geral ou Abas Específicas */}
-            
-            {(profileSubTab === 'all' || profileSubTab === 'kpm') && playerVisibleSections.kpm && (
-                <div className="space-y-6 pt-2">
-                    <PlayerKpmAnalysis 
-                        data={data} 
-                        selectedPlayer={playerName} 
-                        singlePlayerOnly={true}
-                        hideTopControls={true} 
-                    />
-                </div>
-            )}
-
             {/* Rankings Section */}
-            {playerVisibleSections.rankings && showDetails && profileSubTab === 'all' && rankings && (
-                <div className="bg-gradient-to-br from-[#1a1a1a] to-[#121215] p-6 rounded-3xl border border-yellow-500/20 shadow-2xl space-y-6 relative overflow-hidden">
+            {playerVisibleSections.rankings && profileSubTab === 'all' && rankings && (
+                <div className="bg-gradient-to-br from-[#1a1a1a] to-[#121215] p-6 rounded-3xl border border-yellow-500/20 shadow-2xl space-y-6 relative overflow-hidden group">
                     <div className="absolute top-0 right-0 w-64 h-64 bg-yellow-500/5 rounded-full blur-3xl pointer-events-none -mr-10 -mt-10" />
                     
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/5 pb-4">
@@ -6654,6 +6746,14 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                                 </p>
                             </div>
                         </div>
+                        <button
+                            onClick={() => togglePlayerSection('rankings')}
+                            className="p-1.5 px-2.5 rounded-xl bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-white/10 text-[10px] font-bold uppercase flex items-center gap-1.5 transition-all self-end sm:self-auto"
+                            title="Ocultar Classificações"
+                        >
+                            <EyeOff size={12} />
+                            <span>Ocultar</span>
+                        </button>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
@@ -6700,8 +6800,433 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                 </div>
             )}
 
+            {/* Conteúdo: Visão Geral ou Abas Específicas */}
+            {(profileSubTab === 'all' || profileSubTab === 'overview') && (
+                <>
+                    {playerVisibleSections.overviewMetrics && (
+                    <div className="relative group">
+                        <div className="absolute -top-3 right-0 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                                onClick={() => togglePlayerSection('overviewMetrics')}
+                                className="p-1 px-2.5 rounded-lg bg-black/80 hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-white/10 text-[10px] font-bold uppercase flex items-center gap-1 shadow-md transition-all"
+                                title="Ocultar Métricas Avançadas"
+                            >
+                                <EyeOff size={11} />
+                                <span>Ocultar Métricas</span>
+                            </button>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                            <div className="bg-[#1a1a1a] p-4 rounded-2xl border border-gray-800 flex flex-col items-center">
+                                <span className="text-[9px] text-gray-500 font-black uppercase tracking-widest mb-1">Dano Médio</span>
+                                <span className="text-xl font-black text-white italic">{stats.avgDmg}</span>
+                            </div>
+                            <div className="bg-[#1a1a1a] p-4 rounded-2xl border border-gray-800 flex flex-col items-center">
+                                <span className="text-[9px] text-gray-500 font-black uppercase tracking-widest mb-1">% Headshot</span>
+                                <span className="text-xl font-black text-yellow-500 italic">
+                                    {stats.kills > 0 ? ((stats.hs / stats.kills) * 100).toFixed(1) : '0.0'}%
+                                </span>
+                            </div>
+                            <div className="bg-[#1a1a1a] p-4 rounded-2xl border border-gray-800 flex flex-col items-center">
+                                <span className="text-[9px] text-gray-500 font-black uppercase tracking-widest mb-1">Knocks/Kills</span>
+                                <span className="text-xl font-black text-orange-500 italic">
+                                    {stats.kills > 0 ? (stats.knocks / stats.kills).toFixed(2) : '0.00'}
+                                </span>
+                            </div>
+                            <div className="bg-[#1a1a1a] p-4 rounded-2xl border border-gray-800 flex flex-col items-center">
+                                <span className="text-[9px] text-gray-500 font-black uppercase tracking-widest mb-1">% Contribuição</span>
+                                <span className="text-xl font-black text-blue-400 italic">{stats.killContributionPct}%</span>
+                            </div>
+                            <div className="bg-[#1a1a1a] p-4 rounded-2xl border border-gray-800 flex flex-col items-center">
+                                <span className="text-[9px] text-gray-500 font-black uppercase tracking-widest mb-1">Participação</span>
+                                <span className="text-xl font-black text-blue-400 italic">
+                                    {stats.kills + stats.assists}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    )}
+
+                    {playerVisibleSections.radar && (
+                    <PlayerRadarComponent 
+                        p1Stats={stats} 
+                        p1Name={playerName} 
+                        title={`GRÁFICO RADAR DE DESEMPENHO: ${playerName}`} 
+                        onHide={() => togglePlayerSection('radar')}
+                    />
+                    )}
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {playerVisibleSections.maps && (
+                        <div className="bg-[#0e0e11] p-6 rounded-3xl border border-gray-800 shadow-xl flex flex-col">
+                            <div className="flex items-center justify-between mb-6">
+                                <h3 className="text-[11px] font-black text-white uppercase flex items-center gap-3 tracking-widest"><MapIcon size={16} className="text-yellow-500" /> PERFORMANCE POR MAPA</h3>
+                                <button
+                                    onClick={() => togglePlayerSection('maps')}
+                                    className="p-1 px-2.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-white/5 text-[9px] font-bold uppercase flex items-center gap-1 transition-all"
+                                    title="Ocultar Performance por Mapa"
+                                >
+                                    <EyeOff size={11} />
+                                    <span>Ocultar</span>
+                                </button>
+                            </div>
+                            <div className="space-y-4 flex-1">
+                                 {stats.mapKills.length > 0 ? stats.mapKills.map((map, i) => {
+                                     const mapDmg = stats.mapDamage.find(md => md.name === map.name)?.count || 0;
+                                     return (
+                                     <div key={i} className="space-y-2">
+                                         <div className="flex justify-between items-end">
+                                             <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">{map.name}</span>
+                                             <div className="flex gap-3">
+                                                 <span className="text-[10px] font-black text-gray-400 italic uppercase">{mapDmg} DANO</span>
+                                                 <span className="text-xs font-black text-white italic">{map.count} KILLS</span>
+                                             </div>
+                                         </div>
+                                         <div className="w-full h-1.5 bg-black rounded-full overflow-hidden border border-white/5">
+                                             <div className="h-full bg-gradient-to-r from-yellow-600 to-yellow-400 rounded-full" style={{ width: `${(map.count / (stats.kills || 1)) * 100}%` }}></div>
+                                         </div>
+                                     </div>
+                                 )}) : (
+                                     <div className="flex-1 flex items-center justify-center text-gray-700 font-black italic uppercase text-[10px]">Sem dados de mapas</div>
+                                 )}
+                            </div>
+                        </div>
+                        )}
+
+                        {playerVisibleSections.roundKills && (
+                        <div className="bg-[#0e0e11] p-6 rounded-3xl border border-gray-800 shadow-xl flex flex-col">
+                            <div className="flex items-center justify-between mb-6">
+                                <h3 className="text-[11px] font-black text-white uppercase flex items-center gap-3 tracking-widest"><Hash size={16} className="text-blue-400" /> ABATES POR RODADA</h3>
+                                <button
+                                    onClick={() => togglePlayerSection('roundKills')}
+                                    className="p-1 px-2.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-white/5 text-[9px] font-bold uppercase flex items-center gap-1 transition-all"
+                                    title="Ocultar Abates por Rodada"
+                                >
+                                    <EyeOff size={11} />
+                                    <span>Ocultar</span>
+                                </button>
+                            </div>
+                            <div className="space-y-4 flex-1">
+                                 {stats.roundKills.length > 0 ? stats.roundKills.map((rd, i) => (
+                                     <div key={i} className="space-y-2">
+                                         <div className="flex justify-between items-end">
+                                             <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">{rd.name}</span>
+                                             <span className="text-xs font-black text-white italic">{rd.count} KILLS</span>
+                                         </div>
+                                         <div className="w-full h-1.5 bg-black rounded-full overflow-hidden border border-white/5">
+                                             <div className="h-full bg-gradient-to-r from-blue-600 to-blue-400 rounded-full" style={{ width: `${(rd.count / (stats.kills || 1)) * 100}%` }}></div>
+                                         </div>
+                                     </div>
+                                 )) : (
+                                     <div className="flex-1 flex items-center justify-center text-gray-700 font-black italic uppercase text-[10px]">Sem registros de rodada</div>
+                                 )}
+                            </div>
+                        </div>
+                        )}
+
+                        {playerVisibleSections.dropKills && (
+                        <div className="bg-[#0e0e11] p-6 rounded-3xl border border-gray-800 shadow-xl flex flex-col">
+                            <div className="flex items-center justify-between mb-6">
+                                <h3 className="text-[11px] font-black text-white uppercase flex items-center gap-3 tracking-widest"><TargetIcon size={16} className="text-yellow-400" /> ABATES POR QUEDA (Q)</h3>
+                                <button
+                                    onClick={() => togglePlayerSection('dropKills')}
+                                    className="p-1 px-2.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-white/5 text-[9px] font-bold uppercase flex items-center gap-1 transition-all"
+                                    title="Ocultar Abates por Queda"
+                                >
+                                    <EyeOff size={11} />
+                                    <span>Ocultar</span>
+                                </button>
+                            </div>
+                            <div className="space-y-4 flex-1">
+                                 {stats.dropKills.length > 0 ? stats.dropKills.map((q, i) => (
+                                     <div key={i} className="space-y-2">
+                                         <div className="flex justify-between items-end">
+                                             <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">PARTIDA {q.name}</span>
+                                             <span className="text-xs font-black text-yellow-400 italic">{q.count} KILLS</span>
+                                         </div>
+                                         <div className="w-full h-1.5 bg-black rounded-full overflow-hidden border border-white/5">
+                                             <div className="h-full bg-gradient-to-r from-yellow-700 to-yellow-500 rounded-full" style={{ width: `${(q.count / (stats.kills || 1)) * 100}%` }}></div>
+                                         </div>
+                                     </div>
+                                 )) : (
+                                     <div className="flex-1 flex items-center justify-center text-gray-700 font-black italic uppercase text-[10px]">Sem registros de quedas</div>
+                                 )}
+                            </div>
+                        </div>
+                        )}
+
+                        {playerVisibleSections.safeKills && (
+                        <div className="bg-[#0e0e11] p-6 rounded-3xl border border-gray-800 shadow-xl flex flex-col">
+                            <div className="flex items-center justify-between mb-6">
+                                <h3 className="text-[11px] font-black text-white uppercase flex items-center gap-3 tracking-widest"><Disc size={16} className="text-red-500" /> ABATES POR SAFE</h3>
+                                <button
+                                    onClick={() => togglePlayerSection('safeKills')}
+                                    className="p-1 px-2.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-white/5 text-[9px] font-bold uppercase flex items-center gap-1 transition-all"
+                                    title="Ocultar Abates por Safe"
+                                >
+                                    <EyeOff size={11} />
+                                    <span>Ocultar</span>
+                                </button>
+                            </div>
+                            <div className="space-y-4 flex-1">
+                                 {stats.safeKills.length > 0 ? stats.safeKills.map((safe, i) => (
+                                     <div key={i} className="space-y-2">
+                                         <div className="flex justify-between items-end">
+                                             <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">SAFE {safe.name}</span>
+                                             <span className="text-xs font-black text-red-500 italic">{safe.count} KILLS</span>
+                                         </div>
+                                         <div className="w-full h-1.5 bg-black rounded-full overflow-hidden border border-white/5">
+                                             <div className="h-full bg-gradient-to-r from-red-600 to-red-400 rounded-full" style={{ width: `${(safe.count / (stats.safeKills.reduce((a,b) => a + b.count, 0) || 1)) * 100}%` }}></div>
+                                         </div>
+                                     </div>
+                                 )) : (
+                                     <div className="flex-1 flex items-center justify-center text-gray-700 font-black italic uppercase text-[10px]">Sem registros no KillFeed</div>
+                                 )}
+                            </div>
+                        </div>
+                        )}
+                    </div>
+
+                    {playerVisibleSections.victimsKillers && (
+                    <div className="relative group mt-6">
+                        <div className="absolute -top-3 right-0 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                                onClick={() => togglePlayerSection('victimsKillers')}
+                                className="p-1 px-2.5 rounded-lg bg-black/80 hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-white/10 text-[10px] font-bold uppercase flex items-center gap-1 shadow-md transition-all"
+                                title="Ocultar Vítimas & Algozes"
+                            >
+                                <EyeOff size={11} />
+                                <span>Ocultar Vítimas & Algozes</span>
+                            </button>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="bg-[#0e0e11] p-6 rounded-3xl border border-gray-800 shadow-xl flex flex-col">
+                                <h3 className="text-[11px] font-black text-white uppercase mb-6 flex items-center gap-3 tracking-widest"><Crosshair size={16} className="text-green-500" /> MAIORES VÍTIMAS</h3>
+                                <div className="space-y-4 flex-1">
+                                     {stats.topVictims.length > 0 ? stats.topVictims.map((victim, i) => (
+                                         <div key={i} className="space-y-2">
+                                             <div className="flex justify-between items-end">
+                                                 <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">{victim.name}</span>
+                                                 <span className="text-xs font-black text-green-500 italic">{victim.count} ABATES</span>
+                                             </div>
+                                             <div className="w-full h-1.5 bg-black rounded-full overflow-hidden border border-white/5">
+                                                 <div className="h-full bg-gradient-to-r from-green-600 to-green-400 rounded-full" style={{ width: `${(victim.count / (stats.topVictims[0]?.count || 1)) * 100}%` }}></div>
+                                             </div>
+                                         </div>
+                                     )) : (
+                                         <div className="flex-1 flex items-center justify-center text-gray-700 font-black italic uppercase text-[10px]">Sem vítimas registradas</div>
+                                     )}
+                                </div>
+                            </div>
+
+                            <div className="bg-[#0e0e11] p-6 rounded-3xl border border-gray-800 shadow-xl flex flex-col">
+                                <h3 className="text-[11px] font-black text-white uppercase mb-6 flex items-center gap-3 tracking-widest"><Skull size={16} className="text-red-500" /> MAIORES ALGOZES</h3>
+                                <div className="space-y-4 flex-1">
+                                     {stats.topKillers.length > 0 ? stats.topKillers.map((killer, i) => (
+                                         <div key={i} className="space-y-2">
+                                             <div className="flex justify-between items-end">
+                                                 <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">{killer.name}</span>
+                                                 <span className="text-xs font-black text-red-500 italic">{killer.count} MORTES</span>
+                                             </div>
+                                             <div className="w-full h-1.5 bg-black rounded-full overflow-hidden border border-white/5">
+                                                 <div className="h-full bg-gradient-to-r from-red-600 to-red-400 rounded-full" style={{ width: `${(killer.count / (stats.topKillers[0]?.count || 1)) * 100}%` }}></div>
+                                             </div>
+                                         </div>
+                                     )) : (
+                                         <div className="flex-1 flex items-center justify-center text-gray-700 font-black italic uppercase text-[10px]">Sem mortes registradas</div>
+                                     )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    )}
+                </>
+            )}
+
+            {/* Loadout Competitivo: Configuração Atual */}
+            {playerVisibleSections.loadout && (profileSubTab === 'all' || profileSubTab === 'overview' || profileSubTab === 'history') && stats.loadout && (
+                <div className="bg-[#0e0e11] p-8 rounded-3xl border border-gray-800 shadow-xl relative group">
+                    <div className="flex items-center justify-between mb-8 border-b border-white/5 pb-4">
+                        <h3 className="text-sm font-black text-white uppercase flex items-center gap-3 tracking-widest"><Zap size={18} className="text-yellow-500" /> CONFIGURAÇÃO ATUAL</h3>
+                        <div className="flex items-center gap-3">
+                            <span className="text-[10px] text-gray-500 font-mono italic">ÚLTIMA QUEDA: Q{stats.loadout.Q}</span>
+                            <button
+                                onClick={() => togglePlayerSection('loadout')}
+                                className="p-1 px-2.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-white/5 text-[9px] font-bold uppercase flex items-center gap-1 transition-all"
+                                title="Ocultar Configuração Atual"
+                            >
+                                <EyeOff size={11} />
+                                <span>Ocultar</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div className="flex flex-wrap gap-4 justify-between">
+                         <PremiumLoadoutCard title="ATIVA" name={stats.loadout.Hab1} img={stats.loadout.hab1Img} highlight />
+                         <PremiumLoadoutCard title="HAB 2" name={stats.loadout.Hab2} img={stats.loadout.hab2Img} />
+                         <PremiumLoadoutCard title="HAB 3" name={stats.loadout.Hab3} img={stats.loadout.hab3Img} />
+                         <PremiumLoadoutCard title="HAB 4" name={stats.loadout.Hab4} img={stats.loadout.hab4Img} />
+                         <PremiumLoadoutCard title="PET" name={stats.loadout.Pet} img={stats.loadout.petImg} />
+                         <PremiumLoadoutCard title="ITEM" name={stats.loadout.Item} img={stats.loadout.itemImg} />
+                    </div>
+                </div>
+            )}
+
+            {/* Histórico Completo de Personagens por Queda */}
+            {playerVisibleSections.characterHistory && (profileSubTab === 'all' || profileSubTab === 'overview' || profileSubTab === 'history') && (() => {
+                const history = getPlayerCharacterHistory(data, playerName);
+                if (history.length === 0) return null;
+
+                const hab1Counts: Record<string, number> = {};
+                const petCounts: Record<string, number> = {};
+                const itemCounts: Record<string, number> = {};
+
+                history.forEach(h => {
+                    if (h.hab1) hab1Counts[h.hab1] = (hab1Counts[h.hab1] || 0) + 1;
+                    if (h.pet) petCounts[h.pet] = (petCounts[h.pet] || 0) + 1;
+                    if (h.item) itemCounts[h.item] = (itemCounts[h.item] || 0) + 1;
+                });
+
+                const totalQuedas = history.length;
+
+                return (
+                    <div className="bg-[#0e0e11] p-8 rounded-3xl border border-gray-800 shadow-2xl space-y-8 mt-6 relative group">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-6">
+                            <div>
+                                <h3 className="text-lg font-black text-white uppercase italic tracking-tight flex items-center gap-3">
+                                    <Sparkles size={20} className="text-yellow-500 animate-pulse" />
+                                    HISTÓRICO DE PERSONAGENS UTILIZADOS
+                                </h3>
+                                <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mt-1">
+                                    Acompanhe a variação de habilidades ativas, passivas, pets e itens em todas as {totalQuedas} quedas disputadas pelo jogador
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <div className="bg-yellow-500/10 border border-yellow-500/30 px-4 py-2 rounded-2xl flex items-center gap-2">
+                                    <span className="text-[10px] font-black text-yellow-500 uppercase tracking-widest">TOTAL REGISTRADO:</span>
+                                    <span className="text-sm font-black text-white italic">{totalQuedas} Quedas</span>
+                                </div>
+                                <button
+                                    onClick={() => togglePlayerSection('characterHistory')}
+                                    className="p-1.5 px-2.5 rounded-xl bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-white/10 text-[10px] font-bold uppercase flex items-center gap-1.5 transition-all"
+                                    title="Ocultar Histórico de Personagens"
+                                >
+                                    <EyeOff size={12} />
+                                    <span>Ocultar</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Preferências Frequentes do Jogador */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-black/40 p-4 rounded-2xl border border-white/5">
+                            <div className="bg-black/60 p-3.5 rounded-xl border border-white/5">
+                                <span className="text-[9px] font-black text-yellow-500 uppercase tracking-widest block mb-2 flex items-center gap-1.5">
+                                    <Zap size={12} /> ATIVAS FAVORITAS
+                                </span>
+                                <div className="space-y-1.5">
+                                    {Object.entries(hab1Counts).sort((a,b) => b[1] - a[1]).map(([hab, count]) => {
+                                        const pct = ((count / totalQuedas) * 100).toFixed(0);
+                                        return (
+                                            <div key={hab} className="flex justify-between items-center text-xs">
+                                                <span className="font-black text-white italic uppercase">{hab}</span>
+                                                <span className="text-yellow-500 font-bold text-[10px]">{count}x ({pct}%)</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            <div className="bg-black/60 p-3.5 rounded-xl border border-white/5">
+                                <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest block mb-2 flex items-center gap-1.5">
+                                    <Shield size={12} /> PETS FAVORITOS
+                                </span>
+                                <div className="space-y-1.5">
+                                    {Object.entries(petCounts).sort((a,b) => b[1] - a[1]).map(([pet, count]) => {
+                                        const pct = ((count / totalQuedas) * 100).toFixed(0);
+                                        return (
+                                            <div key={pet} className="flex justify-between items-center text-xs">
+                                                <span className="font-black text-gray-300 uppercase">{pet}</span>
+                                                <span className="text-blue-400 font-bold text-[10px]">{count}x ({pct}%)</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            <div className="bg-black/60 p-3.5 rounded-xl border border-white/5">
+                                <span className="text-[9px] font-black text-orange-400 uppercase tracking-widest block mb-2 flex items-center gap-1.5">
+                                    <Flame size={12} /> ITENS FAVORITOS
+                                </span>
+                                <div className="space-y-1.5">
+                                    {Object.entries(itemCounts).sort((a,b) => b[1] - a[1]).map(([item, count]) => {
+                                        const pct = ((count / totalQuedas) * 100).toFixed(0);
+                                        return (
+                                            <div key={item} className="flex justify-between items-center text-xs">
+                                                <span className="font-black text-gray-300 uppercase">{item}</span>
+                                                <span className="text-orange-400 font-bold text-[10px]">{count}x ({pct}%)</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Lista de Quedas com Loadouts */}
+                        <div className="space-y-4">
+                            {history.map((h, hIdx) => (
+                                <div key={hIdx} className="bg-black/50 p-5 rounded-2xl border border-gray-800 hover:border-yellow-500/30 transition-all flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+                                    <div className="flex items-center gap-4 min-w-[200px]">
+                                        <div className="w-12 h-12 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center font-black text-yellow-500 text-xs flex-shrink-0">
+                                            Q{h.q}
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs font-black text-white italic uppercase">RD {h.rd} • QUEDA {h.q}</span>
+                                            </div>
+                                            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block mt-0.5">{h.mapa}</span>
+                                            {(h.kills !== undefined || h.damage !== undefined) && (
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    {h.kills !== undefined && <span className="text-[10px] font-black text-red-500 italic">{h.kills} Kills</span>}
+                                                    {h.damage !== undefined && <span className="text-[10px] font-bold text-gray-500 italic">{h.damage} Dano</span>}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="flex-1 w-full flex items-center gap-3 overflow-x-auto pb-2 custom-scrollbar">
+                                        <PremiumLoadoutCard title="ATIVA" name={h.hab1} img={h.hab1Img} highlight />
+                                        <PremiumLoadoutCard title="HAB 2" name={h.hab2} img={h.hab2Img} />
+                                        <PremiumLoadoutCard title="HAB 3" name={h.hab3} img={h.hab3Img} />
+                                        <PremiumLoadoutCard title="HAB 4" name={h.hab4} img={h.hab4Img} />
+                                        <PremiumLoadoutCard title="PET" name={h.pet} img={h.petImg} />
+                                        <PremiumLoadoutCard title="ITEM" name={h.item} img={h.itemImg} />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            })()}
+
+            {/* Aviso quando o detalhamento está oculto */}
+            {!showDetails && (profileSubTab === 'all' || profileSubTab === 'zeradas' || profileSubTab === 'rounds') && (
+                <div className="bg-[#121215] p-5 rounded-2xl border border-white/5 text-center flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                        <Info size={18} className="text-yellow-500 flex-shrink-0" />
+                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider text-left">
+                            O detalhamento avançado de Quedas Zeradas e Matriz por Rodada está <strong className="text-red-400">oculto</strong> no momento.
+                        </span>
+                    </div>
+                    <button
+                        onClick={() => setShowDetails(true)}
+                        className="px-4 py-2 rounded-xl bg-emerald-500 text-black font-black text-xs uppercase tracking-wider hover:bg-emerald-400 transition-all shadow-lg flex items-center gap-2 flex-shrink-0"
+                    >
+                        <Eye size={14} /> Expandir Detalhamento
+                    </button>
+                </div>
+            )}
+
+            {/* Detalhamento de Quedas Zeradas */}
             {playerVisibleSections.zeradas && showDetails && (profileSubTab === 'all' || profileSubTab === 'zeradas') && (
-                <div className="bg-[#0e0e11] p-6 rounded-3xl border border-red-900/30 shadow-2xl space-y-6">
+                <div className="bg-[#0e0e11] p-6 rounded-3xl border border-red-900/30 shadow-2xl space-y-6 relative group">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-4">
                         <div>
                             <h3 className="text-lg font-black text-white uppercase italic tracking-tight flex items-center gap-3">
@@ -6712,9 +7237,19 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                                 Análise aprofundada de todas as partidas em que o jogador finalizou sem abates
                             </p>
                         </div>
-                        <div className="bg-red-500/10 border border-red-500/30 px-4 py-2 rounded-2xl flex items-center gap-2">
-                            <span className="text-[10px] font-black text-red-400 uppercase tracking-widest">Frequência Zerada:</span>
-                            <span className="text-sm font-black text-red-500 italic">{stats.zeroKillsPct}% das Quedas</span>
+                        <div className="flex items-center gap-3">
+                            <div className="bg-red-500/10 border border-red-500/30 px-4 py-2 rounded-2xl flex items-center gap-2">
+                                <span className="text-[10px] font-black text-red-400 uppercase tracking-widest">Frequência Zerada:</span>
+                                <span className="text-sm font-black text-red-500 italic">{stats.zeroKillsPct}% das Quedas</span>
+                            </div>
+                            <button
+                                onClick={() => togglePlayerSection('zeradas')}
+                                className="p-1.5 px-2.5 rounded-xl bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-white/10 text-[10px] font-bold uppercase flex items-center gap-1.5 transition-all"
+                                title="Ocultar Quedas Zeradas"
+                            >
+                                <EyeOff size={12} />
+                                <span>Ocultar</span>
+                            </button>
                         </div>
                     </div>
 
@@ -6834,8 +7369,9 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                 </div>
             )}
 
+            {/* Detalhamento de Quedas por Rodada (Matriz RD x Q) */}
             {playerVisibleSections.rounds && showDetails && (profileSubTab === 'all' || profileSubTab === 'rounds') && (
-                <div className="bg-[#0e0e11] p-6 rounded-3xl border border-blue-900/30 shadow-2xl space-y-6">
+                <div className="bg-[#0e0e11] p-6 rounded-3xl border border-blue-900/30 shadow-2xl space-y-6 relative group">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-4">
                         <div>
                             <h3 className="text-lg font-black text-white uppercase italic tracking-tight flex items-center gap-3">
@@ -6846,9 +7382,19 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                                 Desempenho partida por partida em cada rodada disputada pelo jogador
                             </p>
                         </div>
-                        <div className="bg-blue-500/10 border border-blue-500/30 px-4 py-2 rounded-2xl flex items-center gap-2">
-                            <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Total Rodadas:</span>
-                            <span className="text-sm font-black text-white italic">{stats.sortedRoundsMatrix.length} Rodadas</span>
+                        <div className="flex items-center gap-3">
+                            <div className="bg-blue-500/10 border border-blue-500/30 px-4 py-2 rounded-2xl flex items-center gap-2">
+                                <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Total Rodadas:</span>
+                                <span className="text-sm font-black text-white italic">{stats.sortedRoundsMatrix.length} Rodadas</span>
+                            </div>
+                            <button
+                                onClick={() => togglePlayerSection('rounds')}
+                                className="p-1.5 px-2.5 rounded-xl bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-white/10 text-[10px] font-bold uppercase flex items-center gap-1.5 transition-all"
+                                title="Ocultar Matriz por Rodada"
+                            >
+                                <EyeOff size={12} />
+                                <span>Ocultar</span>
+                            </button>
                         </div>
                     </div>
 
@@ -6977,328 +7523,26 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                 </div>
             )}
 
-            {(profileSubTab === 'all' || profileSubTab === 'overview') && (
-                <>
-                    {playerVisibleSections.overviewMetrics && (
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                        <div className="bg-[#1a1a1a] p-4 rounded-2xl border border-gray-800 flex flex-col items-center">
-                            <span className="text-[9px] text-gray-500 font-black uppercase tracking-widest mb-1">Dano Médio</span>
-                            <span className="text-xl font-black text-white italic">{stats.avgDmg}</span>
-                        </div>
-                        <div className="bg-[#1a1a1a] p-4 rounded-2xl border border-gray-800 flex flex-col items-center">
-                            <span className="text-[9px] text-gray-500 font-black uppercase tracking-widest mb-1">% Headshot</span>
-                            <span className="text-xl font-black text-yellow-500 italic">
-                                {stats.kills > 0 ? ((stats.hs / stats.kills) * 100).toFixed(1) : '0.0'}%
-                            </span>
-                        </div>
-                        <div className="bg-[#1a1a1a] p-4 rounded-2xl border border-gray-800 flex flex-col items-center">
-                            <span className="text-[9px] text-gray-500 font-black uppercase tracking-widest mb-1">Knocks/Kills</span>
-                            <span className="text-xl font-black text-orange-500 italic">
-                                {stats.kills > 0 ? (stats.knocks / stats.kills).toFixed(2) : '0.00'}
-                            </span>
-                        </div>
-                        <div className="bg-[#1a1a1a] p-4 rounded-2xl border border-gray-800 flex flex-col items-center">
-                            <span className="text-[9px] text-gray-500 font-black uppercase tracking-widest mb-1">% Contribuição</span>
-                            <span className="text-xl font-black text-blue-400 italic">{stats.killContributionPct}%</span>
-                        </div>
-                        <div className="bg-[#1a1a1a] p-4 rounded-2xl border border-gray-800 flex flex-col items-center">
-                            <span className="text-[9px] text-gray-500 font-black uppercase tracking-widest mb-1">Participação</span>
-                            <span className="text-xl font-black text-blue-400 italic">
-                                {stats.kills + stats.assists}
-                            </span>
-                        </div>
+            {/* Análise KPM (KPM por Minuto & KPM por Safe) */}
+            {(profileSubTab === 'all' || profileSubTab === 'kpm') && playerVisibleSections.kpm && (
+                <div className="space-y-6 pt-2 relative group">
+                    <div className="flex justify-end mb-2">
+                        <button
+                            onClick={() => togglePlayerSection('kpm')}
+                            className="p-1.5 px-2.5 rounded-xl bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-white/10 text-[10px] font-bold uppercase flex items-center gap-1.5 transition-all"
+                            title="Ocultar Análise KPM"
+                        >
+                            <EyeOff size={12} />
+                            <span>Ocultar KPM</span>
+                        </button>
                     </div>
-                    )}
-
-                    {playerVisibleSections.radar && (
-                    <PlayerRadarComponent 
-                        p1Stats={stats} 
-                        p1Name={playerName} 
-                        title={`GRÁFICO RADAR DE DESEMPENHO: ${playerName}`} 
+                    <PlayerKpmAnalysis 
+                        data={data} 
+                        selectedPlayer={playerName} 
+                        singlePlayerOnly={true}
+                        hideTopControls={true} 
                     />
-                    )}
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {playerVisibleSections.maps && (
-                        <div className="bg-[#0e0e11] p-6 rounded-3xl border border-gray-800 shadow-xl flex flex-col">
-                            <h3 className="text-[11px] font-black text-white uppercase mb-6 flex items-center gap-3 tracking-widest"><MapIcon size={16} className="text-yellow-500" /> PERFORMANCE POR MAPA</h3>
-                            <div className="space-y-4 flex-1">
-                                 {stats.mapKills.length > 0 ? stats.mapKills.map((map, i) => {
-                                     const mapDmg = stats.mapDamage.find(md => md.name === map.name)?.count || 0;
-                                     return (
-                                     <div key={i} className="space-y-2">
-                                         <div className="flex justify-between items-end">
-                                             <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">{map.name}</span>
-                                             <div className="flex gap-3">
-                                                 <span className="text-[10px] font-black text-gray-400 italic uppercase">{mapDmg} DANO</span>
-                                                 <span className="text-xs font-black text-white italic">{map.count} KILLS</span>
-                                             </div>
-                                         </div>
-                                         <div className="w-full h-1.5 bg-black rounded-full overflow-hidden border border-white/5">
-                                             <div className="h-full bg-gradient-to-r from-yellow-600 to-yellow-400 rounded-full" style={{ width: `${(map.count / (stats.kills || 1)) * 100}%` }}></div>
-                                         </div>
-                                     </div>
-                                 )}) : (
-                                     <div className="flex-1 flex items-center justify-center text-gray-700 font-black italic uppercase text-[10px]">Sem dados de mapas</div>
-                                 )}
-                            </div>
-                        </div>
-                        )}
-
-                        {playerVisibleSections.roundKills && (
-                        <div className="bg-[#0e0e11] p-6 rounded-3xl border border-gray-800 shadow-xl flex flex-col">
-                            <h3 className="text-[11px] font-black text-white uppercase mb-6 flex items-center gap-3 tracking-widest"><Hash size={16} className="text-blue-400" /> ABATES POR RODADA</h3>
-                            <div className="space-y-4 flex-1">
-                                 {stats.roundKills.length > 0 ? stats.roundKills.map((rd, i) => (
-                                     <div key={i} className="space-y-2">
-                                         <div className="flex justify-between items-end">
-                                             <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">{rd.name}</span>
-                                             <span className="text-xs font-black text-white italic">{rd.count} KILLS</span>
-                                         </div>
-                                         <div className="w-full h-1.5 bg-black rounded-full overflow-hidden border border-white/5">
-                                             <div className="h-full bg-gradient-to-r from-blue-600 to-blue-400 rounded-full" style={{ width: `${(rd.count / (stats.kills || 1)) * 100}%` }}></div>
-                                         </div>
-                                     </div>
-                                 )) : (
-                                     <div className="flex-1 flex items-center justify-center text-gray-700 font-black italic uppercase text-[10px]">Sem registros de rodada</div>
-                                 )}
-                            </div>
-                        </div>
-                        )}
-
-                        {playerVisibleSections.dropKills && (
-                        <div className="bg-[#0e0e11] p-6 rounded-3xl border border-gray-800 shadow-xl flex flex-col">
-                            <h3 className="text-[11px] font-black text-white uppercase mb-6 flex items-center gap-3 tracking-widest"><TargetIcon size={16} className="text-yellow-400" /> ABATES POR QUEDA (Q)</h3>
-                            <div className="space-y-4 flex-1">
-                                 {stats.dropKills.length > 0 ? stats.dropKills.map((q, i) => (
-                                     <div key={i} className="space-y-2">
-                                         <div className="flex justify-between items-end">
-                                             <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">PARTIDA {q.name}</span>
-                                             <span className="text-xs font-black text-yellow-400 italic">{q.count} KILLS</span>
-                                         </div>
-                                         <div className="w-full h-1.5 bg-black rounded-full overflow-hidden border border-white/5">
-                                             <div className="h-full bg-gradient-to-r from-yellow-700 to-yellow-500 rounded-full" style={{ width: `${(q.count / (stats.kills || 1)) * 100}%` }}></div>
-                                         </div>
-                                     </div>
-                                 )) : (
-                                     <div className="flex-1 flex items-center justify-center text-gray-700 font-black italic uppercase text-[10px]">Sem registros de quedas</div>
-                                 )}
-                            </div>
-                        </div>
-                        )}
-
-                        {playerVisibleSections.safeKills && (
-                        <div className="bg-[#0e0e11] p-6 rounded-3xl border border-gray-800 shadow-xl flex flex-col">
-                            <h3 className="text-[11px] font-black text-white uppercase mb-6 flex items-center gap-3 tracking-widest"><Disc size={16} className="text-red-500" /> ABATES POR SAFE</h3>
-                            <div className="space-y-4 flex-1">
-                                 {stats.safeKills.length > 0 ? stats.safeKills.map((safe, i) => (
-                                     <div key={i} className="space-y-2">
-                                         <div className="flex justify-between items-end">
-                                             <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">SAFE {safe.name}</span>
-                                             <span className="text-xs font-black text-red-500 italic">{safe.count} KILLS</span>
-                                         </div>
-                                         <div className="w-full h-1.5 bg-black rounded-full overflow-hidden border border-white/5">
-                                             <div className="h-full bg-gradient-to-r from-red-600 to-red-400 rounded-full" style={{ width: `${(safe.count / (stats.safeKills.reduce((a,b) => a + b.count, 0) || 1)) * 100}%` }}></div>
-                                         </div>
-                                     </div>
-                                 )) : (
-                                     <div className="flex-1 flex items-center justify-center text-gray-700 font-black italic uppercase text-[10px]">Sem registros no KillFeed</div>
-                                 )}
-                            </div>
-                        </div>
-                        )}
-                    </div>
-
-                    {playerVisibleSections.victimsKillers && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-                        <div className="bg-[#0e0e11] p-6 rounded-3xl border border-gray-800 shadow-xl flex flex-col">
-                            <h3 className="text-[11px] font-black text-white uppercase mb-6 flex items-center gap-3 tracking-widest"><Crosshair size={16} className="text-green-500" /> MAIORES VÍTIMAS</h3>
-                            <div className="space-y-4 flex-1">
-                                 {stats.topVictims.length > 0 ? stats.topVictims.map((victim, i) => (
-                                     <div key={i} className="space-y-2">
-                                         <div className="flex justify-between items-end">
-                                             <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">{victim.name}</span>
-                                             <span className="text-xs font-black text-green-500 italic">{victim.count} ABATES</span>
-                                         </div>
-                                         <div className="w-full h-1.5 bg-black rounded-full overflow-hidden border border-white/5">
-                                             <div className="h-full bg-gradient-to-r from-green-600 to-green-400 rounded-full" style={{ width: `${(victim.count / (stats.topVictims[0]?.count || 1)) * 100}%` }}></div>
-                                         </div>
-                                     </div>
-                                 )) : (
-                                     <div className="flex-1 flex items-center justify-center text-gray-700 font-black italic uppercase text-[10px]">Sem vítimas registradas</div>
-                                 )}
-                            </div>
-                        </div>
-
-                        <div className="bg-[#0e0e11] p-6 rounded-3xl border border-gray-800 shadow-xl flex flex-col">
-                            <h3 className="text-[11px] font-black text-white uppercase mb-6 flex items-center gap-3 tracking-widest"><Skull size={16} className="text-red-500" /> MAIORES ALGOZES</h3>
-                            <div className="space-y-4 flex-1">
-                                 {stats.topKillers.length > 0 ? stats.topKillers.map((killer, i) => (
-                                     <div key={i} className="space-y-2">
-                                         <div className="flex justify-between items-end">
-                                             <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">{killer.name}</span>
-                                             <span className="text-xs font-black text-red-500 italic">{killer.count} MORTES</span>
-                                         </div>
-                                         <div className="w-full h-1.5 bg-black rounded-full overflow-hidden border border-white/5">
-                                             <div className="h-full bg-gradient-to-r from-red-600 to-red-400 rounded-full" style={{ width: `${(killer.count / (stats.topKillers[0]?.count || 1)) * 100}%` }}></div>
-                                         </div>
-                                     </div>
-                                 )) : (
-                                     <div className="flex-1 flex items-center justify-center text-gray-700 font-black italic uppercase text-[10px]">Sem mortes registradas</div>
-                                 )}
-                            </div>
-                        </div>
-                    </div>
-                    )}
-                </>
-            )}
-
-            {/* Loadout Competitivo & Histórico Completo */}
-            {playerVisibleSections.loadout && (profileSubTab === 'all' || profileSubTab === 'overview' || profileSubTab === 'history') && (
-                <>
-                    {stats.loadout && (
-                        <div className="bg-[#0e0e11] p-8 rounded-3xl border border-gray-800 shadow-xl">
-                            <div className="flex items-center justify-between mb-8 border-b border-white/5 pb-4">
-                                <h3 className="text-sm font-black text-white uppercase flex items-center gap-3 tracking-widest"><Zap size={18} className="text-yellow-500" /> CONFIGURAÇÃO ATUAL</h3>
-                                <span className="text-[10px] text-gray-500 font-mono italic">ÚLTIMA QUEDA: Q{stats.loadout.Q}</span>
-                            </div>
-                            <div className="flex flex-wrap gap-4 justify-between">
-                                 <PremiumLoadoutCard title="ATIVA" name={stats.loadout.Hab1} img={stats.loadout.hab1Img} highlight />
-                                 <PremiumLoadoutCard title="HAB 2" name={stats.loadout.Hab2} img={stats.loadout.hab2Img} />
-                                 <PremiumLoadoutCard title="HAB 3" name={stats.loadout.Hab3} img={stats.loadout.hab3Img} />
-                                 <PremiumLoadoutCard title="HAB 4" name={stats.loadout.Hab4} img={stats.loadout.hab4Img} />
-                                 <PremiumLoadoutCard title="PET" name={stats.loadout.Pet} img={stats.loadout.petImg} />
-                                 <PremiumLoadoutCard title="ITEM" name={stats.loadout.Item} img={stats.loadout.itemImg} />
-                            </div>
-                        </div>
-                    )}
-
-            {/* Histórico Completo de Personagens por Queda */}
-            {(() => {
-                const history = getPlayerCharacterHistory(data, playerName);
-                if (history.length === 0) return null;
-
-                const hab1Counts: Record<string, number> = {};
-                const petCounts: Record<string, number> = {};
-                const itemCounts: Record<string, number> = {};
-
-                history.forEach(h => {
-                    if (h.hab1) hab1Counts[h.hab1] = (hab1Counts[h.hab1] || 0) + 1;
-                    if (h.pet) petCounts[h.pet] = (petCounts[h.pet] || 0) + 1;
-                    if (h.item) itemCounts[h.item] = (itemCounts[h.item] || 0) + 1;
-                });
-
-                const totalQuedas = history.length;
-
-                return (
-                    <div className="bg-[#0e0e11] p-8 rounded-3xl border border-gray-800 shadow-2xl space-y-8 mt-6">
-                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-6">
-                            <div>
-                                <h3 className="text-lg font-black text-white uppercase italic tracking-tight flex items-center gap-3">
-                                    <Sparkles size={20} className="text-yellow-500 animate-pulse" />
-                                    HISTÓRICO DE PERSONAGENS UTILIZADOS
-                                </h3>
-                                <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mt-1">
-                                    Acompanhe a variação de habilidades ativas, passivas, pets e itens em todas as {totalQuedas} quedas disputadas pelo jogador
-                                </p>
-                            </div>
-                            <div className="bg-yellow-500/10 border border-yellow-500/30 px-4 py-2 rounded-2xl flex items-center gap-2">
-                                <span className="text-[10px] font-black text-yellow-500 uppercase tracking-widest">TOTAL REGISTRADO:</span>
-                                <span className="text-sm font-black text-white italic">{totalQuedas} Quedas</span>
-                            </div>
-                        </div>
-
-                        {/* Preferências Frequentes do Jogador */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-black/40 p-4 rounded-2xl border border-white/5">
-                            <div className="bg-black/60 p-3.5 rounded-xl border border-white/5">
-                                <span className="text-[9px] font-black text-yellow-500 uppercase tracking-widest block mb-2 flex items-center gap-1.5">
-                                    <Zap size={12} /> ATIVAS FAVORITAS
-                                </span>
-                                <div className="space-y-1.5">
-                                    {Object.entries(hab1Counts).sort((a,b) => b[1] - a[1]).map(([hab, count]) => {
-                                        const pct = ((count / totalQuedas) * 100).toFixed(0);
-                                        return (
-                                            <div key={hab} className="flex justify-between items-center text-xs">
-                                                <span className="font-black text-white italic uppercase">{hab}</span>
-                                                <span className="text-yellow-500 font-bold text-[10px]">{count}x ({pct}%)</span>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-
-                            <div className="bg-black/60 p-3.5 rounded-xl border border-white/5">
-                                <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest block mb-2 flex items-center gap-1.5">
-                                    <Shield size={12} /> PETS FAVORITOS
-                                </span>
-                                <div className="space-y-1.5">
-                                    {Object.entries(petCounts).sort((a,b) => b[1] - a[1]).map(([pet, count]) => {
-                                        const pct = ((count / totalQuedas) * 100).toFixed(0);
-                                        return (
-                                            <div key={pet} className="flex justify-between items-center text-xs">
-                                                <span className="font-black text-gray-300 uppercase">{pet}</span>
-                                                <span className="text-blue-400 font-bold text-[10px]">{count}x ({pct}%)</span>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-
-                            <div className="bg-black/60 p-3.5 rounded-xl border border-white/5">
-                                <span className="text-[9px] font-black text-orange-400 uppercase tracking-widest block mb-2 flex items-center gap-1.5">
-                                    <Flame size={12} /> ITENS FAVORITOS
-                                </span>
-                                <div className="space-y-1.5">
-                                    {Object.entries(itemCounts).sort((a,b) => b[1] - a[1]).map(([item, count]) => {
-                                        const pct = ((count / totalQuedas) * 100).toFixed(0);
-                                        return (
-                                            <div key={item} className="flex justify-between items-center text-xs">
-                                                <span className="font-black text-gray-300 uppercase">{item}</span>
-                                                <span className="text-orange-400 font-bold text-[10px]">{count}x ({pct}%)</span>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Lista de Quedas com Loadouts */}
-                        <div className="space-y-4">
-                            {history.map((h, hIdx) => (
-                                <div key={hIdx} className="bg-black/50 p-5 rounded-2xl border border-gray-800 hover:border-yellow-500/30 transition-all flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
-                                    <div className="flex items-center gap-4 min-w-[200px]">
-                                        <div className="w-12 h-12 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center font-black text-yellow-500 text-xs flex-shrink-0">
-                                            Q{h.q}
-                                        </div>
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-xs font-black text-white italic uppercase">RD {h.rd} • QUEDA {h.q}</span>
-                                            </div>
-                                            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block mt-0.5">{h.mapa}</span>
-                                            {(h.kills !== undefined || h.damage !== undefined) && (
-                                                <div className="flex items-center gap-2 mt-1">
-                                                    {h.kills !== undefined && <span className="text-[10px] font-black text-red-500 italic">{h.kills} Kills</span>}
-                                                    {h.damage !== undefined && <span className="text-[10px] font-bold text-gray-500 italic">{h.damage} Dano</span>}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    <div className="flex-1 w-full flex items-center gap-3 overflow-x-auto pb-2 custom-scrollbar">
-                                        <PremiumLoadoutCard title="ATIVA" name={h.hab1} img={h.hab1Img} highlight />
-                                        <PremiumLoadoutCard title="HAB 2" name={h.hab2} img={h.hab2Img} />
-                                        <PremiumLoadoutCard title="HAB 3" name={h.hab3} img={h.hab3Img} />
-                                        <PremiumLoadoutCard title="HAB 4" name={h.hab4} img={h.hab4Img} />
-                                        <PremiumLoadoutCard title="PET" name={h.pet} img={h.petImg} />
-                                        <PremiumLoadoutCard title="ITEM" name={h.item} img={h.itemImg} />
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                );
-            })()}
-                </>
+                </div>
             )}
         </div>
     );

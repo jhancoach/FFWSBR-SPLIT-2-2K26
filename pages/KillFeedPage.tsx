@@ -43,6 +43,28 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
 
   const normalize = (val: string | undefined) => (val || '').trim().toUpperCase();
 
+  const matchRd = (filterVal: string, itemVal: string | undefined | null): boolean => {
+    if (!itemVal) return false;
+    const normF = normalize(filterVal);
+    const normI = normalize(itemVal);
+    if (normF === normI) return true;
+    const numF = normF.replace(/\D/g, '');
+    const numI = normI.replace(/\D/g, '');
+    if (numF && numI && numF === numI) return true;
+    return false;
+  };
+
+  const matchQ = (filterVal: string, itemVal: string | undefined | null): boolean => {
+    if (!itemVal) return false;
+    const normF = normalize(filterVal);
+    const normI = normalize(itemVal);
+    if (normF === normI) return true;
+    const numF = normF.replace(/\D/g, '');
+    const numI = normI.replace(/\D/g, '');
+    if (numF && numI && numF === numI) return true;
+    return false;
+  };
+
   // Mapeamento de Jogador para Time
   const playerToTeamMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -93,8 +115,8 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
 
       if (filters.map.length > 0 && !filters.map.some(m => normalize(m) === normalize(k.MAPA))) return false;
       
-      const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => normalize(r) === normalize(k.RD));
-      const matchQ = filters.queda.length === 0 || filters.queda.some(q => normalize(q) === normalize(k.Q));
+      const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => matchRd(r, k.RD));
+      const matchQ = filters.queda.length === 0 || filters.queda.some(q => matchQ(q, k.Q));
       if (!(matchRD && matchQ)) return false;
 
       if (filters.confrontation.length > 0 && !filters.confrontation.some(c => normalize(c) === normalize(k.CONFRONTO))) return false;
