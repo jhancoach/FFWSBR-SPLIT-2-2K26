@@ -103,8 +103,11 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
     );
 
     const maps = Array.from(new Set([...data.players.map(p => p.MAPA), ...data.killFeed.map(k => k.MAPA)])).filter(Boolean).sort();
-    const rounds = Array.from(new Set([...data.players.map(p => p.RD), ...data.killFeed.map(k => k.RD)])).filter(Boolean).sort();
-    const quedas = Array.from(new Set(baseDataForDrops.map(p => p.Q))).filter(Boolean).sort();
+    const rounds = Array.from(new Set([...data.players.map(p => p.RD), ...data.killFeed.map(k => k.RD)])).filter(Boolean).sort((a, b) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0));
+    const quedas = Array.from(new Set([
+        ...baseDataForDrops.map(p => p.Q),
+        ...data.killFeed.filter(k => filters.rodada.length === 0 || filters.rodada.some(r => normalize(r) === normalize(k.RD))).map(k => k.Q)
+    ])).filter(Boolean).sort((a, b) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0));
     const activeHabs = Array.from(new Set(data.characters.map(c => c.Hab1))).filter(Boolean).sort();
     const grupos = Array.from(new Set(data.teamsReference.map(t => t.GRUPO))).filter(Boolean).sort() as string[];
 
@@ -594,23 +597,54 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
 
     const feedKillsMap = new Map<string, number>();
     feedFiltered.forEach(k => {
+        if (!k.PLAYER) return;
         const p = normalize(k.PLAYER);
         feedKillsMap.set(p, (feedKillsMap.get(p) || 0) + 1);
     });
 
-    return rankingData.map(p => {
+    const processed = new Set<string>();
+    const list: any[] = [];
+
+    // Jogadores presentes em Fato
+    rankingData.forEach(p => {
+        const pNorm = normalize(p.name);
+        processed.add(pNorm);
         const factKills = p.kills;
-        const feedKills = feedKillsMap.get(normalize(p.name)) || 0;
+        const feedKills = feedKillsMap.get(pNorm) || 0;
         const diff = factKills - feedKills;
-        return {
+        list.push({
             ...p,
             factKills,
             feedKills,
             diff,
             status: diff === 0 ? 'OK' : 'DISCREPÂNCIA'
-        };
-    }).sort((a,b) => Math.abs(b.diff) - Math.abs(a.diff) || b.factKills - a.factKills);
-  }, [rankingData, data.killFeed, filters, activeTab]);
+        });
+    });
+
+    // Jogadores que eventualmente constam no KillFeed mas não estavam em Fato
+    feedFiltered.forEach(k => {
+        if (!k.PLAYER) return;
+        const pNorm = normalize(k.PLAYER);
+        if (!processed.has(pNorm)) {
+            processed.add(pNorm);
+            const feedKills = feedKillsMap.get(pNorm) || 0;
+            const factKills = 0;
+            const diff = factKills - feedKills;
+            list.push({
+                name: k.PLAYER,
+                playerImg: findDimImg(data.playersDimension, k.PLAYER),
+                teamImg: '',
+                team: 'N/A',
+                factKills,
+                feedKills,
+                diff,
+                status: 'DISCREPÂNCIA'
+            });
+        }
+    });
+
+    return list.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff) || b.factKills - a.factKills || b.feedKills - a.feedKills);
+  }, [rankingData, data.killFeed, data.playersDimension, filters, activeTab]);
 
 
   const activeHabStats = useMemo(() => {
