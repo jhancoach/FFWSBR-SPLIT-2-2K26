@@ -38,6 +38,210 @@ interface PlayerVsPlayerCompareProps {
   activeHabs: string[];
 }
 
+// Componente de Card de Rating Esports para Comparação (Arc Gauge & Médias por Rodada)
+const CompareRatingCard: React.FC<{
+  player: any;
+  colorTheme: 'yellow' | 'blue';
+  tag: string;
+}> = ({ player, colorTheme, tag }) => {
+  if (!player) return null;
+
+  const kills = player.kills || 0;
+  const deaths = player.deaths || 0;
+  const avgKillsPerMatch = player.avg || (player.matches > 0 ? (kills / player.matches).toFixed(2) : '0.00');
+  const avgDeathsPerMatch = player.avgDeathsPerMatch || (player.matches > 0 ? (deaths / player.matches).toFixed(2) : '0.00');
+  const kdRatio = player.kdRatio || player.kd || (deaths > 0 ? (kills / deaths).toFixed(2) : (kills > 0 ? kills.toFixed(2) : '0.00'));
+  const numericKd = typeof kdRatio === 'number' ? kdRatio : parseFloat(String(kdRatio)) || 0;
+
+  const avgKillsPerRound = player.avgKillsPerRound || (player.uniqueRoundsCount ? (kills / player.uniqueRoundsCount).toFixed(2) : avgKillsPerMatch);
+  const avgDamagePerRound = player.avgDamagePerRound || (player.uniqueRoundsCount ? (player.damage / player.uniqueRoundsCount).toFixed(0) : (player.damage || 0));
+  const avgDeathsPerRound = player.avgDeathsPerRound || (player.uniqueRoundsCount ? (deaths / player.uniqueRoundsCount).toFixed(2) : avgDeathsPerMatch);
+
+  // Status tier & colors
+  let tierLabel = 'REGULAR';
+  let tierBg = 'bg-yellow-500/15 border-yellow-500/40 text-yellow-400';
+  let arcStroke = '#eab308';
+
+  if (numericKd >= 2.0) {
+    tierLabel = 'ELITE';
+    tierBg = 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300';
+    arcStroke = '#10b981';
+  } else if (numericKd >= 1.5) {
+    tierLabel = 'EXCELENTE';
+    tierBg = 'bg-green-500/20 border-green-500/50 text-green-300';
+    arcStroke = '#22c55e';
+  } else if (numericKd >= 1.2) {
+    tierLabel = 'MUITO BOM';
+    tierBg = 'bg-lime-500/20 border-lime-500/50 text-lime-300';
+    arcStroke = '#4ade80';
+  } else if (numericKd >= 1.0) {
+    tierLabel = 'BOM';
+    tierBg = 'bg-lime-500/15 border-lime-500/40 text-lime-400';
+    arcStroke = '#84cc16';
+  } else if (numericKd >= 0.8) {
+    tierLabel = 'REGULAR';
+    tierBg = 'bg-yellow-500/15 border-yellow-500/40 text-yellow-400';
+    arcStroke = '#eab308';
+  } else if (numericKd >= 0.5) {
+    tierLabel = 'ABAIXO';
+    tierBg = 'bg-orange-500/15 border-orange-500/40 text-orange-400';
+    arcStroke = '#f97316';
+  } else {
+    tierLabel = 'CRÍTICO';
+    tierBg = 'bg-red-500/15 border-red-500/40 text-red-400';
+    arcStroke = '#ef4444';
+  }
+
+  // SVG Semicircle calculations
+  const radius = 68;
+  const circumference = Math.PI * radius;
+  const progressRatio = Math.min(Math.max(numericKd / 2.5, 0.05), 1);
+  const strokeDashoffset = circumference * (1 - progressRatio);
+
+  const isYellow = colorTheme === 'yellow';
+
+  return (
+    <div className={`bg-[#12141a]/95 p-5 md:p-6 rounded-3xl border ${isYellow ? 'border-yellow-500/30 shadow-yellow-500/5' : 'border-blue-500/30 shadow-blue-500/5'} shadow-2xl relative overflow-hidden backdrop-blur-xl flex flex-col justify-between`}>
+      {/* Background ambient glow */}
+      <div className={`absolute top-0 ${isYellow ? 'right-0 bg-yellow-500/10' : 'left-0 bg-blue-500/10'} w-40 h-40 rounded-full blur-3xl pointer-events-none`} />
+
+      {/* Header Info */}
+      <div className="flex items-center justify-between pb-3 border-b border-white/5 mb-4 relative z-10">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className={`w-10 h-10 rounded-xl bg-black border ${isYellow ? 'border-yellow-500/40' : 'border-blue-500/40'} p-0.5 flex-shrink-0 flex items-center justify-center overflow-hidden`}>
+            {player.img || player.playerImg ? (
+              <img src={player.img || player.playerImg} alt={player.name} className="w-full h-full object-cover rounded-lg" referrerPolicy="no-referrer" />
+            ) : (
+              <User size={20} className={isYellow ? 'text-yellow-500' : 'text-blue-400'} />
+            )}
+          </div>
+          <div className="min-w-0">
+            <span className={`text-[9px] font-black uppercase tracking-widest ${isYellow ? 'text-yellow-500' : 'text-blue-400'} block`}>
+              {tag} • {player.team || 'Sem Equipe'}
+            </span>
+            <span className="text-base font-black text-white uppercase italic truncate block">
+              {player.name}
+            </span>
+          </div>
+        </div>
+        <div className="text-right">
+          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
+            {player.matches || 0} Quedas
+          </span>
+          <span className="text-[9px] font-mono text-gray-500">
+            {player.uniqueRoundsCount || 1} Rodadas
+          </span>
+        </div>
+      </div>
+
+      {/* Main Rating Bar: Abates | Semicircle K/D Gauge | Mortes */}
+      <div className="relative z-10 flex items-center justify-between gap-2 py-2">
+        {/* Left Wing: Abates & Média */}
+        <div className="flex-1 flex flex-col items-center sm:items-end justify-center py-2 px-3 rounded-xl bg-gradient-to-r from-amber-500/15 via-amber-500/5 to-transparent border-l-2 border-amber-500/60">
+          <span className="text-2xl md:text-3xl font-black italic tracking-tight text-amber-400">
+            {typeof avgKillsPerMatch === 'number' ? avgKillsPerMatch.toFixed(2) : avgKillsPerMatch}
+          </span>
+          <div className="text-center sm:text-right">
+            <span className="text-[9px] font-black uppercase tracking-wider text-amber-400 block">
+              MÉDIA ABATES
+            </span>
+            <span className="text-[8px] font-bold text-gray-400 uppercase">
+              {kills} Abates
+            </span>
+          </div>
+        </div>
+
+        {/* Center: Arc Gauge */}
+        <div className="flex-shrink-0 flex flex-col items-center justify-center relative min-w-[150px]">
+          <div className="relative w-[150px] h-[80px] flex items-end justify-center overflow-hidden">
+            <svg className="w-[150px] h-[80px]" viewBox="0 0 160 85">
+              <path
+                d="M 16,80 A 64,64 0 0,1 144,80"
+                fill="none"
+                stroke="#1f2430"
+                strokeWidth="8"
+                strokeLinecap="round"
+              />
+              <path
+                d="M 16,80 A 64,64 0 0,1 144,80"
+                fill="none"
+                stroke={arcStroke}
+                strokeWidth="8"
+                strokeLinecap="round"
+                strokeDasharray={circumference}
+                strokeDashoffset={strokeDashoffset}
+                style={{ transition: 'stroke-dashoffset 0.8s ease-out, stroke 0.4s ease' }}
+              />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-end pb-0.5 pointer-events-none">
+              <span className={`px-2 py-0.2 rounded-full text-[8px] font-black uppercase tracking-widest border mb-0.5 ${tierBg}`}>
+                {tierLabel}
+              </span>
+              <span className="text-2xl md:text-3xl font-black italic tracking-tighter text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]">
+                {typeof kdRatio === 'number' ? kdRatio.toFixed(2) : kdRatio}
+              </span>
+            </div>
+          </div>
+          <span className="text-[9px] font-black uppercase tracking-wider text-gray-400 mt-0.5">
+            RATING K/D
+          </span>
+        </div>
+
+        {/* Right Wing: Mortes & Média */}
+        <div className="flex-1 flex flex-col items-center sm:items-start justify-center py-2 px-3 rounded-xl bg-gradient-to-l from-sky-500/15 via-sky-500/5 to-transparent border-r-2 border-sky-500/60">
+          <span className="text-2xl md:text-3xl font-black italic tracking-tight text-sky-400">
+            {typeof avgDeathsPerMatch === 'number' ? avgDeathsPerMatch.toFixed(2) : avgDeathsPerMatch}
+          </span>
+          <div className="text-center sm:text-left">
+            <span className="text-[9px] font-black uppercase tracking-wider text-sky-400 block">
+              MÉDIA MORTES
+            </span>
+            <span className="text-[8px] font-bold text-gray-400 uppercase">
+              {deaths} Mortes
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Sub-Metrics Section Directly Below the Graphic (Abaixo desse gráfico) */}
+      <div className="pt-3 border-t border-white/10 mt-3">
+        <div className="grid grid-cols-3 gap-2">
+          {/* Média de Abates por Rodada */}
+          <div className="bg-black/50 p-2.5 rounded-xl border border-amber-500/20 text-center">
+            <span className="text-[8px] font-black text-gray-400 uppercase tracking-wider block truncate">
+              Abates / RD
+            </span>
+            <span className="text-sm md:text-base font-black text-amber-400 italic block mt-0.5">
+              {avgKillsPerRound}
+            </span>
+          </div>
+
+          {/* Dano Médio por Rodada */}
+          <div className="bg-black/50 p-2.5 rounded-xl border border-orange-500/20 text-center">
+            <span className="text-[8px] font-black text-gray-400 uppercase tracking-wider block truncate">
+              Dano / RD
+            </span>
+            <span className="text-sm md:text-base font-black text-orange-400 italic block mt-0.5 truncate">
+              {typeof avgDamagePerRound === 'number' ? avgDamagePerRound.toLocaleString('pt-BR') : avgDamagePerRound}
+            </span>
+          </div>
+
+          {/* Média de Mortes por Rodada */}
+          <div className="bg-black/50 p-2.5 rounded-xl border border-sky-500/20 text-center">
+            <span className="text-[8px] font-black text-gray-400 uppercase tracking-wider block truncate">
+              Mortes / RD
+            </span>
+            <span className="text-sm md:text-base font-black text-sky-400 italic block mt-0.5">
+              {avgDeathsPerRound}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
 export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
   comparePlayers,
   setComparePlayers,
@@ -231,6 +435,31 @@ export const PlayerVsPlayerCompare: React.FC<PlayerVsPlayerCompareProps> = ({
 
       {p1 && p2 ? (
         <div className="space-y-8 animate-in fade-in duration-500">
+          {/* ========================================================================= */}
+          {/* RATING HLTV & MÉDIAS POR RODADA (COMPARATIVO ENTRE DESAFIANTES) */}
+          {/* ========================================================================= */}
+          <div id="rating-compare-section" className="space-y-4">
+            <div className="flex items-center justify-between px-2">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-yellow-500/10 border border-yellow-500/20 rounded-xl text-yellow-400">
+                  <Trophy size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm md:text-base font-black text-white uppercase italic tracking-[0.15em]">
+                    Rating Esports & Médias por Rodada
+                  </h3>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                    Comparativo de Eficiência K/D (Abates ÷ Mortes) e Médias de Desempenho
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <CompareRatingCard player={p1} colorTheme="yellow" tag="Desafiante 1" />
+              <CompareRatingCard player={p2} colorTheme="blue" tag="Desafiante 2" />
+            </div>
+          </div>
           {/* ========================================================================= */}
           {/* CONFRONTO DIRETO (HEAD-TO-HEAD) */}
           {/* ========================================================================= */}

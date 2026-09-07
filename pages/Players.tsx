@@ -1226,16 +1226,33 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
         const totalPlayerMins = totalPlayedSeconds / 60;
         const overallKpm = totalPlayerMins > 0 ? (stats.kills / totalPlayerMins).toFixed(3) : '0.000';
 
+        // Contagem de rodadas únicas disputadas
+        const uniqueRoundsList = Array.from(new Set(filtered.map(r => r.RD).filter(Boolean)));
+        const uniqueRoundsCount = uniqueRoundsList.length || 1;
+
+        const avgKillsPerRound = (stats.kills / uniqueRoundsCount).toFixed(2);
+        const avgDamagePerRound = (stats.damage / uniqueRoundsCount).toFixed(0);
+        const avgDeathsPerRound = (stats.deaths / uniqueRoundsCount).toFixed(2);
+        const avgDeathsPerMatch = stats.matches > 0 ? (stats.deaths / stats.matches).toFixed(2) : '0.00';
+        const avgKillsPerMatch = stats.matches > 0 ? (stats.kills / stats.matches).toFixed(2) : '0.00';
+        const kdRatio = stats.deaths > 0 ? (stats.kills / stats.deaths).toFixed(2) : (stats.kills > 0 ? stats.kills.toFixed(2) : '0.00');
+
         return {
             ...stats,
             kpm: overallKpm,
             mapKpm: stats.mapKpm,
             safeKpm: stats.safeKpm,
-            avg: stats.matches > 0 ? (stats.kills / stats.matches).toFixed(2) : '0.00',
+            avg: avgKillsPerMatch,
+            avgDeathsPerMatch,
             avgDmg: stats.matches > 0 ? (stats.damage / stats.matches).toFixed(0) : '0',
             zeroKillsPct: stats.matches > 0 ? ((stats.zeroKills / stats.matches) * 100).toFixed(1) : '0.0',
             withKillsPct: stats.matches > 0 ? ((stats.withKills / stats.matches) * 100).toFixed(1) : '0.0',
-            kd: (stats.kills / (stats.deaths || 1)).toFixed(2),
+            kd: kdRatio,
+            kdRatio,
+            uniqueRoundsCount,
+            avgKillsPerRound,
+            avgDamagePerRound,
+            avgDeathsPerRound,
             teamTotalKills,
             teamTotalDamage,
             teamTotalHS,
@@ -5441,11 +5458,232 @@ const PlayerRadarComponent: React.FC<{
 };
 
 
+// Componente de Card de Rating Esports (HLTV Style Arc Gauge & Médias por Rodada)
+const PlayerRatingGauge: React.FC<{
+  kills: number;
+  avgKillsPerMatch: string | number;
+  deaths: number;
+  avgDeathsPerMatch: string | number;
+  kdRatio: string | number;
+  avgDeathsPerRound: string | number;
+  avgDamagePerRound: string | number;
+  avgKillsPerRound: string | number;
+  uniqueRoundsCount?: number;
+  totalMatches?: number;
+}> = ({
+  kills,
+  avgKillsPerMatch,
+  deaths,
+  avgDeathsPerMatch,
+  kdRatio,
+  avgDeathsPerRound,
+  avgDamagePerRound,
+  avgKillsPerRound,
+}) => {
+  const numericKd = typeof kdRatio === 'number' ? kdRatio : parseFloat(String(kdRatio)) || 0;
+
+  // Status tiers & color palette
+  let tierLabel = 'REGULAR';
+  let tierBg = 'bg-yellow-500/15 border-yellow-500/40 text-yellow-400';
+  let arcStroke = '#eab308';
+
+  if (numericKd >= 2.0) {
+    tierLabel = 'ELITE';
+    tierBg = 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300';
+    arcStroke = '#10b981';
+  } else if (numericKd >= 1.5) {
+    tierLabel = 'EXCELENTE';
+    tierBg = 'bg-green-500/20 border-green-500/50 text-green-300';
+    arcStroke = '#22c55e';
+  } else if (numericKd >= 1.2) {
+    tierLabel = 'MUITO BOM';
+    tierBg = 'bg-lime-500/20 border-lime-500/50 text-lime-300';
+    arcStroke = '#4ade80';
+  } else if (numericKd >= 1.0) {
+    tierLabel = 'BOM';
+    tierBg = 'bg-lime-500/15 border-lime-500/40 text-lime-400';
+    arcStroke = '#84cc16';
+  } else if (numericKd >= 0.8) {
+    tierLabel = 'REGULAR';
+    tierBg = 'bg-yellow-500/15 border-yellow-500/40 text-yellow-400';
+    arcStroke = '#eab308';
+  } else if (numericKd >= 0.5) {
+    tierLabel = 'ABAIXO';
+    tierBg = 'bg-orange-500/15 border-orange-500/40 text-orange-400';
+    arcStroke = '#f97316';
+  } else {
+    tierLabel = 'CRÍTICO';
+    tierBg = 'bg-red-500/15 border-red-500/40 text-red-400';
+    arcStroke = '#ef4444';
+  }
+
+  // SVG Semicircle Arc calculations
+  // Radius R = 72. Semicircle circumference = PI * 72 ≈ 226.19
+  const radius = 72;
+  const circumference = Math.PI * radius;
+  // Progress clamped from 0 to 1 (scale: 0.0 to 2.5 KD)
+  const progressRatio = Math.min(Math.max(numericKd / 2.5, 0.05), 1);
+  const strokeDashoffset = circumference * (1 - progressRatio);
+
+  return (
+    <div className="bg-[#101318]/95 p-6 md:p-7 rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden backdrop-blur-xl space-y-6">
+      {/* Ambient background glows */}
+      <div className="absolute top-0 left-1/4 w-48 h-48 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-0 right-1/4 w-48 h-48 bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-32 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none" />
+
+      {/* Main HLTV Rating Section (Top Bar with Left Wing, Center Semicircle, Right Wing) */}
+      <div className="relative z-10 flex flex-col sm:flex-row items-center justify-between gap-5 md:gap-8">
+        
+        {/* Left Wing: ABATES & MÉDIA DE ABATES (Yellow/Gold Theme) */}
+        <div className="flex-1 w-full sm:w-auto flex flex-col items-center sm:items-end justify-center py-4 px-6 rounded-2xl bg-gradient-to-r from-amber-500/15 via-amber-500/5 to-transparent border-l-4 border-amber-500/70 shadow-inner">
+          <span className="text-3xl md:text-4xl font-black italic tracking-tight text-amber-400">
+            {typeof avgKillsPerMatch === 'number' ? avgKillsPerMatch.toFixed(2) : avgKillsPerMatch}
+          </span>
+          <div className="text-center sm:text-right flex flex-col items-center sm:items-end mt-0.5">
+            <span className="text-[11px] font-black uppercase tracking-[0.18em] text-amber-400">
+              MÉDIA DE ABATES
+            </span>
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+              {kills} Abates Totais
+            </span>
+          </div>
+        </div>
+
+        {/* Center Wing: SEMICIRCLE RATING GAUGE (K/D RATIO = ABATES ÷ MORTES) */}
+        <div className="flex-shrink-0 flex flex-col items-center justify-center relative min-w-[210px]">
+          <div className="relative w-[190px] h-[100px] flex items-end justify-center overflow-hidden">
+            <svg className="w-[190px] h-[100px]" viewBox="0 0 190 100">
+              {/* Background Arc Track */}
+              <path
+                d="M 23,90 A 72,72 0 0,1 167,90"
+                fill="none"
+                stroke="#1f2430"
+                strokeWidth="10"
+                strokeLinecap="round"
+              />
+              {/* Active Colored Arc */}
+              <path
+                d="M 23,90 A 72,72 0 0,1 167,90"
+                fill="none"
+                stroke={arcStroke}
+                strokeWidth="10"
+                strokeLinecap="round"
+                strokeDasharray={circumference}
+                strokeDashoffset={strokeDashoffset}
+                style={{ transition: 'stroke-dashoffset 0.8s ease-out, stroke 0.4s ease' }}
+              />
+            </svg>
+
+            {/* Inner Content inside Arc */}
+            <div className="absolute inset-0 flex flex-col items-center justify-end pb-1 pointer-events-none">
+              <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border mb-0.5 shadow-sm ${tierBg}`}>
+                {tierLabel}
+              </span>
+              <span className="text-3xl md:text-4xl font-black italic tracking-tighter text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)]">
+                {typeof kdRatio === 'number' ? kdRatio.toFixed(2) : kdRatio}
+              </span>
+            </div>
+          </div>
+
+          <div className="text-center mt-1">
+            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-300 block">
+              RATING K/D
+            </span>
+            <span className="text-[9px] font-bold uppercase text-gray-500">
+              (Abates ÷ Mortes)
+            </span>
+          </div>
+        </div>
+
+        {/* Right Wing: MORTES & MÉDIA DE MORTES (Blue/Sky Theme) */}
+        <div className="flex-1 w-full sm:w-auto flex flex-col items-center sm:items-start justify-center py-4 px-6 rounded-2xl bg-gradient-to-l from-sky-500/15 via-sky-500/5 to-transparent border-r-4 border-sky-500/70 shadow-inner">
+          <span className="text-3xl md:text-4xl font-black italic tracking-tight text-sky-400">
+            {typeof avgDeathsPerMatch === 'number' ? avgDeathsPerMatch.toFixed(2) : avgDeathsPerMatch}
+          </span>
+          <div className="text-center sm:text-left flex flex-col items-center sm:items-start mt-0.5">
+            <span className="text-[11px] font-black uppercase tracking-[0.18em] text-sky-400">
+              MÉDIA DE MORTES
+            </span>
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+              {deaths} Mortes Totais
+            </span>
+          </div>
+        </div>
+
+      </div>
+
+      {/* Sub-Metrics Section Directly Below the Graphic (Requested by User) */}
+      <div className="pt-4 border-t border-white/10">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+          
+          {/* 1. Média de Abates por Rodada */}
+          <div className="bg-black/50 p-4 rounded-2xl border border-amber-500/20 hover:border-amber-500/40 transition-all flex items-center gap-3.5 relative overflow-hidden group">
+            <div className="w-11 h-11 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 flex-shrink-0 group-hover:scale-105 transition-transform">
+              <Crosshair size={20} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider block truncate">
+                MÉDIA DE ABATES POR RODADA
+              </span>
+              <div className="flex items-baseline gap-1.5 mt-0.5">
+                <span className="text-xl font-black text-amber-400 italic">
+                  {avgKillsPerRound}
+                </span>
+                <span className="text-[10px] font-bold text-gray-500 uppercase">Kills / RD</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. Dano Médio por Rodada */}
+          <div className="bg-black/50 p-4 rounded-2xl border border-orange-500/20 hover:border-orange-500/40 transition-all flex items-center gap-3.5 relative overflow-hidden group">
+            <div className="w-11 h-11 rounded-xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center text-orange-400 flex-shrink-0 group-hover:scale-105 transition-transform">
+              <Flame size={20} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider block truncate">
+                DANO MÉDIO POR RODADA
+              </span>
+              <div className="flex items-baseline gap-1.5 mt-0.5">
+                <span className="text-xl font-black text-orange-400 italic">
+                  {typeof avgDamagePerRound === 'number' ? avgDamagePerRound.toLocaleString('pt-BR') : avgDamagePerRound}
+                </span>
+                <span className="text-[10px] font-bold text-gray-500 uppercase">Dano / RD</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Média de Mortes por Rodada */}
+          <div className="bg-black/50 p-4 rounded-2xl border border-sky-500/20 hover:border-sky-500/40 transition-all flex items-center gap-3.5 relative overflow-hidden group">
+            <div className="w-11 h-11 rounded-xl bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-400 flex-shrink-0 group-hover:scale-105 transition-transform">
+              <Skull size={20} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider block truncate">
+                MÉDIA DE MORTES POR RODADA
+              </span>
+              <div className="flex items-baseline gap-1.5 mt-0.5">
+                <span className="text-xl font-black text-sky-400 italic">
+                  {avgDeathsPerRound}
+                </span>
+                <span className="text-[10px] font-bold text-gray-500 uppercase">Mortes / RD</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
 const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: any) => {
     const [profileSubTab, setProfileSubTab] = useState<'all' | 'zeradas' | 'rounds' | 'history' | 'kpm'>('all');
     const [showDetails, setShowDetails] = useState<boolean>(true);
     const [playerVisibleSections, setPlayerVisibleSections] = useState({
         header: true,
+        ratingGauge: true,
         records: true,
         rankings: true,
         zeradas: true,
@@ -5469,6 +5707,7 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
     const setAllPlayerSections = (val: boolean) => {
         setPlayerVisibleSections({
             header: val,
+            ratingGauge: val,
             records: val,
             rankings: val,
             zeradas: val,
@@ -5638,7 +5877,28 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
         const totalKnocks = records.reduce((acc: number, r: PlayerData) => acc + parseNumber(r.Deitados), 0);
         const totalAssists = records.reduce((acc: number, r: PlayerData) => acc + parseNumber(r.Assistencias), 0);
         
+        // Mortes do jogador e K/D
+        const playerDeathsRecords = data.killFeed.filter((k: any) => {
+            if (normalize(k.VITIMA) !== normalize(playerName)) return false;
+            if (filters.rodada.length > 0 && !filters.rodada.some(r => normalize(r) === normalize(k.RD))) return false;
+            if (filters.map.length > 0 && !filters.map.some(m => normalize(m) === normalize(k.MAPA))) return false;
+            if (filters.queda.length > 0 && !filters.queda.some(q => normalize(q) === normalize(k.Q))) return false;
+            return true;
+        });
+        const totalDeaths = playerDeathsRecords.length;
+        const kdRatio = totalDeaths > 0 ? (totalKills / totalDeaths).toFixed(2) : (totalKills > 0 ? totalKills.toFixed(2) : '0.00');
+
+        // Contagem de rodadas únicas disputadas
+        const uniqueRoundsList = Array.from(new Set(records.map(r => r.RD).filter(Boolean)));
+        const uniqueRoundsCount = uniqueRoundsList.length || 1;
+
+        const avgKillsPerRound = (totalKills / uniqueRoundsCount).toFixed(2);
+        const avgDamagePerRound = (totalDamage / uniqueRoundsCount).toFixed(0);
+        const avgDeathsPerRound = (totalDeaths / uniqueRoundsCount).toFixed(2);
+
         const totalMatches = records.length; 
+        const avgKillsPerMatch = totalMatches > 0 ? (totalKills / totalMatches).toFixed(2) : '0.00';
+        const avgDeathsPerMatch = totalMatches > 0 ? (totalDeaths / totalMatches).toFixed(2) : '0.00';
         const zeroKillsMatches = records.filter((r: PlayerData) => parseNumber(r.Abates) === 0).length;
         const withKillsMatches = records.filter((r: PlayerData) => parseNumber(r.Abates) > 0).length;
         const zeroKillsPct = totalMatches > 0 ? ((zeroKillsMatches / totalMatches) * 100).toFixed(1) : '0.0';
@@ -5877,17 +6137,25 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
             funcao,
             funcao2,
             kills: totalKills, 
+            deaths: totalDeaths,
+            kdRatio,
             damage: totalDamage,
             hs: totalHS,
             knocks: totalKnocks,
             assists: totalAssists,
             matches: totalMatches, 
+            uniqueRoundsCount,
+            avgKillsPerRound,
+            avgDamagePerRound,
+            avgDeathsPerRound,
+            avgKillsPerMatch,
+            avgDeathsPerMatch,
             zeroKillsMatches,
             withKillsMatches,
             zeroKillsPct,
             withKillsPct,
             diff,
-            avg: totalMatches > 0 ? (totalKills / totalMatches).toFixed(2) : '0.00', 
+            avg: avgKillsPerMatch, 
             avgDmg: totalMatches > 0 ? (totalDamage / totalMatches).toFixed(0) : '0',
             killContributionPct,
             teamTotalKills,
@@ -6019,6 +6287,7 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                                 <div className="space-y-1 max-h-72 overflow-y-auto custom-scrollbar pr-1">
                                     {[
                                         { key: 'header', label: 'Identidade & Métricas Rápidas' },
+                                        { key: 'ratingGauge', label: 'Card Rating K/D & Médias' },
                                         { key: 'records', label: 'Recordes (Partida & Rodada)' },
                                         { key: 'rankings', label: 'Classificações no Campeonato' },
                                         { key: 'zeradas', label: 'Detalhes Quedas Zeradas' },
@@ -6267,6 +6536,22 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                     </div>
                 </div>
             </div>
+            )}
+
+            {/* Card de Rating HLTV Style: Arc Gauge K/D e Médias por Rodada */}
+            {playerVisibleSections.ratingGauge && (profileSubTab === 'all' || profileSubTab === 'overview') && (
+                <PlayerRatingGauge
+                    kills={stats.kills}
+                    avgKillsPerMatch={stats.avg}
+                    deaths={stats.deaths}
+                    avgDeathsPerMatch={stats.avgDeathsPerMatch}
+                    kdRatio={stats.kdRatio}
+                    avgDeathsPerRound={stats.avgDeathsPerRound}
+                    avgDamagePerRound={stats.avgDamagePerRound}
+                    avgKillsPerRound={stats.avgKillsPerRound}
+                    uniqueRoundsCount={stats.uniqueRoundsCount}
+                    totalMatches={stats.matches}
+                />
             )}
 
             {/* Banner de Recordes Individuais do Jogador */}
