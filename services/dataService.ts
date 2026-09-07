@@ -94,6 +94,7 @@ const getVal = (row: any, aliases: string[]) => {
   // 1. Direct cleanKey match
   for (const alias of aliases) {
     const target = cleanKey(alias);
+    if (!target) continue;
     const foundKey = keys.find(k => cleanKey(k) === target);
     if (foundKey && row[foundKey] !== undefined && row[foundKey] !== '') {
       return row[foundKey].toString().trim();
@@ -103,18 +104,20 @@ const getVal = (row: any, aliases: string[]) => {
   // 2. Uncorrupted key match
   for (const alias of aliases) {
     const target = cleanKey(alias);
+    if (!target) continue;
     const foundKey = keys.find(k => uncorruptKey(k) === target);
     if (foundKey && row[foundKey] !== undefined && row[foundKey] !== '') {
       return row[foundKey].toString().trim();
     }
   }
 
-  // 3. Partial or substring match
+  // 3. Partial or substring match (strictly ensure both keys have at least 3 characters to avoid empty/punctuation matches)
   for (const alias of aliases) {
     const target = cleanKey(alias);
     if (target.length < 3) continue;
     const foundKey = keys.find(k => {
       const ck = uncorruptKey(k);
+      if (ck.length < 3) return false;
       return ck.includes(target) || target.includes(ck);
     });
     if (foundKey && row[foundKey] !== undefined && row[foundKey] !== '') {
@@ -255,7 +258,7 @@ export const fetchDashboardData = async (): Promise<DashboardData> => {
         MAPA: getVal(row, ['MAPA', 'Mapa', 'Map']),
         RD: getVal(row, ['RD', 'Rd', 'Rodada', 'Round']),
         Q: getVal(row, ['Q', 'QUEDA', 'Queda', 'PARTIDA']) || getVal(row, ['S', 'Partida'])
-    })).filter(p => p.PLAYER);
+    })).filter(p => p.PLAYER && p.TIME && p.PLAYER.trim() !== '' && p.TIME.trim() !== '');
 
     // Parse KillFeed (Fonte Fato)
     const killFeed: KillFeed[] = parseCSV<any>(responses[1]).map(row => ({
