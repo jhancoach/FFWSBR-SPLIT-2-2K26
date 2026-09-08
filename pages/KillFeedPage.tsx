@@ -38,7 +38,8 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
     rodada: [] as string[], 
     queda: [] as string[],
     confrontation: [] as string[],
-    grupo: [] as string[]
+    grupo: [] as string[],
+    funcao: [] as string[]
   });
 
   const normalize = (val: string | undefined) => (val || '').trim().toUpperCase();
@@ -74,27 +75,52 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
     return map;
   }, [data.players]);
 
-  const filterOptions = useMemo(() => ({
-    teams: Array.from(new Set(data.players.map(p => p.TIME))).filter(Boolean).sort(),
-    players: Array.from(new Set([...data.killFeed.map(k => k.PLAYER), ...data.killFeed.map(k => k.VITIMA)])).filter(Boolean).sort(),
-    weapons: Array.from(new Set(data.killFeed.map(k => k.ARMA))).filter(Boolean).sort(),
-    safes: Array.from(new Set(data.killFeed.map(k => k.SAFE))).filter(Boolean).sort(),
-    maps: Array.from(new Set(data.killFeed.map(k => k.MAPA))).filter(Boolean).sort(),
-    rounds: Array.from(new Set(data.killFeed.map(k => k.RD))).filter(Boolean).sort(),
-    confrontations: Array.from(new Set([
-      ...data.confrontationsDimension.map(c => c.CONFRONTO),
-      ...data.killFeed.map(k => k.CONFRONTO),
-      ...data.details.map(d => d.CONFRONTO),
-      ...data.characters.map(c => c.Confronto),
-      ...data.players.map(p => p.CONFRONTO)
-    ].filter(Boolean))).sort(),
-    quedas: Array.from(new Set(data.killFeed.map(k => k.Q))).filter(Boolean).sort(),
-    grupos: Array.from(new Set((Array.isArray(data?.teamsReference) ? data.teamsReference : []).map(t => t.GRUPO))).filter(Boolean).sort() as string[],
-  }), [data.killFeed, data.players, data.teamsReference, data.confrontationsDimension, data.details, data.characters]);
+  // Mapeamento de Funções / Roles dos Jogadores
+  const playerRolesMap = useMemo(() => {
+    const map = new Map<string, { role1: string; role2: string }>();
+    (data.playersDimension || []).forEach(d => {
+      if (d.Name) {
+        map.set(normalize(d.Name), {
+          role1: normalize(d.Funcao),
+          role2: normalize(d.Funcao2)
+        });
+      }
+    });
+    return map;
+  }, [data.playersDimension]);
+
+  const filterOptions = useMemo(() => {
+    const rolesSet = new Set<string>();
+    (data.playersDimension || []).forEach(d => {
+      const r1 = (d.Funcao || '').trim().toUpperCase();
+      const r2 = (d.Funcao2 || '').trim().toUpperCase();
+      if (r1 && r1 !== 'N/A' && r1 !== '-') rolesSet.add(r1);
+      if (r2 && r2 !== 'N/A' && r2 !== '-') rolesSet.add(r2);
+    });
+
+    return {
+      teams: Array.from(new Set(data.players.map(p => p.TIME))).filter(Boolean).sort(),
+      players: Array.from(new Set([...data.killFeed.map(k => k.PLAYER), ...data.killFeed.map(k => k.VITIMA)])).filter(Boolean).sort(),
+      weapons: Array.from(new Set(data.killFeed.map(k => k.ARMA))).filter(Boolean).sort(),
+      safes: Array.from(new Set(data.killFeed.map(k => k.SAFE))).filter(Boolean).sort(),
+      maps: Array.from(new Set(data.killFeed.map(k => k.MAPA))).filter(Boolean).sort(),
+      rounds: Array.from(new Set(data.killFeed.map(k => k.RD))).filter(Boolean).sort(),
+      confrontations: Array.from(new Set([
+        ...data.confrontationsDimension.map(c => c.CONFRONTO),
+        ...data.killFeed.map(k => k.CONFRONTO),
+        ...data.details.map(d => d.CONFRONTO),
+        ...data.characters.map(c => c.Confronto),
+        ...data.players.map(p => p.CONFRONTO)
+      ].filter(Boolean))).sort(),
+      quedas: Array.from(new Set(data.killFeed.map(k => k.Q))).filter(Boolean).sort(),
+      grupos: Array.from(new Set((Array.isArray(data?.teamsReference) ? data.teamsReference : []).map(t => t.GRUPO))).filter(Boolean).sort() as string[],
+      funcoes: Array.from(rolesSet).sort(),
+    };
+  }, [data.killFeed, data.players, data.teamsReference, data.confrontationsDimension, data.details, data.characters, data.playersDimension]);
 
   const handleToggleFilter = (key: keyof typeof filters, value: string) => {
       setFilters(prev => {
-          const current = prev[key] as string[];
+          const current = (prev[key] || []) as string[];
           const next = current.includes(value) ? current.filter(v => v !== value) : [...current, value];
           return { ...prev, [key]: next };
       });
@@ -137,6 +163,18 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
           }
       }
 
+      // Filtro de Função / Role
+      if (filters.funcao && filters.funcao.length > 0) {
+        const targetPlayer = tab === 'deaths' ? k.VITIMA : k.PLAYER;
+        const pRoles = playerRolesMap.get(normalize(targetPlayer));
+        if (!pRoles) return false;
+        const hasRole = filters.funcao.some(f => {
+          const normF = normalize(f);
+          return normF === pRoles.role1 || normF === pRoles.role2;
+        });
+        if (!hasRole) return false;
+      }
+
       // Lógica de filtragem direcionada por Aba
       if (filters.team.length > 0) {
         const kTeam = playerToTeamMap.get(normalize(k.PLAYER));
@@ -160,7 +198,7 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
       }
       return true;
     });
-  }, [data.killFeed, filters, playerToTeamMap, tab, gamePhaseFilter]);
+  }, [data.killFeed, filters, playerToTeamMap, playerRolesMap, tab, gamePhaseFilter]);
 
   // Overall Unfiltered Phase Stats (for KPI cards context)
   const basePhaseStats = useMemo(() => {
@@ -460,6 +498,17 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
       } else {
           return data.playersDimension.find(p => normalize(p.Name) === cleanName)?.IMG;
       }
+  };
+
+  const getPlayerRole = (name: string) => {
+      if (!name) return null;
+      const pRoles = playerRolesMap.get(normalize(name));
+      if (!pRoles) return null;
+      const r1 = pRoles.role1;
+      const r2 = pRoles.role2;
+      if (r1 && r1 !== 'N/A' && r1 !== '-') return r1;
+      if (r2 && r2 !== 'N/A' && r2 !== '-') return r2;
+      return null;
   };
 
   const weaponList = Object.entries(stats.weaponCounts).map(([name, count]) => ({name, count: count as number}));
@@ -1151,6 +1200,7 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
                 icon={<User size={16} className="text-yellow-500"/>} 
                 totalCount={totalEvents} 
                 getImage={(name: string) => getPlayerImg(name, tab === 'deaths')}
+                getRole={getPlayerRole}
                 isPlayer
                 onSelect={(name: string) => handleToggleFilter('players', name)}
                 activeValues={filters.players}
@@ -1163,6 +1213,7 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
                 icon={<Skull size={16} className={tab === 'kills' ? "text-red-500" : "text-green-500"}/>} 
                 totalCount={totalEvents} 
                 getImage={(name: string) => getPlayerImg(name, tab === 'kills')}
+                getRole={getPlayerRole}
                 isPlayer
                 isVictimList={tab === 'kills'}
                 /* onSelect omitido para manter não clicável ou opcional */
@@ -1197,6 +1248,8 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
                         {filteredFeed.length > 0 ? filteredFeed.map((k, i) => {
                             const killerTeam = playerToTeamMap.get(normalize(k.PLAYER));
                             const victimTeam = playerToTeamMap.get(normalize(k.VITIMA));
+                            const killerRole = getPlayerRole(k.PLAYER);
+                            const victimRole = getPlayerRole(k.VITIMA);
                             const isKillerSelected = killerTeam && filters.team.includes(killerTeam);
                             const isVictimSelected = victimTeam && filters.team.includes(victimTeam);
 
@@ -1206,13 +1259,27 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
                                         <div className="flex items-center gap-4">
                                             <div className="flex flex-col">
                                                 <div className="flex items-center gap-2">
-                                                    <span className={`text-sm font-black italic uppercase ${isKillerSelected ? 'text-yellow-500 underline' : tab === 'kills' ? 'text-green-500' : 'text-gray-400'}`}>
-                                                        {k.PLAYER}
-                                                    </span>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className={`text-sm font-black italic uppercase ${isKillerSelected ? 'text-yellow-500 underline' : tab === 'kills' ? 'text-green-500' : 'text-gray-400'}`}>
+                                                            {k.PLAYER}
+                                                        </span>
+                                                        {killerRole && (
+                                                            <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                                                {killerRole}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                     <Swords size={12} className="text-gray-700" />
-                                                    <span className={`text-sm font-black italic uppercase ${isVictimSelected ? 'text-yellow-500 underline' : tab === 'deaths' ? 'text-red-500' : 'text-gray-400'}`}>
-                                                        {k.VITIMA}
-                                                    </span>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className={`text-sm font-black italic uppercase ${isVictimSelected ? 'text-yellow-500 underline' : tab === 'deaths' ? 'text-red-500' : 'text-gray-400'}`}>
+                                                            {k.VITIMA}
+                                                        </span>
+                                                        {victimRole && (
+                                                            <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                                                                {victimRole}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                                 <div className="flex items-center gap-2 mt-1">
                                                     <span className={`text-[9px] font-bold uppercase tracking-widest ${isKillerSelected ? 'text-yellow-500/80' : 'text-gray-600'}`}>
@@ -1291,7 +1358,7 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
   );
 };
 
-const RenderList = ({ title, items, icon, totalCount, getImage, isTeam, isPlayer, onSelect, activeValues = [], isVictimList }: any) => (
+const RenderList = ({ title, items, icon, totalCount, getImage, getRole, isTeam, isPlayer, onSelect, activeValues = [], isVictimList }: any) => (
     <div className={`bg-[#1a1a1a] rounded-xl border ${isVictimList ? 'border-red-500/20' : 'border-gray-800'} overflow-hidden flex flex-col h-full shadow-lg transition-all ${onSelect ? 'hover:border-yellow-600/30' : ''}`}>
         <div className="p-4 border-b border-gray-800 bg-black/80">
             <h3 className={`font-black uppercase text-[11px] tracking-widest flex items-center gap-2 ${isVictimList ? 'text-red-500' : 'text-white'}`}>
@@ -1302,6 +1369,7 @@ const RenderList = ({ title, items, icon, totalCount, getImage, isTeam, isPlayer
             {items.sort((a:any,b:any) => b.count - a.count).map((item:any, i:number) => {
                 const percent = totalCount ? ((item.count / totalCount) * 100).toFixed(1) : "0.0";
                 const img = getImage && getImage(item.name);
+                const role = getRole && getRole(item.name);
                 const isActive = activeValues.includes(item.name);
                 
                 return (
@@ -1318,9 +1386,16 @@ const RenderList = ({ title, items, icon, totalCount, getImage, isTeam, isPlayer
                             </div>
                         )}
                         <div className="flex-1 min-w-0 pr-2">
-                            <span className={`text-[11px] font-black truncate block group-hover:text-white uppercase italic leading-none ${isActive ? 'text-yellow-400' : isVictimList ? 'text-red-400' : 'text-gray-300'}`}>
-                                {item.name}
-                            </span>
+                            <div className="flex items-center gap-2">
+                                <span className={`text-[11px] font-black truncate block group-hover:text-white uppercase italic leading-none ${isActive ? 'text-yellow-400' : isVictimList ? 'text-red-400' : 'text-gray-300'}`}>
+                                    {item.name}
+                                </span>
+                                {role && (
+                                    <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-gray-400 shrink-0">
+                                        {role}
+                                    </span>
+                                )}
+                            </div>
                             <div className="w-full bg-gray-950 h-1 mt-2 rounded-full overflow-hidden border border-white/5">
                                 <div className={`h-full rounded-full transition-all duration-700 ${isVictimList ? 'bg-red-600/40' : isActive ? 'bg-yellow-400' : 'bg-yellow-600/40'}`} style={{ width: `${percent}%` }}></div>
                             </div>

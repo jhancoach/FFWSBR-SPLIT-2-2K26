@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Filter, X, Search, Check, ChevronDown, ChevronUp, Eye, EyeOff, SlidersHorizontal, RotateCcw } from 'lucide-react';
 
-interface FilterState {
+export interface FilterState {
   team: string[];
   players: string[];
   weapon: string[];
@@ -11,9 +11,10 @@ interface FilterState {
   queda: string[];
   confrontation: string[];
   grupo: string[];
+  funcao?: string[];
 }
 
-interface FilterBarProps {
+export interface FilterBarProps {
   filters: FilterState;
   setFilters: React.Dispatch<React.SetStateAction<FilterState>>;
   options: {
@@ -26,6 +27,7 @@ interface FilterBarProps {
     quedas: string[];
     confrontations: string[];
     grupos: string[];
+    funcoes?: string[];
   };
   defaultOpen?: boolean;
 }
@@ -34,7 +36,8 @@ const FilterBar: React.FC<FilterBarProps> = ({ filters, setFilters, options, def
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   const clearFilters = () => {
-    setFilters({
+    setFilters(prev => ({
+      ...prev,
       team: [],
       players: [],
       weapon: [],
@@ -43,25 +46,27 @@ const FilterBar: React.FC<FilterBarProps> = ({ filters, setFilters, options, def
       rodada: [],
       queda: [],
       confrontation: [],
-      grupo: []
-    });
+      grupo: [],
+      funcao: []
+    }));
   };
 
   const removeFilterItem = (key: keyof FilterState, value: string) => {
     setFilters(prev => ({
       ...prev,
-      [key]: prev[key].filter(item => item !== value)
+      [key]: (prev[key] || []).filter((item: string) => item !== value)
     }));
   };
 
   // Explicitly cast Object.values to string[][] to avoid typing issues
-  const activeFiltersCount = (Object.values(filters) as string[][]).reduce((acc, curr) => acc + curr.length, 0);
+  const activeFiltersCount = (Object.values(filters) as (string[] | undefined)[]).reduce((acc, curr) => acc + (curr ? curr.length : 0), 0);
   const hasActiveFilters = activeFiltersCount > 0;
 
   const filterCategoryLabels: Record<keyof FilterState, string> = {
     players: 'Jogador',
     team: 'Equipe',
     grupo: 'Grupo',
+    funcao: 'Função',
     confrontation: 'Confronto',
     map: 'Mapa',
     rodada: 'Rodada',
@@ -164,6 +169,9 @@ const FilterBar: React.FC<FilterBarProps> = ({ filters, setFilters, options, def
         <div className="mt-4 pt-2 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-5 animate-in fade-in duration-200">
           <MultiSelect label="Jogadores" selected={filters.players} options={options.players} onChange={(v) => setFilters(p => ({...p, players: v}))} highlight />
           <MultiSelect label="Equipes" selected={filters.team} options={options.teams} onChange={(v) => setFilters(p => ({...p, team: v}))} />
+          {options.funcoes && options.funcoes.length > 0 && (
+            <MultiSelect label="Funções" selected={filters.funcao || []} options={options.funcoes} onChange={(v) => setFilters(p => ({...p, funcao: v}))} />
+          )}
           <MultiSelect label="Grupo" selected={filters.grupo} options={options.grupos} onChange={(v) => setFilters(p => ({...p, grupo: v}))} />
           <MultiSelect label="Confrontos" selected={filters.confrontation} options={options.confrontations} onChange={(v) => setFilters(p => ({...p, confrontation: v}))} />
           <MultiSelect label="Mapas" selected={filters.map} options={options.maps} onChange={(v) => setFilters(p => ({...p, map: v}))} />
