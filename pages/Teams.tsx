@@ -55,6 +55,7 @@ Info,
 Skull,
 Sparkles,
 Filter,
+ShieldAlert,
 } from "lucide-react";
 import {
 BarChart,
@@ -74,6 +75,7 @@ import FilterBar from "../components/FilterBar";
 import { TeamMomentum } from "../components/TeamMomentum";
 import { formatTeamName, findTeamLogo } from "../utils/teamUtils";
 import { DropCompositionViewer } from "../components/DropComposition";
+import { TeamDropCompositionsList } from "../components/TeamDropCompositionsList";
 import {
 getTeamDropComposition,
 getTeamCharacterSummary,
@@ -165,6 +167,7 @@ const [activeTab, setActiveTab] = useState<
 | "teamRounds"
 | "mapStats"
 | "activeSkills"
+| "dropCompositions"
 >("gallery");
 const [positionTabFilter, setPositionTabFilter] = useState<number | "ALL">(
 "ALL",
@@ -243,7 +246,7 @@ const [activeSkillSearch, setActiveSkillSearch] = useState<string>("");
 const [activeSkillMinUsageFilter, setActiveSkillMinUsageFilter] =
 useState<boolean>(true);
 const [activeSkillViewMode, setActiveSkillViewMode] = useState<
-"cards" | "table" | "chart"
+"cards" | "table" | "chart" | "dropsList"
 >("cards");
 const [activeSkillSort, setActiveSkillSort] = useState<{
 field: "count" | "avgPerDrop" | "pctSlots" | "pctDrops" | "teamName";
@@ -4047,6 +4050,12 @@ onClick={() => setActiveTab("teamRounds")}
 className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === "teamRounds" ? "bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black" : "text-gray-400 hover:text-white hover:bg-white/5"}`}
 >
 <Calendar size={15} /> Rodadas por Time
+</button>
+<button
+onClick={() => setActiveTab("dropCompositions")}
+className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === "dropCompositions" ? "bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black" : "text-gray-400 hover:text-white hover:bg-white/5"}`}
+>
+<ShieldAlert size={15} /> Composições por Queda
 </button>
 </div>
 {selectedTeamName &&
@@ -12157,8 +12166,11 @@ Abates
 Booyah
 </th>
 <th className="px-4 py-2.5">Onde Fechou</th>
+<th className="px-4 py-2.5 text-left text-yellow-400">
+4 Habilidades Ativas
+</th>
 <th className="px-4 py-2.5 text-center text-yellow-500">
-Personagens
+Line-up
 </th>
 </tr>
 </thead>
@@ -12172,6 +12184,14 @@ const currentTeamName =
 selectedTeamStats?.name ||
 selectedTeamName ||
 "";
+const dropLoadout = getTeamDropComposition(
+data,
+currentTeamName,
+rdData.round,
+m.Q,
+m.CONFRONTO,
+m.MAPA,
+);
 return (
 <React.Fragment key={mIdx}>
 <tr
@@ -12221,6 +12241,29 @@ BOOYAH
 </span>
 )}
 </td>
+{/* 4 Habilidades Ativas da Line-up */}
+<td className="px-4 py-3">
+<div className="flex items-center gap-1.5 flex-wrap">
+{dropLoadout.length > 0 ? (
+dropLoadout.map((p, pIdx) => (
+<span
+key={pIdx}
+className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-black/60 border border-yellow-500/20 text-[9px] font-black italic uppercase text-yellow-400 shadow-sm"
+title={`${p.player}: ${p.hab1 || 'Sem Ativa'}`}
+>
+{p.hab1Img ? (
+<img src={p.hab1Img} alt={p.hab1} className="w-3.5 h-3.5 object-contain rounded" />
+) : (
+<Zap size={10} className="text-yellow-500" />
+)}
+<span>{p.hab1 || '-'}</span>
+</span>
+))
+) : (
+<span className="text-[10px] text-gray-600 font-bold">-</span>
+)}
+</div>
+</td>
 <td className="px-4 py-3 text-center">
 <button
 onClick={() =>
@@ -12240,7 +12283,7 @@ className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border text-[9
 {/* Linha Expandida com Composição dos 4 Jogadores na Queda */}
 {isExpanded && (
 <tr className="bg-black/60 border-y border-yellow-500/20">
-<td colSpan={9} className="p-4 sm:p-6">
+<td colSpan={10} className="p-4 sm:p-6">
 <DropCompositionViewer
 teamName={currentTeamName}
 round={rdData.round}
@@ -12368,6 +12411,13 @@ className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider f
 title="Visualização em Gráfico"
 >
 <BarChart2 size={14} /> Gráfico
+</button>
+<button
+onClick={() => setActiveSkillViewMode("dropsList")}
+className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${activeSkillViewMode === "dropsList" ? "bg-yellow-500 text-black shadow-md shadow-yellow-500/20" : "text-gray-400 hover:text-white"}`}
+title="Visualização de Composições por Queda"
+>
+<ListOrdered size={14} /> Lista por Quedas
 </button>
 </div>
 </div>
@@ -13048,6 +13098,30 @@ className="text-[10px] bg-black/40 px-1.5 py-0.5 rounded border border-white/5 f
 </div>
 </div>
 )}
+{/* VIEW MODE: DROPS LIST */}
+{activeSkillViewMode === "dropsList" && (
+<TeamDropCompositionsList
+data={data}
+initialTeam={selectedTeamName || undefined}
+onSelectPlayer={handlePlayerClick}
+onSelectTeam={(t) => {
+setFilters((prev) => ({ ...prev, team: [t] }));
+setActiveTab("gallery");
+}}
+/>
+)}
+</div>
+) : activeTab === "dropCompositions" ? (
+<div className="space-y-6 animate-in fade-in duration-300">
+<TeamDropCompositionsList
+data={data}
+initialTeam={selectedTeamName || undefined}
+onSelectPlayer={handlePlayerClick}
+onSelectTeam={(t) => {
+setFilters((prev) => ({ ...prev, team: [t] }));
+setActiveTab("gallery");
+}}
+/>
 </div>
 ) : (
 /* Galeria de Times */
