@@ -12,13 +12,29 @@ export const parseNumber = (v: string | number | undefined | null): number => {
 
 export const calculateTeamStats = ({ details }: { details?: any[] }): any[] => {
   if (!details || details.length === 0) return [];
-  const kills = details.reduce((acc, d) => acc + parseNumber(d.ABTS || d.Abates || d.Kills || d.abts || 0), 0);
-  const positionPoints = details.reduce((acc, d) => acc + parseNumber(d.PTSC || d.PTS_COLOCACAO || d.ptsc || 0), 0);
-  const totalPoints = details.reduce((acc, d) => acc + parseNumber(d.PTS || d.PONTOS || d.pts || 0), 0) || (kills + positionPoints);
-  const booyahs = details.reduce((acc, d) => acc + parseNumber(d.B || d.BOOYAH || d.b || 0), 0);
   
-  const matchKeys = new Set(details.map(d => `${d.RD || ''}_${d.Q || ''}_${d.MAPA || ''}_${d.CONFRONTO || ''}`));
-  const matches = matchKeys.size || details.length || 1;
+  // Filtrar apenas partidas realmente jogadas
+  const playedDetails = details.filter(d => {
+    const s = parseNumber(d.S);
+    const pts = parseNumber(d.PTS || d.PONTOS || d.pts || 0);
+    const ptsc = parseNumber(d.PTSC || d.PTS_COLOCACAO || d.ptsc || 0);
+    const abts = parseNumber(d.ABTS || d.Abates || d.Kills || d.abts || 0);
+    const pos = parseNumber(d.POS || d.pos || 0);
+    const b = parseNumber(d.B || d.BOOYAH || d.b || 0);
+    
+    if (s === 0 && pts === 0 && ptsc === 0 && abts === 0 && pos === 0 && b === 0) return false;
+    if (!d.MAPA && pts === 0 && ptsc === 0 && abts === 0 && pos === 0 && b === 0) return false;
+    return true;
+  });
+
+  const source = playedDetails.length > 0 ? playedDetails : details;
+  const kills = source.reduce((acc, d) => acc + parseNumber(d.ABTS || d.Abates || d.Kills || d.abts || 0), 0);
+  const positionPoints = source.reduce((acc, d) => acc + parseNumber(d.PTSC || d.PTS_COLOCACAO || d.ptsc || 0), 0);
+  const totalPoints = source.reduce((acc, d) => acc + parseNumber(d.PTS || d.PONTOS || d.pts || 0), 0) || (kills + positionPoints);
+  const booyahs = source.reduce((acc, d) => acc + parseNumber(d.B || d.BOOYAH || d.b || 0), 0);
+  
+  const matchKeys = new Set(source.map(d => `${d.RD || ''}_${d.Q || ''}_${d.MAPA || ''}_${d.CONFRONTO || ''}`));
+  const matches = matchKeys.size || source.length || 1;
 
   return [{
     pts: totalPoints,
@@ -29,7 +45,7 @@ export const calculateTeamStats = ({ details }: { details?: any[] }): any[] => {
     avgPts: (totalPoints / matches).toFixed(2),
     avgAbts: (kills / matches).toFixed(2),
     avgPtsc: (positionPoints / matches).toFixed(2),
-    playerDetails: details
+    playerDetails: source
   }];
 };
 

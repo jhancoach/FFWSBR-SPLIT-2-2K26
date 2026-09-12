@@ -308,8 +308,25 @@ export const fetchDashboardData = async (): Promise<DashboardData> => {
                      (row['QUEDA'] && String(row['QUEDA']).trim()) || 
                      (row['Queda'] && String(row['Queda']).trim()) || 
                      (row['SALA'] && String(row['SALA']).trim()) || 
-                     (row['Sala'] && String(row['Sala']).trim()) || 
-                     (row['S'] && String(row['S']).trim()) || '1';
+                     (row['Sala'] && String(row['Sala']).trim()) || '1';
+        
+        // Identificar S (Quedas/Salas jogadas: '1' se jogou, '0' se não jogou)
+        const rawS = (row['S'] !== undefined && String(row['S']).trim() !== '') ? String(row['S']).trim() :
+                     (row['SALAS'] && String(row['SALAS']).trim()) ||
+                     (row['Salas'] && String(row['Salas']).trim()) ||
+                     (row['PARTIDAS'] && String(row['PARTIDAS']).trim()) || '';
+        
+        let sVal = '1';
+        if (rawS !== '') {
+            sVal = rawS;
+        } else {
+            const hasPlayedData = (posVal !== '' && posVal !== '0') || 
+                                  (ptsVal !== '' && ptsVal !== '0') || 
+                                  (abtsVal !== '' && abtsVal !== '0') || 
+                                  (bVal !== '' && bVal !== '0');
+            sVal = hasPlayedData ? '1' : '0';
+        }
+
         const mapaVal = getVal(row, ['MAPA', 'Mapa', 'Map', 'MAP']);
         const rdVal = getVal(row, ['RD', 'Rd', 'Rodada', 'RODADA', 'ROUND', 'ROD']);
         const confrontoVal = getVal(row, ['CONFRONTO', 'Confronto', 'CF', 'CONFRONTO ', 'CONFRONTO_', 'CONFRONTOS', 'Confrontos', 'NOME', 'NAME', 'FASE', 'PHASE']);
@@ -325,7 +342,7 @@ export const fetchDashboardData = async (): Promise<DashboardData> => {
             POS: posVal || '0',
             ABTS: abtsVal || '0',
             B: bVal || '0',
-            S: qVal,
+            S: sVal,
             Q: qVal,
             ONDE_FECHOU: ondeFechouVal
         };
@@ -338,8 +355,7 @@ export const fetchDashboardData = async (): Promise<DashboardData> => {
                      (row['Sala'] && String(row['Sala']).trim()) || 
                      (row['SALA'] && String(row['SALA']).trim()) || 
                      (row['QUEDA'] && String(row['QUEDA']).trim()) || 
-                     (row['Queda'] && String(row['Queda']).trim()) || 
-                     (row['S'] && String(row['S']).trim()) || '1';
+                     (row['Queda'] && String(row['Queda']).trim()) || '1';
 
         return {
             Player: getVal(row, ['Player', 'Jogador', 'PLAYER', 'NOME']),
@@ -353,7 +369,7 @@ export const fetchDashboardData = async (): Promise<DashboardData> => {
             Rd: getVal(row, ['Rd', 'RD', 'Rodada']),
             Confronto: getVal(row, ['Confronto', 'CONFRONTO', 'CF', 'CONFRONTO ', 'CONFRONTO_', 'CONFRONTOS', 'Confrontos', 'NOME', 'NAME']),
             Mapa: getVal(row, ['Mapa', 'MAPA', 'Map']),
-            S: qVal,
+            S: (row['S'] && String(row['S']).trim()) || '1',
             Q: qVal
         };
     }).filter(c => c.Player);
@@ -447,12 +463,12 @@ export const calculateTeamStats = (data: DashboardData): TeamStats[] => {
       let rowPos = parseNumber(row.POS);
       let rowS = parseNumber(row.S);
 
-      // Skip empty placeholder rows from spreadsheet
-      if (rowS === 0 && rowPts === 0 && rowPtsc === 0 && rowAbts === 0 && rowPos === 0 && rowB === 0) {
+      // Skip empty placeholder rows / unplayed future matches from spreadsheet
+      const isUnplayed = (rowS === 0 && rowPts === 0 && rowPtsc === 0 && rowAbts === 0 && rowPos === 0 && rowB === 0) ||
+                         (!row.MAPA && rowPts === 0 && rowPtsc === 0 && rowAbts === 0 && rowPos === 0 && rowB === 0);
+      if (isUnplayed) {
         return;
       }
-
-      if (rowS === 0) rowS = 1;
 
       // Derived Booyah
       if (rowB === 0 && rowPos === 1) {
@@ -480,11 +496,12 @@ export const calculateTeamStats = (data: DashboardData): TeamStats[] => {
       stats.ptsc += rowPtsc;
       stats.abts += rowAbts;
       stats.b += rowB;
-      stats.s += rowS;
+      // Cada linha individual em data.details representa exatamente 1 queda jogada
+      stats.s += 1;
 
-      // Accumulate map duration
+      // Accumulate map duration (1 por queda jogada)
       const mapDur = calculateMapDurationSec(row.MAPA);
-      teamDurationSeconds.set(teamName, (teamDurationSeconds.get(teamName) || 0) + (mapDur * rowS));
+      teamDurationSeconds.set(teamName, (teamDurationSeconds.get(teamName) || 0) + mapDur);
 
       // Lógica para rastrear a posição na última queda real
       const currentRD = parseNumber(row.RD);
