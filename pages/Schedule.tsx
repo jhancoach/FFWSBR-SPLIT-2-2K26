@@ -169,12 +169,12 @@ const Schedule: React.FC<ScheduleProps> = ({ data }) => {
     return Array.from(maps).sort();
   }, [data.details]);
 
-  const roundsList = Array.from({ length: 14 }, (_, i) => i + 1);
+  const roundsList = Array.from({ length: 22 }, (_, i) => i + 1);
 
   // Compute round status strictly from fDetalhes (data.details)
   const fDetailsRoundStats = React.useMemo(() => {
     const stats = new Map<number, { recordsCount: number; quedas: Set<string>; isComplete: boolean; isStarted: boolean; totalPts: number; totalAbates: number }>();
-    for (let r = 1; r <= 14; r++) {
+    for (let r = 1; r <= 22; r++) {
       stats.set(r, { recordsCount: 0, quedas: new Set<string>(), isComplete: false, isStarted: false, totalPts: 0, totalAbates: 0 });
     }
 
@@ -184,7 +184,7 @@ const Schedule: React.FC<ScheduleProps> = ({ data }) => {
       data.details.forEach(d => {
         if (!d || !d.RD) return;
         const num = parseInt(String(d.RD).replace(/\D/g, ''), 10);
-        if (!isNaN(num) && num >= 1 && num <= 14) {
+        if (!isNaN(num) && num >= 1 && num <= 22) {
           const item = stats.get(num)!;
           
           const abts = typeof d.ABTS === 'number' ? d.ABTS : parseFloat(String(d.ABTS || '0').replace(',', '.'));
@@ -249,15 +249,15 @@ const Schedule: React.FC<ScheduleProps> = ({ data }) => {
     return set;
   }, [fDetailsRoundStats]);
 
-  // Next round is strictly the first round (1 to 14) that is NOT complete in fDetalhes.
+  // Next round is strictly the first round (1 to 22) that is NOT complete in fDetalhes.
   // If no rounds are filled or completed yet, this returns 1 (Rodada 1).
   const detectedNextRound = React.useMemo(() => {
-    for (let r = 1; r <= 14; r++) {
+    for (let r = 1; r <= 22; r++) {
       if (!fDetailsRoundStats.get(r)?.isComplete) {
         return r;
       }
     }
-    return 14; // If all 14 rounds are completely finished
+    return 22; // If all 22 rounds are completely finished
   }, [fDetailsRoundStats]);
 
   // Allow manual selection/override for next round if needed
@@ -272,7 +272,7 @@ const Schedule: React.FC<ScheduleProps> = ({ data }) => {
 
 
   const completedCount = playedRounds.size;
-  const remainingCount = 14 - completedCount;
+  const remainingCount = 22 - completedCount;
 
   const upcomingRounds = React.useMemo(() => {
     return roundsList.filter(r => !playedRounds.has(r));
@@ -286,7 +286,7 @@ const Schedule: React.FC<ScheduleProps> = ({ data }) => {
     let totalBooyahs = 0;
     let playedRoundsCount = 0;
 
-    for (let r = 1; r <= 14; r++) {
+    for (let r = 1; r <= 22; r++) {
       const isRest = r === 3 || r === 10;
       const stats = getTeamRoundLiveStyle('Loud Snickers', r, data.details);
       const hasPlayed = !isRest && stats !== null && (stats.totalPts > 0 || stats.totalAbates > 0 || stats.totalMatches > 0);
@@ -374,7 +374,7 @@ const Schedule: React.FC<ScheduleProps> = ({ data }) => {
             MATRIZ DE PARTICIPAÇÃO POR RODADA
           </h1>
           <p className="text-xs sm:text-sm font-bold text-black/80 uppercase tracking-wider">
-            FFWSBR 2026 SPLIT 2 • Coluna <strong className="text-black underline">RD</strong> da planilha fDetalhes = Rodada (R1 a R14)
+            FFWSBR 2026 SPLIT 2 • Coluna <strong className="text-black underline">RD</strong> da planilha fDetalhes = Rodada (R1 a R22)
           </p>
         </div>
       </div>
@@ -389,14 +389,14 @@ const Schedule: React.FC<ScheduleProps> = ({ data }) => {
               <Check size={12} className="stroke-[3]" /> Concluídas
             </span>
             <span className="text-xs font-mono font-bold text-gray-400">
-              {((completedCount / 14) * 100).toFixed(0)}%
+              {((completedCount / 22) * 100).toFixed(0)}%
             </span>
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-black italic text-white font-display">
               {completedCount}
             </span>
-            <span className="text-sm font-bold text-gray-500 uppercase">/ 14 Rodadas</span>
+            <span className="text-sm font-bold text-gray-500 uppercase">/ 22 Rodadas</span>
           </div>
           <p className="text-[11px] text-gray-400 mt-2 font-medium">
             {completedCount > 0 ? `${completedCount} rodadas jogadas com dados em tempo real.` : 'Aguardando encerramento da 1ª rodada.'}
@@ -492,7 +492,7 @@ const Schedule: React.FC<ScheduleProps> = ({ data }) => {
             <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 flex items-center gap-1">
               <Trophy size={12} className="text-yellow-400" /> Próximas Rodadas
             </span>
-            <span className="text-[10px] text-gray-500 font-mono">14 No Total</span>
+            <span className="text-[10px] text-gray-500 font-mono">22 No Total</span>
           </div>
           <div className="flex flex-wrap gap-1.5 my-1">
             {roundsList.map(r => {
@@ -532,7 +532,7 @@ const Schedule: React.FC<ScheduleProps> = ({ data }) => {
                 DESTAQUE DE CALENDÁRIO
               </span>
               <span className="text-xs text-gray-300 font-bold">
-                {remainingCount > 0 ? `${remainingCount} rodadas restantes no torneio` : 'Todas as 14 rodadas concluídas!'}
+                {remainingCount > 0 ? `${remainingCount} rodadas restantes no torneio` : 'Todas as 22 rodadas concluídas!'}
               </span>
             </div>
             <h3 className="text-base font-black uppercase italic text-white font-display mt-0.5">
@@ -637,7 +637,7 @@ const Schedule: React.FC<ScheduleProps> = ({ data }) => {
                 <span className="px-2.5 py-0.5 bg-yellow-500 text-black font-black text-[10px] uppercase tracking-widest rounded-md">
                   ★ TIME DESTAQUE LOUD SNICKERS
                 </span>
-                <span className="text-xs text-yellow-400 font-bold">12 Jogadas • 2 Folgas</span>
+                <span className="text-xs text-yellow-400 font-bold">20 Jogadas • 2 Folgas</span>
               </div>
               <h3 className="text-lg font-black uppercase italic text-white font-display mt-0.5">
                 Agenda &amp; Pontuação por Dia Jogado da LOUD
@@ -668,7 +668,7 @@ const Schedule: React.FC<ScheduleProps> = ({ data }) => {
             </div>
             <div className="bg-black/60 px-3 py-2 rounded-xl border border-gray-800 text-center min-w-[85px]">
               <span className="text-[9px] text-gray-400 uppercase font-bold block">Jogadas</span>
-              <span className="text-base font-black text-emerald-400 font-mono">{loudScheduleSummary.playedRoundsCount}/12</span>
+              <span className="text-base font-black text-emerald-400 font-mono">{loudScheduleSummary.playedRoundsCount}/20</span>
             </div>
           </div>
         </div>
@@ -676,10 +676,10 @@ const Schedule: React.FC<ScheduleProps> = ({ data }) => {
         {/* LOUD Round-by-Round Score Timeline Cards */}
         <div className="z-10 pt-3 border-t border-white/10">
           <div className="text-[10px] font-black uppercase tracking-wider text-yellow-400/90 mb-2 flex items-center justify-between">
-            <span>PONTOS DA LOUD POR RODADA (1 A 14):</span>
+            <span>PONTOS DA LOUD POR RODADA (1 A 22):</span>
             <span className="text-gray-400 font-medium lowercase">clique para filtrar na tabela</span>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 lg:grid-cols-14 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 lg:grid-cols-11 xl:grid-cols-11 gap-2">
             {roundsList.map(r => {
               const loudData = loudScheduleSummary.roundScores[r];
               const isRest = loudData.isRest;
@@ -789,6 +789,16 @@ const Schedule: React.FC<ScheduleProps> = ({ data }) => {
                           </span>
                         )}
 
+                        {r >= 15 && r <= 20 && (
+                          <span className="text-[7px] text-purple-400/90 font-bold uppercase tracking-tighter whitespace-nowrap bg-purple-500/10 px-1 py-0.5 rounded border border-purple-500/30">
+                            R. Mundial
+                          </span>
+                        )}
+                        {r >= 21 && r <= 22 && (
+                          <span className="text-[7px] text-cyan-400/90 font-bold uppercase tracking-tighter whitespace-nowrap bg-cyan-500/10 px-1 py-0.5 rounded border border-cyan-500/30">
+                            Finais
+                          </span>
+                        )}
                         <span className={`text-xs font-display font-black ${isNext ? 'text-yellow-300 scale-110' : isLoudRestRound ? 'text-red-400' : ''}`}>
                           R{r}
                         </span>

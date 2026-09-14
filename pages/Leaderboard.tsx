@@ -337,10 +337,17 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
 
   if (data.loading) return <div className="text-center py-20 text-yellow-500 animate-pulse font-bold uppercase tracking-widest italic">CARREGANDO CLASSIFICAÇÃO...</div>;
 
-  const topBooyahs = [...stats].sort((a, b) => b.b - a.b || b.pts - a.pts).slice(0, 3);
-  const topPtsc = [...stats].sort((a, b) => b.ptsc - a.ptsc || b.pts - a.pts).slice(0, 3);
-  const topAbts = [...stats].sort((a, b) => b.abts - a.abts || b.pts - a.pts).slice(0, 3);
-  const topPts = [...stats].sort((a, b) => b.pts - a.pts || (b.bonusPts || 0) - (a.bonusPts || 0)).slice(0, 3);
+  const topBooyahs = [...stats].sort((a, b) => b.b - a.b || (b.rawPts ?? b.pts) - (a.rawPts ?? a.pts)).slice(0, 3);
+  const topPtsc = [...stats].sort((a, b) => b.ptsc - a.ptsc || (b.rawPts ?? b.pts) - (a.rawPts ?? a.pts)).slice(0, 3);
+  const topAbts = [...stats].sort((a, b) => b.abts - a.abts || (b.rawPts ?? b.pts) - (a.rawPts ?? a.pts)).slice(0, 3);
+  const topPts = [...stats].sort((a, b) => {
+    const ptsA = a.rawPts !== undefined ? a.rawPts : a.pts;
+    const ptsB = b.rawPts !== undefined ? b.rawPts : b.pts;
+    if (ptsB !== ptsA) return ptsB - ptsA;
+    if (b.b !== a.b) return b.b - a.b;
+    if (b.abts !== a.abts) return b.abts - a.abts;
+    return a.lastPos - b.lastPos;
+  }).slice(0, 3);
 
   const Top3Card = ({ title, icon, teams, metricKey, metricLabel, colorClass }: any) => (
     <div className="bg-[#1a1a1a] rounded-2xl p-5 sm:p-6 border border-gray-800 relative overflow-hidden group hover:border-yellow-600/50 transition-all shadow-lg">
@@ -383,8 +390,15 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
                 </div>
               </div>
               <div className="text-right">
-                <span className={`block font-black text-xl sm:text-2xl italic ${isLoud ? 'text-yellow-300 drop-shadow' : colorClass}`}>{team[metricKey]}</span>
+                <span className={`block font-black text-xl sm:text-2xl italic ${isLoud ? 'text-yellow-300 drop-shadow' : colorClass}`}>
+                  {team[metricKey] !== undefined ? team[metricKey] : team.pts}
+                </span>
                 <span className="text-[9px] text-gray-500 uppercase font-bold">{metricLabel}</span>
+                {metricKey === 'rawPts' && Boolean(team.bonusPts && team.bonusPts > 0) && (
+                  <span className="block text-[8px] text-yellow-500/80 font-mono">
+                    +{team.bonusPts} bônus (Total: {team.pts})
+                  </span>
+                )}
               </div>
             </div>
           );
@@ -871,7 +885,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-in fade-in duration-200">
             {phase === 'RUMO_AO_MUNDIAL' ? (
               <>
-                <Top3Card title="Top 3 Pontos Gerais" icon={<Crown size={24} />} teams={topPts} metricKey="pts" metricLabel="Pontos Totais" colorClass="text-yellow-400" />
+                <Top3Card title="Top 3 Pontos Gerais" icon={<Crown size={24} />} teams={topPts} metricKey="rawPts" metricLabel="Pts s/ Bônus" colorClass="text-yellow-400" />
                 <Top3Card title="Top 3 Booyahs" icon={<Trophy size={24} />} teams={topBooyahs} metricKey="b" metricLabel="Vitórias" colorClass="text-yellow-500" />
                 <Top3Card title="Top 3 Abates" icon={<Crosshair size={24} />} teams={topAbts} metricKey="abts" metricLabel="Abates" colorClass="text-red-500" />
               </>
