@@ -16,7 +16,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
   const navigate = useNavigate();
   const [stats, setStats] = useState<TeamStats[]>([]);
   const [generalTop12, setGeneralTop12] = useState<Set<string>>(new Set());
-  const [phase, setPhase] = useState<'ALL' | 'QUALIFIERS' | 'RUMO_AO_MUNDIAL' | 'FINALS'>('ALL');
+  const [phase, setPhase] = useState<'ALL' | 'QUALIFIERS' | 'RUMO_AO_MUNDIAL' | 'FINALS'>('RUMO_AO_MUNDIAL');
   const [showColumnMenu, setShowColumnMenu] = useState(false);
   const [showSectionMenu, setShowSectionMenu] = useState(false);
   const [showRulesModal, setShowRulesModal] = useState(false);
@@ -50,8 +50,11 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
   const [visibleColumns, setVisibleColumns] = useState({
     rank: true,
     team: true,
+    bonus: true,
+    rawPts: true,
     pts: true,
     ptsc: true,
+    avgPtsc: true,
     avgPts: true,
     abts: true,
     avgAbts: true,
@@ -78,8 +81,8 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
     weapons: [],
     safes: [],
     maps: Array.from(new Set(data.details.map(d => d.MAPA))).filter(Boolean).sort(),
-    rounds: Array.from(new Set(data.details.map(d => d.RD))).filter(Boolean).sort(),
-    quedas: Array.from(new Set(data.details.map(d => d.Q))).filter(Boolean).sort(),
+    rounds: Array.from(new Set(data.details.map(d => d.RD))).filter(Boolean).map(String).sort((a, b) => (parseInt(a.replace(/\D/g, '')) || 0) - (parseInt(b.replace(/\D/g, '')) || 0)),
+    quedas: Array.from(new Set(data.details.map(d => d.Q))).filter(Boolean).map(String).sort((a, b) => (parseInt(a.replace(/\D/g, '')) || 0) - (parseInt(b.replace(/\D/g, '')) || 0)),
     confrontations: Array.from(new Set([
       ...data.confrontationsDimension.map(c => c.CONFRONTO),
       ...data.details.map(d => d.CONFRONTO),
@@ -92,18 +95,147 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
 
   const normalize = (val: string | undefined) => (val || '').trim().toUpperCase();
 
+  const matchRd = (filterVal: string, itemVal: string | undefined | null): boolean => {
+    if (!itemVal) return false;
+    const normF = normalize(filterVal);
+    const normI = normalize(itemVal);
+    if (normF === normI) return true;
+    const numF = normF.replace(/\D/g, '');
+    const numI = normI.replace(/\D/g, '');
+    if (numF && numI && numF === numI) return true;
+    return false;
+  };
+
+  const matchQ = (filterVal: string, itemVal: string | undefined | null): boolean => {
+    if (!itemVal) return false;
+    const normF = normalize(filterVal);
+    const normI = normalize(itemVal);
+    if (normF === normI) return true;
+    const numF = normF.replace(/\D/g, '');
+    const numI = normI.replace(/\D/g, '');
+    if (numF && numI && numF === numI) return true;
+    return false;
+  };
+
   useEffect(() => {
     if (!data.loading) {
-      // 1. Calcular Top 12 Geral (sem filtros de rodada/mapa) para a tag FINALISTA
-      const generalStats = calculateTeamStats(data);
-      setGeneralTop12(new Set(generalStats.slice(0, 12).map(s => s.name)));
+      // 1. Obter os classificados da 1ª Fase (Classificatória - Rodadas 1 a 14)
+      const qualiDetails = data.details.filter(d => {
+        const roundNum = parseInt(d.RD.replace(/\D/g, '')) || 0;
+        const confrontoNorm = normalize(d.CONFRONTO);
+        const rdNorm = normalize(d.RD);
+        const isQualiText = confrontoNorm.includes('CLASSIF') || confrontoNorm.includes('QUALI') || rdNorm.includes('CLASSIF') || rdNorm.includes('FASE 1') || rdNorm.includes('1A FASE') || rdNorm.includes('1ª FASE');
+        const isQualiRound = (!confrontoNorm || (!confrontoNorm.includes('MUNDIAL') && !confrontoNorm.includes('FINAL'))) && (roundNum === 0 || (roundNum >= 1 && roundNum <= 14));
+        return isQualiText || isQualiRound;
+      });
+      const qualiStats = calculateTeamStats({ ...data, details: qualiDetails });
+      const top12QualiList = qualiStats.slice(0, 12);
+      setGeneralTop12(new Set(top12QualiList.map(s => s.name)));
 
-      // 2. Calcular estatísticas filtradas para a exibição
+      // 2. Lógica Especial para a 2ª Fase: Rumo ao Mundial
+      if (phase === 'RUMO_AO_MUNDIAL') {
+        const BONUS_POINTS_TABLE = [50, 42, 35, 29, 24, 19, 15, 11, 8, 5, 2, 0];
+        const bonusMap = new Map<string, number>();
+        top12QualiList.forEach((team, idx) => {
+          bonusMap.set(team.name, BONUS_POINTS_TABLE[idx] ?? 0);
+        });
+
+        // Filtrar partidas da 2ª Fase (Rodadas 15 a 20 ou confronto RUMO AO MUNDIAL)
+        const rumoDetails = data.details.filter(d => {
+          if (filters.team.length > 0 && !filters.team.some(t => normalize(t) === normalize(d.TIME))) return false;
+          if (filters.map.length > 0 && !filters.map.some(m => normalize(m) === normalize(d.MAPA))) return false;
+          if (filters.rodada.length > 0 && !filters.rodada.some(r => matchRd(r, d.RD))) return false;
+          if (filters.queda.length > 0 && !filters.queda.some(q => matchQ(q, d.Q))) return false;
+          if (filters.confrontation.length > 0 && !filters.confrontation.some(c => normalize(c) === normalize(d.CONFRONTO))) return false;
+
+          const roundNum = parseInt(d.RD.replace(/\D/g, '')) || 0;
+          const confrontoNorm = normalize(d.CONFRONTO);
+          const rdNorm = normalize(d.RD);
+          const isRumoText = confrontoNorm.includes('RUMO') || confrontoNorm.includes('MUNDIAL') || confrontoNorm.includes('FASE 2') || confrontoNorm.includes('2A FASE') || confrontoNorm.includes('2ª FASE') || rdNorm.includes('RUMO') || rdNorm.includes('MUNDIAL');
+          const isRumoRound = (!confrontoNorm || (!confrontoNorm.includes('CLASSIF') && !confrontoNorm.includes('FINAL'))) && (roundNum >= 15 && roundNum <= 20);
+          return isRumoText || isRumoRound;
+        });
+
+        // Partidas jogadas da 2ª Fase
+        const rumoPlayedStats = calculateTeamStats({ ...data, details: rumoDetails });
+        const rumoPlayedMap = new Map<string, TeamStats>();
+        rumoPlayedStats.forEach(s => rumoPlayedMap.set(s.name, s));
+
+        // Construir as 12 equipes da 2ª Fase, inicializando cada uma com seus pontos extras
+        let rumoStatsList: TeamStats[] = top12QualiList.map((qualiTeam, idx) => {
+          const bonus = bonusMap.get(qualiTeam.name) ?? 0;
+          const played = rumoPlayedMap.get(qualiTeam.name);
+
+          const s = played?.s || 0;
+          const b = played?.b || 0;
+          const abts = played?.abts || 0;
+          const matchPtsc = played?.ptsc || 0;
+          const rawPts = abts + matchPtsc; // Pontos obtidos nas quedas (sem bônus)
+          const ptsc = matchPtsc; // Pontos de colocação não incluem bônus
+          const pts = rawPts + bonus; // Pontos totais = quedas + bônus
+
+          const avgPts = s > 0 ? parseFloat((rawPts / s).toFixed(2)) : 0; // Média de pontos sem bônus / quedas
+          const avgPtsc = s > 0 ? parseFloat((ptsc / s).toFixed(2)) : 0; // Média de pontos de colocação por queda
+          const avgAbts = s > 0 ? parseFloat((abts / s).toFixed(2)) : 0;
+          const percentPos = rawPts > 0 ? parseFloat(((ptsc / rawPts) * 100).toFixed(1)) : 0;
+          const percentAbts = rawPts > 0 ? parseFloat(((abts / rawPts) * 100).toFixed(1)) : 0;
+          const lastPos = played?.lastPos && played.lastPos < 99 ? played.lastPos : (idx + 1);
+
+          return {
+            name: qualiTeam.name,
+            image: qualiTeam.image,
+            grupo: qualiTeam.grupo,
+            s,
+            b,
+            ptsc,
+            abts,
+            pts,
+            rawPts,
+            avgAbts,
+            avgPts,
+            avgPtsc,
+            percentPos,
+            percentAbts,
+            lastPos,
+            bonusPts: bonus
+          };
+        });
+
+        // Filtro por equipe
+        if (filters.team.length > 0) {
+          rumoStatsList = rumoStatsList.filter(t => filters.team.some(ft => normalize(ft) === normalize(t.name)));
+        }
+
+        // Filtro por grupo
+        if (filters.grupo.length > 0) {
+          rumoStatsList = rumoStatsList.filter(s => s.grupo && filters.grupo.some(g => normalize(g) === normalize(s.grupo)));
+        }
+
+        // Ordenação oficial da 2ª Fase: Rumo ao Mundial
+        // Critérios oficiais:
+        // 1º Pontos Totais
+        // 2º Soma de Booyahs (Vitórias)
+        // 3º Soma de abates
+        // 4º Pontuação bônus / classificação da 1ª Fase quando nenhuma partida foi jogada
+        // 5º Colocação na última queda
+        rumoStatsList.sort((a, b) => {
+          if (b.pts !== a.pts) return b.pts - a.pts;
+          if (b.b !== a.b) return b.b - a.b;
+          if (b.abts !== a.abts) return b.abts - a.abts;
+          if (a.s === 0 && b.s === 0) return (b.bonusPts || 0) - (a.bonusPts || 0);
+          return a.lastPos - b.lastPos;
+        });
+
+        setStats(rumoStatsList);
+        return;
+      }
+
+      // 3. Demais Fases (Classificatórias, Grande Final, Todas)
       let filteredDetails = data.details.filter(d => {
         if (filters.team.length > 0 && !filters.team.some(t => normalize(t) === normalize(d.TIME))) return false;
         if (filters.map.length > 0 && !filters.map.some(m => normalize(m) === normalize(d.MAPA))) return false;
-        if (filters.rodada.length > 0 && !filters.rodada.some(r => normalize(r) === normalize(d.RD))) return false;
-        if (filters.queda.length > 0 && !filters.queda.some(q => normalize(q) === normalize(d.Q))) return false;
+        if (filters.rodada.length > 0 && !filters.rodada.some(r => matchRd(r, d.RD))) return false;
+        if (filters.queda.length > 0 && !filters.queda.some(q => matchQ(q, d.Q))) return false;
         if (filters.confrontation.length > 0 && !filters.confrontation.some(c => normalize(c) === normalize(d.CONFRONTO))) return false;
 
         const confrontoNorm = normalize(d.CONFRONTO);
@@ -112,36 +244,34 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
 
         if (phase === 'QUALIFIERS') {
           const isQualiText = confrontoNorm.includes('CLASSIF') || confrontoNorm.includes('QUALI') || rdNorm.includes('CLASSIF') || rdNorm.includes('FASE 1') || rdNorm.includes('1A FASE') || rdNorm.includes('1ª FASE');
-          const isQualiRound = (!confrontoNorm || (!confrontoNorm.includes('MUNDIAL') && !confrontoNorm.includes('FINAL'))) && (roundNum === 0 || (roundNum >= 1 && roundNum <= 20));
+          const isQualiRound = (!confrontoNorm || (!confrontoNorm.includes('MUNDIAL') && !confrontoNorm.includes('FINAL'))) && (roundNum === 0 || (roundNum >= 1 && roundNum <= 14));
           if (!isQualiText && !isQualiRound) return false;
-        } else if (phase === 'RUMO_AO_MUNDIAL') {
-          const isRumoText = confrontoNorm.includes('RUMO') || confrontoNorm.includes('MUNDIAL') || confrontoNorm.includes('FASE 2') || confrontoNorm.includes('2A FASE') || confrontoNorm.includes('2ª FASE') || rdNorm.includes('RUMO') || rdNorm.includes('MUNDIAL');
-          const isRumoRound = (!confrontoNorm || (!confrontoNorm.includes('CLASSIF') && !confrontoNorm.includes('FINAL'))) && (roundNum >= 21 && roundNum <= 26);
-          if (!isRumoText && !isRumoRound) return false;
         } else if (phase === 'FINALS') {
           const isFinalText = confrontoNorm.includes('FINAL') || confrontoNorm.includes('CHAMPION') || confrontoNorm.includes('FASE 3') || confrontoNorm.includes('3A FASE') || confrontoNorm.includes('3ª FASE') || rdNorm.includes('FINAL');
-          const isFinalRound = (!confrontoNorm || (!confrontoNorm.includes('MUNDIAL') && !confrontoNorm.includes('CLASSIF'))) && (roundNum > 26 || (roundNum > 20 && !confrontoNorm.includes('RUMO') && !confrontoNorm.includes('MUNDIAL')));
+          const isFinalRound = (!confrontoNorm || (!confrontoNorm.includes('MUNDIAL') && !confrontoNorm.includes('CLASSIF'))) && (roundNum >= 21);
           if (!isFinalText && !isFinalRound) return false;
         }
 
         return true;
       });
 
-      // Fallback: se a fase filtrar tudo por incompatibilidade de nomes/rodadas, usar todos os dados
-      if (filteredDetails.length === 0 && phase !== 'ALL' && data.details.length > 0) {
-        filteredDetails = data.details.filter(d => {
-          if (filters.team.length > 0 && !filters.team.some(t => normalize(t) === normalize(d.TIME))) return false;
-          if (filters.map.length > 0 && !filters.map.some(m => normalize(m) === normalize(d.MAPA))) return false;
-          if (filters.rodada.length > 0 && !filters.rodada.some(r => normalize(r) === normalize(d.RD))) return false;
-          if (filters.queda.length > 0 && !filters.queda.some(q => normalize(q) === normalize(d.Q))) return false;
-          if (filters.confrontation.length > 0 && !filters.confrontation.some(c => normalize(c) === normalize(d.CONFRONTO))) return false;
-          return true;
-        });
+      // Fallback: se a fase filtrar tudo por ausência de tags de fase E NÃO houver filtros ativos do usuário
+      const hasUserFilters = filters.rodada.length > 0 || filters.queda.length > 0 || filters.team.length > 0 || filters.map.length > 0 || filters.confrontation.length > 0;
+      if (filteredDetails.length === 0 && phase !== 'ALL' && data.details.length > 0 && !hasUserFilters) {
+        filteredDetails = data.details;
       }
 
       const filteredData = { ...data, details: filteredDetails };
-      let calculatedStats = calculateTeamStats(filteredData);
-      
+      let calculatedStats = calculateTeamStats(filteredData).map(s => {
+        const rawPts = s.pts - (s.bonusPts || 0);
+        return {
+          ...s,
+          rawPts,
+          avgPts: s.s > 0 ? parseFloat((rawPts / s.s).toFixed(2)) : 0,
+          avgPtsc: s.s > 0 ? parseFloat((s.ptsc / s.s).toFixed(2)) : 0
+        };
+      });
+
       // Filtro de Grupo
       if (filters.grupo.length > 0) {
         calculatedStats = calculatedStats.filter(s => s.grupo && filters.grupo.some(g => normalize(g) === normalize(s.grupo)));
@@ -158,10 +288,15 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
   const sortedStats = useMemo(() => {
     const sortableItems = [...stats];
     sortableItems.sort((a, b) => {
-      const aVal = a[sortConfig.key];
-      const bVal = b[sortConfig.key];
-
-      if (aVal === undefined || bVal === undefined) return 0;
+      if (sortConfig.key === 'pts') {
+        if (b.pts !== a.pts) return sortConfig.direction === 'desc' ? b.pts - a.pts : a.pts - b.pts;
+        if (b.b !== a.b) return sortConfig.direction === 'desc' ? b.b - a.b : a.b - b.b;
+        if (b.abts !== a.abts) return sortConfig.direction === 'desc' ? b.abts - a.abts : a.abts - b.abts;
+        if (a.s === 0 && b.s === 0) return sortConfig.direction === 'desc' ? (b.bonusPts || 0) - (a.bonusPts || 0) : (a.bonusPts || 0) - (b.bonusPts || 0);
+        return sortConfig.direction === 'desc' ? a.lastPos - b.lastPos : b.lastPos - a.lastPos;
+      }
+      const aVal = (a[sortConfig.key] !== undefined ? a[sortConfig.key] : 0) as number;
+      const bVal = (b[sortConfig.key] !== undefined ? b[sortConfig.key] : 0) as number;
 
       if (aVal < bVal) {
         return sortConfig.direction === 'asc' ? -1 : 1;
@@ -205,6 +340,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
   const topBooyahs = [...stats].sort((a, b) => b.b - a.b || b.pts - a.pts).slice(0, 3);
   const topPtsc = [...stats].sort((a, b) => b.ptsc - a.ptsc || b.pts - a.pts).slice(0, 3);
   const topAbts = [...stats].sort((a, b) => b.abts - a.abts || b.pts - a.pts).slice(0, 3);
+  const topPts = [...stats].sort((a, b) => b.pts - a.pts || (b.bonusPts || 0) - (a.bonusPts || 0)).slice(0, 3);
 
   const Top3Card = ({ title, icon, teams, metricKey, metricLabel, colorClass }: any) => (
     <div className="bg-[#1a1a1a] rounded-2xl p-5 sm:p-6 border border-gray-800 relative overflow-hidden group hover:border-yellow-600/50 transition-all shadow-lg">
@@ -268,31 +404,58 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
         <tr>
           {visibleColumns.rank && <th className="px-1.5 py-2.5 text-center w-6 sm:w-8">#</th>}
           {visibleColumns.team && <th className="px-1.5 sm:px-2 py-2.5 text-left w-auto">Equipe</th>}
+          {phase === 'RUMO_AO_MUNDIAL' && visibleColumns.bonus && (
+            <th 
+              className="px-1 sm:px-2 py-2.5 text-center bg-purple-950/40 text-purple-300 font-black cursor-pointer group hover:bg-purple-900/50 w-12 sm:w-16 border-r border-purple-500/20"
+              onClick={() => requestSort('bonusPts' as any)}
+              title="Pontos Bônus de Largada (1ª Fase)"
+            >
+              <div className="flex items-center justify-center gap-0.5">BÔNUS <SortIcon column={'bonusPts' as any} /></div>
+            </th>
+          )}
+          {phase === 'RUMO_AO_MUNDIAL' && visibleColumns.rawPts && (
+            <th 
+              className="px-1 sm:px-2 py-2.5 text-center bg-cyan-950/30 text-cyan-300 font-black cursor-pointer group hover:bg-cyan-900/40 w-14 sm:w-20 border-r border-cyan-500/20"
+              onClick={() => requestSort('rawPts' as any)}
+              title="Pontos conquistados exclusivamente nas quedas (sem bônus)"
+            >
+              <div className="flex items-center justify-center gap-0.5 whitespace-nowrap">PTS S/ BÔNUS <SortIcon column={'rawPts' as any} /></div>
+            </th>
+          )}
           {visibleColumns.pts && (
             <th 
               className="px-1 sm:px-2 py-2.5 text-center bg-yellow-900/10 text-yellow-500 font-black cursor-pointer group hover:bg-yellow-900/20 w-12 sm:w-16"
               onClick={() => requestSort('pts')}
-              title="Pontos Totais"
+              title={phase === 'RUMO_AO_MUNDIAL' ? "Pontos Totais (Pontos em Jogo + Bônus)" : "Pontos Totais"}
             >
-              <div className="flex items-center justify-center gap-0.5">PTS <SortIcon column="pts" /></div>
+              <div className="flex items-center justify-center gap-0.5">{phase === 'RUMO_AO_MUNDIAL' ? 'PTS TOTAL' : 'PTS'} <SortIcon column="pts" /></div>
             </th>
           )}
           {visibleColumns.ptsc && (
             <th 
               className="px-1 sm:px-1.5 py-2.5 text-center text-orange-400/80 cursor-pointer group hover:bg-white/5 w-12 sm:w-14"
               onClick={() => requestSort('ptsc')}
-              title="Pontos de Colocação"
+              title="Pontos de Colocação (conquistados em quedas, sem bônus)"
             >
               <div className="flex items-center justify-center gap-0.5">PTS/C <SortIcon column="ptsc" /></div>
+            </th>
+          )}
+          {visibleColumns.avgPtsc && (
+            <th 
+              className="px-1 sm:px-1.5 py-2.5 text-center text-orange-500/80 cursor-pointer group hover:bg-white/5 w-14 sm:w-16"
+              onClick={() => requestSort('avgPtsc')}
+              title="Média de Pontos de Colocação por Queda (PTS/C ÷ Quedas)"
+            >
+              <div className="flex items-center justify-center gap-0.5 whitespace-nowrap">M.PTS/C <SortIcon column="avgPtsc" /></div>
             </th>
           )}
           {visibleColumns.avgPts && (
             <th 
               className="px-1 sm:px-1.5 py-2.5 text-center text-yellow-600/80 cursor-pointer group hover:bg-white/5 w-12 sm:w-14"
               onClick={() => requestSort('avgPts')}
-              title="Média de Pontos por Queda"
+              title="Média de Pontos por Queda (Pontos sem bônus ÷ Quedas)"
             >
-              <div className="flex items-center justify-center gap-0.5">M.PTS <SortIcon column="avgPts" /></div>
+              <div className="flex items-center justify-center gap-0.5 whitespace-nowrap">M.PTS <SortIcon column="avgPts" /></div>
             </th>
           )}
           {visibleColumns.abts && (
@@ -337,6 +500,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
   };
 
   const TableRow = ({ team, index }: { team: TeamStats, index: number, key?: React.Key }) => {
+    const isTop2Rumo = phase === 'RUMO_AO_MUNDIAL' && index < 2;
     const isTop12 = index < 12;
     const isGeneralFinalist = generalTop12.has(team.name);
     const isLoud = team.name.toLowerCase().includes('loud');
@@ -347,13 +511,31 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
         className={`transition-all group cursor-pointer border-b ${
           isLoud 
             ? 'bg-gradient-to-r from-yellow-500/30 via-yellow-400/15 to-transparent border-y-2 border-yellow-400 shadow-[0_0_20px_rgba(234,179,8,0.25)] font-bold hover:from-yellow-500/40' 
-            : `hover:bg-yellow-900/10 border-gray-800/50 ${isTop12 ? 'relative overflow-hidden bg-yellow-500/5' : ''}`
+            : isTop2Rumo
+              ? 'bg-gradient-to-r from-emerald-500/15 via-emerald-500/5 to-transparent border-emerald-500/30 hover:bg-emerald-500/20'
+              : `hover:bg-yellow-900/10 border-gray-800/50 ${isTop12 ? 'relative overflow-hidden bg-yellow-500/5' : ''}`
         }`}
       >
         {visibleColumns.rank && (
           <td className="px-1.5 sm:px-2 py-3 text-center font-mono text-[11px] sm:text-xs relative">
-              {(isTop12 || isLoud) && <div className={`absolute left-0 top-0 bottom-0 ${isLoud ? 'w-1 sm:w-1.5 bg-yellow-400 shadow-[0_0_12px_#facc15]' : 'w-0.5 sm:w-1 bg-yellow-500 shadow-[0_0_10px_#facc15]'}`}></div>}
-              <span className={isLoud ? 'text-yellow-300 font-black text-xs sm:text-sm flex items-center justify-center gap-1' : isTop12 ? 'text-yellow-500 font-black' : 'text-gray-500'}>
+              {(isTop2Rumo || isTop12 || isLoud) && (
+                <div className={`absolute left-0 top-0 bottom-0 ${
+                  isLoud 
+                    ? 'w-1 sm:w-1.5 bg-yellow-400 shadow-[0_0_12px_#facc15]' 
+                    : isTop2Rumo
+                      ? 'w-1 sm:w-1.5 bg-emerald-400 shadow-[0_0_12px_#34d399]'
+                      : 'w-0.5 sm:w-1 bg-yellow-500 shadow-[0_0_10px_#facc15]'
+                }`}></div>
+              )}
+              <span className={
+                isLoud 
+                  ? 'text-yellow-300 font-black text-xs sm:text-sm flex items-center justify-center gap-1' 
+                  : isTop2Rumo
+                    ? 'text-emerald-400 font-black text-xs sm:text-sm'
+                    : isTop12 
+                      ? 'text-yellow-500 font-black' 
+                      : 'text-gray-500'
+              }>
                 {index + 1} {isLoud && <Star size={12} className="fill-yellow-400 text-yellow-400 shrink-0" />}
               </span>
           </td>
@@ -365,22 +547,47 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
                 <div className={`rounded-xl overflow-hidden shrink-0 flex items-center justify-center ${
                   isLoud 
                     ? 'w-9 h-9 sm:w-10 sm:h-10 bg-black p-1 border-2 border-yellow-400 shadow-[0_0_12px_rgba(250,204,21,0.7)] ring-1 ring-yellow-300' 
-                    : 'w-7 h-7 sm:w-8 sm:h-8 bg-black/40 p-0.5 border border-gray-700/60'
+                    : isTop2Rumo
+                      ? 'w-8 h-8 sm:w-9 sm:h-9 bg-black/60 p-0.5 border border-emerald-500/60 shadow-[0_0_8px_rgba(52,211,153,0.3)]'
+                      : 'w-7 h-7 sm:w-8 sm:h-8 bg-black/40 p-0.5 border border-gray-700/60'
                 }`}>
                   <img src={team.image} className="w-full h-full object-contain" alt={team.name}/>
                 </div>
               )}
               <div className="flex flex-col min-w-0 flex-1 overflow-hidden">
                 <span className={`uppercase italic font-black truncate flex items-center gap-1.5 ${
-                  isLoud ? 'text-sm sm:text-base text-yellow-300 drop-shadow-sm tracking-wide' : isTop12 ? 'text-xs sm:text-sm text-yellow-400' : 'text-xs sm:text-sm text-gray-200'
+                  isLoud 
+                    ? 'text-sm sm:text-base text-yellow-300 drop-shadow-sm tracking-wide' 
+                    : isTop2Rumo
+                      ? 'text-xs sm:text-sm text-emerald-300 font-display'
+                      : isTop12 
+                        ? 'text-xs sm:text-sm text-yellow-400' 
+                        : 'text-xs sm:text-sm text-gray-200'
                 }`}>
                     <span className="truncate">{formatTeamName(team.name)}</span>
                     {isLoud && <Star size={13} className="fill-yellow-400 text-yellow-400 shrink-0" />}
                 </span>
                 {isLoud ? (
-                  <span className="text-[9px] font-black text-yellow-400 uppercase tracking-widest flex items-center gap-1 truncate">
-                    ★ TIME DESTAQUE (LOUD)
-                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[9px] font-black text-yellow-400 uppercase tracking-widest flex items-center gap-1 truncate">
+                      ★ TIME DESTAQUE (LOUD)
+                    </span>
+                    {phase === 'RUMO_AO_MUNDIAL' && isTop2Rumo && (
+                      <span className="text-[7.5px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-1 py-0.2 rounded uppercase tracking-wider flex items-center gap-0.5">
+                        <Globe size={8} /> VAGA MUNDIAL
+                      </span>
+                    )}
+                  </div>
+                ) : phase === 'RUMO_AO_MUNDIAL' ? (
+                  isTop2Rumo ? (
+                    <span className="text-[7.5px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1 w-fit">
+                      <Globe size={9} className="shrink-0 text-emerald-400" /> VAGA FFWS GRAND FINALS
+                    </span>
+                  ) : (
+                    <span className="text-[7.5px] font-black text-purple-400 bg-purple-500/10 border border-purple-500/30 px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1 w-fit">
+                      <CheckCircle2 size={9} className="shrink-0 text-purple-400" /> 3ª FASE • FINALISTA
+                    </span>
+                  )
                 ) : isGeneralFinalist ? (
                     <span className="text-[7px] font-black text-yellow-600 uppercase tracking-widest flex items-center gap-1 truncate">
                         <CheckCircle2 size={7} className="shrink-0" /> FINALISTA
@@ -390,20 +597,45 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
             </div>
           </td>
         )}
+        {phase === 'RUMO_AO_MUNDIAL' && visibleColumns.bonus && (
+          <td className="px-1 sm:px-2 py-3 text-center border-r border-gray-800/40">
+            <span className={`inline-flex items-center justify-center font-mono font-black text-xs sm:text-sm px-2 py-0.5 rounded-lg border ${
+              (team.bonusPts || 0) > 0 
+                ? 'bg-purple-500/20 text-purple-300 border-purple-500/40 shadow-[0_0_10px_rgba(168,85,247,0.25)]' 
+                : 'bg-gray-800/40 text-gray-500 border-gray-800'
+            }`}>
+              +{team.bonusPts ?? 0}
+            </span>
+          </td>
+        )}
+        {phase === 'RUMO_AO_MUNDIAL' && visibleColumns.rawPts && (
+          <td className="px-1 sm:px-2 py-3 text-center border-r border-gray-800/40">
+            <span className={`inline-flex items-center justify-center font-mono font-bold text-xs sm:text-sm px-2 py-0.5 rounded-lg border ${
+              (team.rawPts || 0) > 0 
+                ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-[0_0_8px_rgba(6,182,212,0.25)]' 
+                : 'bg-gray-800/40 text-gray-400 border-gray-800'
+            }`}>
+              {team.rawPts ?? 0}
+            </span>
+          </td>
+        )}
         {visibleColumns.pts && (
           <td className="px-1.5 sm:px-2 py-3 text-center">
             <span className={`inline-flex items-center justify-center min-w-[2.5rem] font-mono font-black ${
               isLoud 
                 ? 'bg-yellow-400 text-black text-sm sm:text-base px-2.5 py-1 rounded-xl shadow-[0_0_15px_rgba(250,204,21,0.6)] ring-2 ring-yellow-200 font-extrabold' 
-                : isTop12 
-                  ? 'text-white bg-yellow-600/25 border border-yellow-500/30 text-xs sm:text-sm px-2 py-0.5 rounded-lg' 
-                  : 'text-yellow-400 bg-yellow-900/20 text-xs sm:text-sm px-2 py-0.5 rounded-lg'
+                : isTop2Rumo
+                  ? 'text-emerald-200 bg-emerald-500/20 border border-emerald-500/40 text-xs sm:text-sm px-2 py-0.5 rounded-lg font-extrabold'
+                  : isTop12 
+                    ? 'text-white bg-yellow-600/25 border border-yellow-500/30 text-xs sm:text-sm px-2 py-0.5 rounded-lg' 
+                    : 'text-yellow-400 bg-yellow-900/20 text-xs sm:text-sm px-2 py-0.5 rounded-lg'
             }`}>
               {team.pts}
             </span>
           </td>
         )}
         {visibleColumns.ptsc && <td className={`px-1.5 sm:px-2 py-3 text-center ${isLoud ? 'text-orange-300 font-black text-xs sm:text-sm' : 'text-orange-400/80 font-bold text-[10px] sm:text-[11px]'}`}>{team.ptsc}</td>}
+        {visibleColumns.avgPtsc && <td className={`px-1.5 sm:px-2 py-3 text-center font-mono ${isLoud ? 'text-orange-200 font-black text-xs sm:text-sm' : 'text-orange-500/80 text-[9px] sm:text-[10px]'}`}>{team.avgPtsc}</td>}
         {visibleColumns.avgPts && <td className={`px-1.5 sm:px-2 py-3 text-center font-mono ${isLoud ? 'text-yellow-200 font-black text-xs sm:text-sm' : 'text-yellow-600/70 text-[9px] sm:text-[10px]'}`}>{team.avgPts}</td>}
         {visibleColumns.abts && <td className={`px-1.5 sm:px-2 py-3 text-center ${isLoud ? 'text-red-300 font-black text-xs sm:text-sm' : 'text-red-400 font-bold text-[10px] sm:text-[11px]'}`}>{team.abts}</td>}
         {visibleColumns.avgAbts && <td className={`px-1.5 sm:px-2 py-3 text-center font-mono ${isLoud ? 'text-red-200 font-black text-xs sm:text-sm' : 'text-red-600/70 text-[9px] sm:text-[10px]'}`}>{team.avgAbts}</td>}
@@ -418,10 +650,10 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div className="flex flex-wrap bg-[#1a1a1a] p-1.5 rounded-xl border border-gray-800 gap-1">
             <button 
-              onClick={() => setPhase('ALL')} 
-              className={`px-3.5 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${phase === 'ALL' ? 'bg-gray-700 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+              onClick={() => setPhase('RUMO_AO_MUNDIAL')} 
+              className={`px-3.5 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${phase === 'RUMO_AO_MUNDIAL' ? 'bg-purple-600 text-white shadow-lg ring-2 ring-purple-400/50' : 'text-gray-400 hover:text-white'}`}
             >
-              <Layers size={14}/> Geral
+              <Globe size={14}/> Rumo ao Mundial
             </button>
             <button 
               onClick={() => setPhase('QUALIFIERS')} 
@@ -430,16 +662,16 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
               <Crosshair size={14}/> Classificatórias
             </button>
             <button 
-              onClick={() => setPhase('RUMO_AO_MUNDIAL')} 
-              className={`px-3.5 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${phase === 'RUMO_AO_MUNDIAL' ? 'bg-purple-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
-            >
-              <Globe size={14}/> Rumo ao Mundial
-            </button>
-            <button 
               onClick={() => setPhase('FINALS')} 
               className={`px-3.5 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${phase === 'FINALS' ? 'bg-yellow-500 text-black shadow font-bold' : 'text-gray-400 hover:text-white'}`}
             >
               <Trophy size={14}/> Grande Final
+            </button>
+            <button 
+              onClick={() => setPhase('ALL')} 
+              className={`px-3.5 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${phase === 'ALL' ? 'bg-gray-700 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+            >
+              <Layers size={14}/> Geral
             </button>
           </div>
 
@@ -516,8 +748,13 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
                     {Object.entries({
                       rank: '#',
                       team: 'Equipe',
-                      pts: 'PTS',
+                      ...(phase === 'RUMO_AO_MUNDIAL' ? { 
+                        bonus: 'BÔNUS',
+                        rawPts: 'PTS S/ BÔNUS'
+                      } : {}),
+                      pts: phase === 'RUMO_AO_MUNDIAL' ? 'PTS TOTAL' : 'PTS',
                       ptsc: 'PTS/C',
+                      avgPtsc: 'M.PTS/C',
                       avgPts: 'M.PTS',
                       abts: 'ABTS',
                       avgAbts: 'M.ABTS',
@@ -580,10 +817,22 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
       )}
 
       {phase === 'RUMO_AO_MUNDIAL' && (
-        <div className="bg-purple-500/10 border border-purple-500/20 px-4 py-3 rounded-xl text-xs text-purple-300 flex items-center justify-between font-medium">
-          <div className="flex items-center gap-2">
-            <span className="font-black px-2 py-0.5 bg-purple-500/20 rounded text-purple-400 uppercase text-[10px] tracking-wider">2ª Fase</span>
-            <span><strong>Rumo ao Mundial:</strong> As 12 equipes classificadas disputam 6 rodadas. Os 2 primeiros colocados garantem vaga no FFWS Grand Finals.</span>
+        <div className="bg-gradient-to-r from-purple-950/40 via-purple-900/20 to-transparent border border-purple-500/30 px-4 py-3.5 rounded-2xl text-xs text-purple-200 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-center gap-2.5">
+            <span className="font-black px-2.5 py-1 bg-purple-500/20 border border-purple-500/40 rounded-lg text-purple-300 uppercase text-[10px] tracking-widest flex items-center gap-1.5">
+              <Globe size={13} className="text-purple-400" /> 2ª Fase • Rumo ao Mundial
+            </span>
+            <span>
+              As <strong>12 equipes classificadas</strong> disputam 6 rodadas (RD 15 a 20) iniciando com a <strong>pontuação bônus</strong> da 1ª Fase. Os <strong>Top 2</strong> garantem vaga no <strong>FFWS Grand Finals</strong>!
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
+              <Globe size={11} /> Top 2: Vaga Mundial
+            </span>
+            <span className="px-2.5 py-1 rounded-lg bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
+              <Trophy size={11} /> Top 12: Grande Final
+            </span>
           </div>
         </div>
       )}
@@ -603,7 +852,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
           <div className="flex items-center gap-2">
             <Trophy size={16} className="text-yellow-500" />
             <h2 className="text-xs font-black uppercase tracking-wider text-white font-display">
-              Destaques da Rodada (Top 3)
+              {phase === 'RUMO_AO_MUNDIAL' ? 'Destaques • Rumo ao Mundial' : 'Destaques da Rodada (Top 3)'}
             </h2>
           </div>
           <button
@@ -620,9 +869,19 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
 
         {visibleSections.top3 && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-in fade-in duration-200">
-            <Top3Card title="Top 3 Booyahs" icon={<Trophy size={24} />} teams={topBooyahs} metricKey="b" metricLabel="Vitórias" colorClass="text-yellow-500" />
-            <Top3Card title="Top 3 PTS/C" icon={<Medal size={24} />} teams={topPtsc} metricKey="ptsc" metricLabel="Pts Colocação" colorClass="text-orange-400" />
-            <Top3Card title="Top 3 Abates" icon={<Crosshair size={24} />} teams={topAbts} metricKey="abts" metricLabel="Abates" colorClass="text-red-500" />
+            {phase === 'RUMO_AO_MUNDIAL' ? (
+              <>
+                <Top3Card title="Top 3 Pontos Gerais" icon={<Crown size={24} />} teams={topPts} metricKey="pts" metricLabel="Pontos Totais" colorClass="text-yellow-400" />
+                <Top3Card title="Top 3 Booyahs" icon={<Trophy size={24} />} teams={topBooyahs} metricKey="b" metricLabel="Vitórias" colorClass="text-yellow-500" />
+                <Top3Card title="Top 3 Abates" icon={<Crosshair size={24} />} teams={topAbts} metricKey="abts" metricLabel="Abates" colorClass="text-red-500" />
+              </>
+            ) : (
+              <>
+                <Top3Card title="Top 3 Booyahs" icon={<Trophy size={24} />} teams={topBooyahs} metricKey="b" metricLabel="Vitórias" colorClass="text-yellow-500" />
+                <Top3Card title="Top 3 PTS/C" icon={<Medal size={24} />} teams={topPtsc} metricKey="ptsc" metricLabel="Pts Colocação" colorClass="text-orange-400" />
+                <Top3Card title="Top 3 Abates" icon={<Crosshair size={24} />} teams={topAbts} metricKey="abts" metricLabel="Abates" colorClass="text-red-500" />
+              </>
+            )}
           </div>
         )}
       </div>
@@ -648,22 +907,38 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
           </button>
         </div>
         {visibleSections.legend && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2 text-[10px] animate-in fade-in duration-200">
+          <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 ${phase === 'RUMO_AO_MUNDIAL' ? 'lg:grid-cols-6 xl:grid-cols-12' : 'lg:grid-cols-5 xl:grid-cols-10'} gap-2 text-[10px] animate-in fade-in duration-200`}>
             <div className="bg-black/60 p-2 rounded-xl border border-gray-800">
               <span className="font-bold text-gray-400 block uppercase"># / POS</span>
               <span className="text-gray-300 font-mono">Posição Geral</span>
             </div>
+            {phase === 'RUMO_AO_MUNDIAL' && (
+              <div className="bg-black/60 p-2 rounded-xl border border-purple-500/40">
+                <span className="font-black text-purple-400 block uppercase">BÔNUS</span>
+                <span className="text-purple-200 font-mono">Pts Extras (1ª Fase)</span>
+              </div>
+            )}
+            {phase === 'RUMO_AO_MUNDIAL' && (
+              <div className="bg-black/60 p-2 rounded-xl border border-cyan-500/40">
+                <span className="font-black text-cyan-400 block uppercase">PTS S/ BÔNUS</span>
+                <span className="text-cyan-200 font-mono">Pts em Quedas</span>
+              </div>
+            )}
             <div className="bg-black/60 p-2 rounded-xl border border-yellow-500/40">
-              <span className="font-black text-yellow-400 block uppercase">PTS</span>
-              <span className="text-yellow-200 font-mono">Pontos Totais</span>
+              <span className="font-black text-yellow-400 block uppercase">{phase === 'RUMO_AO_MUNDIAL' ? 'PTS TOTAL' : 'PTS'}</span>
+              <span className="text-yellow-200 font-mono">{phase === 'RUMO_AO_MUNDIAL' ? 'Total (Quedas + Bônus)' : 'Pontos Totais'}</span>
             </div>
             <div className="bg-black/60 p-2 rounded-xl border border-orange-500/30">
               <span className="font-bold text-orange-400 block uppercase">PTS/C</span>
-              <span className="text-gray-300 font-mono">Pts Colocação</span>
+              <span className="text-gray-300 font-mono">Pts Colocação (s/ Bônus)</span>
+            </div>
+            <div className="bg-black/60 p-2 rounded-xl border border-orange-500/30">
+              <span className="font-bold text-orange-400 block uppercase">M.PTS/C</span>
+              <span className="text-gray-300 font-mono">Média Pts/C por Queda</span>
             </div>
             <div className="bg-black/60 p-2 rounded-xl border border-yellow-600/30">
               <span className="font-bold text-yellow-500 block uppercase">M.PTS</span>
-              <span className="text-gray-300 font-mono">Média Pts/Queda</span>
+              <span className="text-gray-300 font-mono">Média Pts/Queda (s/ Bônus)</span>
             </div>
             <div className="bg-black/60 p-2 rounded-xl border border-red-500/30">
               <span className="font-bold text-red-400 block uppercase">ABTS</span>
@@ -697,7 +972,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
           <div className="flex items-center gap-2">
             <Crown size={16} className="text-yellow-500" />
             <h2 className="text-xs font-black uppercase tracking-wider text-white font-display">
-              Tabela de Classificação {phase === 'ALL' ? 'Geral' : phase === 'QUALIFIERS' ? '• Classificatórias' : phase === 'RUMO_AO_MUNDIAL' ? '• Rumo ao Mundial' : '• Grande Final'}
+              Tabela de Classificação {phase === 'ALL' ? 'Geral' : phase === 'QUALIFIERS' ? '• Classificatórias' : phase === 'RUMO_AO_MUNDIAL' ? '• Rumo ao Mundial (12 Equipes)' : '• Grande Final'}
             </h2>
           </div>
           <button
@@ -712,12 +987,28 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
           </button>
         </div>
 
-        {visibleSections.table && (
+        {visibleSections.table && (() => {
+          const activeColumnCount = [
+            visibleColumns.rank,
+            visibleColumns.team,
+            phase === 'RUMO_AO_MUNDIAL' && visibleColumns.bonus,
+            phase === 'RUMO_AO_MUNDIAL' && visibleColumns.rawPts,
+            visibleColumns.pts,
+            visibleColumns.ptsc,
+            visibleColumns.avgPtsc,
+            visibleColumns.avgPts,
+            visibleColumns.abts,
+            visibleColumns.avgAbts,
+            visibleColumns.b,
+            visibleColumns.s,
+          ].filter(Boolean).length;
+
+          return (
           <div className={`grid grid-cols-1 ${isSingleColumn ? '' : 'lg:grid-cols-2'} gap-6 animate-in fade-in duration-200`}>
             <div className="bg-[#1a1a1a] rounded-2xl overflow-hidden border border-gray-800 shadow-xl">
               <div className="bg-[#0a0a0a] px-4 py-2 border-b border-gray-800 flex items-center justify-between">
                 <span className="text-[10px] font-black text-yellow-500 uppercase tracking-[0.2em]">
-                  {isSingleColumn ? 'Classificação da Rodada' : `Tier 1 • Top 1-${leftStats.length}`}
+                  {phase === 'RUMO_AO_MUNDIAL' ? 'Classificação • 12 Equipes Rumo ao Mundial' : isSingleColumn ? 'Classificação da Rodada' : `Tier 1 • Top 1-${leftStats.length}`}
                 </span>
                 <div className="flex items-center gap-2">
                     <TrendingUp size={12} className="text-yellow-500/50" />
@@ -733,7 +1024,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
                     ))}
                     {leftStats.length === 0 && (
                       <tr>
-                        <td colSpan={9} className="py-10 text-center text-gray-600 italic uppercase text-[10px]">Sem dados para esta filtragem</td>
+                        <td colSpan={activeColumnCount} className="py-10 text-center text-gray-600 italic uppercase text-[10px]">Sem dados para esta filtragem</td>
                       </tr>
                     )}
                   </tbody>
@@ -758,7 +1049,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
                       ))}
                       {rightStats.length === 0 && (
                         <tr>
-                          <td colSpan={9} className="py-10 text-center text-gray-600 italic uppercase text-[10px]">Nenhuma equipe nesta faixa</td>
+                          <td colSpan={activeColumnCount} className="py-10 text-center text-gray-600 italic uppercase text-[10px]">Nenhuma equipe nesta faixa</td>
                         </tr>
                       )}
                     </tbody>
@@ -767,7 +1058,8 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
               </div>
             )}
           </div>
-        )}
+          );
+        })()}
       </div>
 
       <RulesModal isOpen={showRulesModal} onClose={() => setShowRulesModal(false)} />

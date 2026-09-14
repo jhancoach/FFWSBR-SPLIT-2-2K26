@@ -142,4 +142,6 @@ export interface TeamStats {
   percentAbts: number;
   lastPos: number; // Armazena a posição na última queda para desempate
   kpm?: number;
+  bonusPts?: number; // Pontos extras de largada da fase anterior
+  rawPts?: number; // Pontos obtidos em quedas sem pontos extras
 }

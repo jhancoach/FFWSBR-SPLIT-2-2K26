@@ -129,10 +129,29 @@ const RulesModal: React.FC<RulesModalProps> = ({ isOpen, onClose }) => {
               Durante a 2ª fase, as 12 equipes classificadas jogam <strong className="text-white">6 rodadas</strong>. Os <strong className="text-yellow-400">dois melhores colocados</strong> ao final das rodadas garantem vaga direta no <strong className="text-yellow-400">Free Fire World Series - Grand Finals</strong>.
             </p>
 
-            <div className="bg-[#0f0f12] p-4 rounded-xl border border-purple-500/20 text-xs text-gray-300 space-y-1">
-              <p>• <strong>Eliminações:</strong> Nenhuma equipe é eliminada após a 2ª fase.</p>
-              <p>• <strong>Transição para a Grande Final:</strong> Todas as 12 equipes iniciam a 3ª Fase com a pontuação zerada.</p>
-              <p>• <strong>Desempate:</strong> 1º Booyahs; 2º Abates; 3º Colocação na última queda juntas.</p>
+            <div className="bg-[#0f0f12] p-4 rounded-xl border border-purple-500/20 text-xs text-gray-300 space-y-2">
+              <div className="font-bold text-purple-300 uppercase tracking-wider text-[11px] mb-1">
+                ★ Tabela de Pontos Extras da 1ª Fase:
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1.5 font-mono text-[10px]">
+                <div className="bg-black/50 p-1.5 rounded border border-gray-800 flex justify-between"><span>1° Colocado:</span> <strong className="text-yellow-400">+50 Pts</strong></div>
+                <div className="bg-black/50 p-1.5 rounded border border-gray-800 flex justify-between"><span>2° Colocado:</span> <strong className="text-yellow-400">+42 Pts</strong></div>
+                <div className="bg-black/50 p-1.5 rounded border border-gray-800 flex justify-between"><span>3° Colocado:</span> <strong className="text-yellow-400">+35 Pts</strong></div>
+                <div className="bg-black/50 p-1.5 rounded border border-gray-800 flex justify-between"><span>4° Colocado:</span> <strong className="text-yellow-400">+29 Pts</strong></div>
+                <div className="bg-black/50 p-1.5 rounded border border-gray-800 flex justify-between"><span>5° Colocado:</span> <strong className="text-purple-300">+24 Pts</strong></div>
+                <div className="bg-black/50 p-1.5 rounded border border-gray-800 flex justify-between"><span>6° Colocado:</span> <strong className="text-purple-300">+19 Pts</strong></div>
+                <div className="bg-black/50 p-1.5 rounded border border-gray-800 flex justify-between"><span>7° Colocado:</span> <strong className="text-purple-300">+15 Pts</strong></div>
+                <div className="bg-black/50 p-1.5 rounded border border-gray-800 flex justify-between"><span>8° Colocado:</span> <strong className="text-purple-300">+11 Pts</strong></div>
+                <div className="bg-black/50 p-1.5 rounded border border-gray-800 flex justify-between"><span>9° Colocado:</span> <strong className="text-gray-300">+8 Pts</strong></div>
+                <div className="bg-black/50 p-1.5 rounded border border-gray-800 flex justify-between"><span>10° Colocado:</span> <strong className="text-gray-300">+5 Pts</strong></div>
+                <div className="bg-black/50 p-1.5 rounded border border-gray-800 flex justify-between"><span>11° Colocado:</span> <strong className="text-gray-300">+2 Pts</strong></div>
+                <div className="bg-black/50 p-1.5 rounded border border-gray-800 flex justify-between"><span>12° Colocado:</span> <strong className="text-gray-400">0 Pts</strong></div>
+              </div>
+              <div className="pt-2 border-t border-gray-800/80 space-y-1 text-[11px]">
+                <p>• <strong>Eliminações:</strong> Nenhuma equipe é eliminada após a 2ª fase.</p>
+                <p>• <strong>Transição para a Grande Final:</strong> Todas as 12 equipes iniciam a 3ª Fase com a pontuação zerada.</p>
+                <p>• <strong>Critérios de Desempate (na ordem):</strong> 1º Soma de Booyahs (Vitórias); 2º Soma de abates; 3º Colocação na última queda em que participaram juntas.</p>
+              </div>
             </div>
           </div>
 
