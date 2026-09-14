@@ -200,9 +200,9 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
 
         // FILTRO ESTRITO: Se selecionar RD e Q, deve bater os dois simultaneamente no registro
         const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => matchRd(r, p.RD));
-        const matchQ = filters.queda.length === 0 || filters.queda.some(q => matchQ(q, p.Q));
+        const isQMatch = filters.queda.length === 0 || filters.queda.some(q => matchQ(q, p.Q));
         
-        return matchRD && matchQ;
+        return matchRD && isQMatch;
     });
 
     const statsMap = new Map<string, { 
@@ -272,8 +272,8 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
 
     const filteredKillFeed = data.killFeed.filter(k => {
         const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => matchRd(r, k.RD));
-        const matchQ = filters.queda.length === 0 || filters.queda.some(q => matchQ(q, k.Q));
-        return matchRD && matchQ;
+        const isQMatch = filters.queda.length === 0 || filters.queda.some(q => matchQ(q, k.Q));
+        return matchRD && isQMatch;
     });
 
     const playerSafes = new Map<string, Map<string, number>>();
@@ -312,8 +312,8 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             if (!teamGroup || !filters.grupo.some(g => normalize(g) === teamGroup)) return;
         }
         const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => matchRd(r, p.RD));
-        const matchQ = filters.queda.length === 0 || filters.queda.some(q => matchQ(q, p.Q));
-        if (!matchRD || !matchQ) return;
+        const isQMatch = filters.queda.length === 0 || filters.queda.some(q => matchQ(q, p.Q));
+        if (!matchRD || !isQMatch) return;
 
         const t = p.TIME;
         teamKillsMap.set(t, (teamKillsMap.get(t) || 0) + parseNumber(p.Abates));
@@ -642,9 +642,9 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
         
         // FILTRO ESTRITO NO FEED: RD AND Q
         const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => matchRd(r, k.RD));
-        const matchQ = filters.queda.length === 0 || filters.queda.some(q => matchQ(q, k.Q));
+        const isQMatch = filters.queda.length === 0 || filters.queda.some(q => matchQ(q, k.Q));
         
-        return matchRD && matchQ;
+        return matchRD && isQMatch;
     });
 
     const feedKillsMap = new Map<string, number>();

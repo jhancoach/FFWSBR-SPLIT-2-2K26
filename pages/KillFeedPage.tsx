@@ -44,10 +44,12 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
 
   const normalize = (val: string | undefined) => (val || '').trim().toUpperCase();
 
-  const matchRd = (filterVal: string, itemVal: string | undefined | null): boolean => {
-    if (!itemVal) return false;
+  const checkMatchRd = (filterVal: string, itemVal: string | number | undefined | null): boolean => {
+    if (itemVal === undefined || itemVal === null) return false;
+    const sItem = String(itemVal).trim();
+    if (!sItem) return false;
     const normF = normalize(filterVal);
-    const normI = normalize(itemVal);
+    const normI = normalize(sItem);
     if (normF === normI) return true;
     const numF = normF.replace(/\D/g, '');
     const numI = normI.replace(/\D/g, '');
@@ -55,10 +57,12 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
     return false;
   };
 
-  const matchQ = (filterVal: string, itemVal: string | undefined | null): boolean => {
-    if (!itemVal) return false;
+  const checkMatchQ = (filterVal: string, itemVal: string | number | undefined | null): boolean => {
+    if (itemVal === undefined || itemVal === null) return false;
+    const sItem = String(itemVal).trim();
+    if (!sItem) return false;
     const normF = normalize(filterVal);
-    const normI = normalize(itemVal);
+    const normI = normalize(sItem);
     if (normF === normI) return true;
     const numF = normF.replace(/\D/g, '');
     const numI = normI.replace(/\D/g, '');
@@ -98,13 +102,28 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
       if (r2 && r2 !== 'N/A' && r2 !== '-') rolesSet.add(r2);
     });
 
+    const rounds = Array.from(new Set(data.killFeed.map(k => k.RD)))
+      .filter(Boolean)
+      .map(String)
+      .sort((a, b) => (parseInt(a.replace(/\D/g, '')) || 0) - (parseInt(b.replace(/\D/g, '')) || 0));
+
+    // Se houver rodada selecionada, filtrar as opções de quedas para refletir as quedas daquela rodada
+    const baseFeedForDrops = data.killFeed.filter(k => 
+      filters.rodada.length === 0 || filters.rodada.some(r => checkMatchRd(r, k.RD))
+    );
+
+    const quedas = Array.from(new Set(baseFeedForDrops.map(k => k.Q)))
+      .filter(Boolean)
+      .map(String)
+      .sort((a, b) => (parseInt(a.replace(/\D/g, '')) || 0) - (parseInt(b.replace(/\D/g, '')) || 0));
+
     return {
       teams: Array.from(new Set(data.players.map(p => p.TIME))).filter(Boolean).sort(),
       players: Array.from(new Set([...data.killFeed.map(k => k.PLAYER), ...data.killFeed.map(k => k.VITIMA)])).filter(Boolean).sort(),
       weapons: Array.from(new Set(data.killFeed.map(k => k.ARMA))).filter(Boolean).sort(),
       safes: Array.from(new Set(data.killFeed.map(k => k.SAFE))).filter(Boolean).sort(),
       maps: Array.from(new Set(data.killFeed.map(k => k.MAPA))).filter(Boolean).sort(),
-      rounds: Array.from(new Set(data.killFeed.map(k => k.RD))).filter(Boolean).sort(),
+      rounds,
       confrontations: Array.from(new Set([
         ...data.confrontationsDimension.map(c => c.CONFRONTO),
         ...data.killFeed.map(k => k.CONFRONTO),
@@ -112,11 +131,11 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
         ...data.characters.map(c => c.Confronto),
         ...data.players.map(p => p.CONFRONTO)
       ].filter(Boolean))).sort(),
-      quedas: Array.from(new Set(data.killFeed.map(k => k.Q))).filter(Boolean).sort(),
+      quedas,
       grupos: Array.from(new Set((Array.isArray(data?.teamsReference) ? data.teamsReference : []).map(t => t.GRUPO))).filter(Boolean).sort() as string[],
       funcoes: Array.from(rolesSet).sort(),
     };
-  }, [data.killFeed, data.players, data.teamsReference, data.confrontationsDimension, data.details, data.characters, data.playersDimension]);
+  }, [data.killFeed, data.players, data.teamsReference, data.confrontationsDimension, data.details, data.characters, data.playersDimension, filters.rodada]);
 
   const handleToggleFilter = (key: keyof typeof filters, value: string) => {
       setFilters(prev => {
@@ -141,9 +160,9 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
 
       if (filters.map.length > 0 && !filters.map.some(m => normalize(m) === normalize(k.MAPA))) return false;
       
-      const matchRD = filters.rodada.length === 0 || filters.rodada.some(r => matchRd(r, k.RD));
-      const matchQ = filters.queda.length === 0 || filters.queda.some(q => matchQ(q, k.Q));
-      if (!(matchRD && matchQ)) return false;
+      const isRdMatch = filters.rodada.length === 0 || filters.rodada.some(r => checkMatchRd(r, k.RD));
+      const isQMatch = filters.queda.length === 0 || filters.queda.some(q => checkMatchQ(q, k.Q));
+      if (!isRdMatch || !isQMatch) return false;
 
       if (filters.confrontation.length > 0 && !filters.confrontation.some(c => normalize(c) === normalize(k.CONFRONTO))) return false;
       if (filters.weapon.length > 0 && !filters.weapon.includes(k.ARMA)) return false;
