@@ -28,6 +28,42 @@ export interface PlayerLoadoutDetailed {
 
 const normalize = (val: string | undefined) => (val || '').trim().toUpperCase();
 
+const sameTeamCache = new Map<string, boolean>();
+const canonicalTeamCache = new Map<string, string>();
+
+/**
+ * Retorna o nome canônico do time conforme teamsReference, com cache de alta performance
+ */
+export const getCanonicalTeam = (rawName?: string, teamsReference: any[] = []): string => {
+  if (!rawName || typeof rawName !== 'string') return '';
+  const trimmed = rawName.trim();
+  if (!trimmed) return '';
+  const norm = trimmed.toUpperCase();
+
+  if (canonicalTeamCache.has(norm)) {
+    return canonicalTeamCache.get(norm)!;
+  }
+
+  if (Array.isArray(teamsReference) && teamsReference.length > 0) {
+    const direct = teamsReference.find(t => t.TIME && t.TIME.trim().toUpperCase() === norm);
+    if (direct?.TIME) {
+      const canon = direct.TIME.trim().toUpperCase();
+      canonicalTeamCache.set(norm, canon);
+      return canon;
+    }
+
+    const matched = teamsReference.find(t => isSameTeam(t.TIME, trimmed, teamsReference));
+    if (matched?.TIME) {
+      const canon = matched.TIME.trim().toUpperCase();
+      canonicalTeamCache.set(norm, canon);
+      return canon;
+    }
+  }
+
+  canonicalTeamCache.set(norm, norm);
+  return norm;
+};
+
 /**
  * Verificação estrita de correspondência de times (evita que atalhos/substrings soltas como "A" ou "PA" combinem com outros times)
  */
@@ -42,27 +78,35 @@ export const isSameTeam = (nameA?: string, nameB?: string, teamsReference: any[]
 
   if (normA === normB) return true;
 
+  const cacheKey = `${normA}:::${normB}`;
+  if (sameTeamCache.has(cacheKey)) {
+    return sameTeamCache.get(cacheKey)!;
+  }
+
+  let result = false;
+
   if (Array.isArray(teamsReference) && teamsReference.length > 0) {
     const refA = teamsReference.find(t => t.TIME && t.TIME.trim().toUpperCase() === normA);
     const refB = teamsReference.find(t => t.TIME && t.TIME.trim().toUpperCase() === normB);
     if (refA && refB && refA.TIME && refB.TIME && refA.TIME.trim().toUpperCase() === refB.TIME.trim().toUpperCase()) {
-      return true;
+      result = true;
     }
   }
 
-  const tokensA = normA.split(/\s+/);
-  const tokensB = normB.split(/\s+/);
+  if (!result) {
+    const tokensA = normA.split(/\s+/);
+    const tokensB = normB.split(/\s+/);
 
-  if (tokensA.some(t => t === normB) || tokensB.some(t => t === normA)) {
-    return true;
+    if (tokensA.some(t => t === normB) || tokensB.some(t => t === normA)) {
+      result = true;
+    } else if (tokensA.length === 1 && tokensB.length === 1) {
+      if (normA.length >= 4 && normB.startsWith(normA)) result = true;
+      else if (normB.length >= 4 && normA.startsWith(normB)) result = true;
+    }
   }
 
-  if (tokensA.length === 1 && tokensB.length === 1) {
-    if (normA.length >= 4 && normB.startsWith(normA)) return true;
-    if (normB.length >= 4 && normA.startsWith(normB)) return true;
-  }
-
-  return false;
+  sameTeamCache.set(cacheKey, result);
+  return result;
 };
 
 /**
@@ -241,6 +285,138 @@ export const getTeamDropComposition = (
       funcao2: dim?.Funcao2
     };
   });
+};
+
+export interface DropCompositionIndex {
+  getComposition: (team: string, rd: string, q: string, mapa?: string, confronto?: string) => PlayerLoadoutDetailed[];
+}
+
+/**
+ * Constrói índice O(1) de todas as composições de jogadores por queda para resposta instantânea
+ */
+export const buildDropCompositionIndex = (data: DashboardData): DropCompositionIndex => {
+  const teamsRef = data.teamsReference || [];
+  
+  // 1. Mapeamento de estatísticas de jogadores por queda
+  const playerStatsMap = new Map<string, { kills: number; damage: number }>();
+  if (Array.isArray(data.players)) {
+    data.players.forEach(p => {
+      if (p.PLAYER) {
+        const normP = normalize(p.PLAYER);
+        const rd = (p.RD || '').toString().replace(/\D/g, '');
+        const q = (p.Q || '').toString().replace(/\D/g, '');
+        const key = `${rd}_${q}_${normP}`;
+        playerStatsMap.set(key, {
+          kills: parseInt(p.Abates) || 0,
+          damage: parseInt(p.Dano || '0') || 0
+        });
+      }
+    });
+  }
+
+  // 2. Mapeamento de dimensões dos jogadores
+  const playerDimMap = new Map<string, any>();
+  if (Array.isArray(data.playersDimension)) {
+    data.playersDimension.forEach((d: any) => {
+      if (d?.Name) {
+        playerDimMap.set(normalize(d.Name), d);
+      }
+    });
+  }
+
+  // 3. Mapeamento de jogador -> time canônico
+  const playerToTeamMap = new Map<string, string>();
+  if (Array.isArray(data.players)) {
+    data.players.forEach(p => {
+      if (p.PLAYER && p.TIME) {
+        playerToTeamMap.set(normalize(p.PLAYER), getCanonicalTeam(p.TIME, teamsRef));
+      }
+    });
+  }
+  if (Array.isArray(data.characters)) {
+    data.characters.forEach(c => {
+      if (c?.Player && c?.Time) {
+        const normP = normalize(c.Player);
+        if (!playerToTeamMap.has(normP)) {
+          playerToTeamMap.set(normP, getCanonicalTeam(c.Time, teamsRef));
+        }
+      }
+    });
+  }
+
+  // 4. Agrupamento de composições pré-calculadas por Team + RD + Q
+  const compositionMap = new Map<string, PlayerLoadoutDetailed[]>();
+  const seenPlayerByDrop = new Map<string, Set<string>>();
+
+  if (Array.isArray(data.characters)) {
+    data.characters.forEach(c => {
+      if (!c || !c.Player) return;
+
+      const rdClean = (c.Rd || c.RD || '1').toString().replace(/\D/g, '');
+      const qClean = (c.Q || c.S || '1').toString().replace(/\D/g, '');
+      const normP = normalize(c.Player);
+
+      const canonTeam = getCanonicalTeam(c.Time, teamsRef) || playerToTeamMap.get(normP) || (c.Time || '').trim().toUpperCase();
+      if (!canonTeam) return;
+
+      const dropKey = `${canonTeam}_${rdClean}_${qClean}`;
+
+      if (!seenPlayerByDrop.has(dropKey)) {
+        seenPlayerByDrop.set(dropKey, new Set<string>());
+        compositionMap.set(dropKey, []);
+      }
+
+      const seen = seenPlayerByDrop.get(dropKey)!;
+      if (seen.has(normP)) return;
+      seen.add(normP);
+
+      const pStat = playerStatsMap.get(`${rdClean}_${qClean}_${normP}`);
+      const dim = playerDimMap.get(normP);
+
+      const item: PlayerLoadoutDetailed = {
+        player: c.Player,
+        time: c.Time || canonTeam,
+        hab1: c.Hab1,
+        hab1Img: findDimImg(data.hab1, c.Hab1),
+        hab2: c.Hab2,
+        hab2Img: findDimImg(data.hab2, c.Hab2),
+        hab3: c.Hab3,
+        hab3Img: findDimImg(data.hab3, c.Hab3),
+        hab4: c.Hab4,
+        hab4Img: findDimImg(data.hab4, c.Hab4),
+        pet: c.Pet,
+        petImg: findDimImg(data.pets, c.Pet),
+        item: c.Item,
+        itemImg: findDimImg(data.items, c.Item),
+        rd: c.Rd || c.RD || '1',
+        q: c.Q || c.S || '1',
+        confronto: c.Confronto || 'N/A',
+        mapa: c.Mapa || 'N/A',
+        kills: pStat?.kills,
+        damage: pStat?.damage,
+        funcao: dim?.Funcao,
+        funcao2: dim?.Funcao2
+      };
+
+      compositionMap.get(dropKey)!.push(item);
+    });
+  }
+
+  return {
+    getComposition: (team: string, rd: string, q: string, mapa?: string, confronto?: string): PlayerLoadoutDetailed[] => {
+      const rdClean = rd.toString().replace(/\D/g, '');
+      const qClean = q.toString().replace(/\D/g, '');
+      const canonTeam = getCanonicalTeam(team, teamsRef);
+      const dropKey = `${canonTeam}_${rdClean}_${qClean}`;
+
+      const cached = compositionMap.get(dropKey);
+      if (cached && cached.length > 0) {
+        return cached;
+      }
+
+      return getTeamDropComposition(data, team, rd, q, confronto, mapa);
+    }
+  };
 };
 
 export interface TeamCharacterSummary {

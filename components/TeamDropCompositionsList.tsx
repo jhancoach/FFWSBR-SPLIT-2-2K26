@@ -1,8 +1,18 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { DashboardData, MatchDetails } from '../types';
-import { getTeamDropComposition, PlayerLoadoutDetailed } from '../utils/characterUtils';
+import { getTeamDropComposition, buildDropCompositionIndex, PlayerLoadoutDetailed } from '../utils/characterUtils';
 import { findTeamLogo } from '../utils/teamUtils';
 import { findDimImg } from '../utils/skillImages';
+import { 
+  analyzeDropCombat, 
+  buildPlayerToTeamMap, 
+  buildDropKillFeedIndex,
+  calculateEndGameSummary, 
+  calculateTeamEndGameRankings,
+  TeamEndGameRanking,
+  DropCombatAnalysis 
+} from '../utils/dropCombatUtils';
+import { DropCombatDetailsView } from './DropCombatDetailsView';
 import { 
   Zap, 
   Shield, 
@@ -28,7 +38,11 @@ import {
   Eye,
   Info,
   Award,
-  Target
+  Target,
+  ShieldCheck,
+  Skull,
+  Crosshair,
+  Activity
 } from 'lucide-react';
 
 interface TeamDropItem {
@@ -51,6 +65,7 @@ interface TeamDropItem {
   playersLoadout: PlayerLoadoutDetailed[];
   activeSkillsSummary: { name: string; count: number; img?: string }[];
   activeSkillNames: string[];
+  combatAnalysis: DropCombatAnalysis;
 }
 
 interface TeamDropCompositionsListProps {
@@ -75,6 +90,7 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
   const [selectedPtsRange, setSelectedPtsRange] = useState<string>('ALL');
   const [selectedKillsRange, setSelectedKillsRange] = useState<string>('ALL');
   const [selectedActiveSkill, setSelectedActiveSkill] = useState<string>('ALL');
+  const [selectedEndGameFilter, setSelectedEndGameFilter] = useState<'ALL' | 'reached' | 'fullSquad' | 'eliminatedEarly'>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<'chronological' | 'recent' | 'points' | 'kills' | 'position'>('chronological');
   const [tableSort, setTableSort] = useState<{
@@ -86,10 +102,51 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
   });
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [expandedDrops, setExpandedDrops] = useState<Record<string, boolean>>({});
+  const [showEndGameRanking, setShowEndGameRanking] = useState<boolean>(false);
 
-  // 1. Processar todas as quedas da competição
+  // Paginação progressiva para garantir abertura e renderização instantânea
+  const [visibleCount, setVisibleCount] = useState<number>(24);
+
+  // Reseta a paginação ao mudar qualquer filtro ou ordenação
+  useEffect(() => {
+    setVisibleCount(24);
+  }, [
+    selectedTeam,
+    selectedRound,
+    selectedDrop,
+    selectedMap,
+    selectedPosition,
+    selectedPtsRange,
+    selectedKillsRange,
+    selectedActiveSkill,
+    selectedEndGameFilter,
+    searchQuery,
+    sortBy,
+    tableSort,
+    viewMode
+  ]);
+
+  // 1. Processar todas as quedas da competição com índices de alta performance O(1)
   const allDropItems: TeamDropItem[] = useMemo(() => {
     if (!data?.details || !Array.isArray(data.details)) return [];
+
+    // Mapeamento e índices otimizados O(1)
+    const playerToTeamMap = buildPlayerToTeamMap(data);
+    const dropCompositionIndex = buildDropCompositionIndex(data);
+    const dropKillFeedIndex = buildDropKillFeedIndex(data);
+
+    // Cache local de logos e grupos de times
+    const teamLogoMap = new Map<string, string | undefined>();
+    const teamGroupMap = new Map<string, string | undefined>();
+    if (Array.isArray(data.teamsReference)) {
+      data.teamsReference.forEach(t => {
+        if (t?.TIME) {
+          const key = t.TIME.trim().toUpperCase();
+          teamLogoMap.set(key, t.FOTO || t.LOGO || t.Foto);
+          teamGroupMap.set(key, t.GRUPO);
+        }
+      });
+    }
 
     return data.details.map((d, index) => {
       const rdClean = (d.RD || '1').toString().replace(/\D/g, '');
@@ -100,18 +157,18 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
       const pos = parseInt(d.POS) || 0;
       const booyah = pos === 1 || parseInt(d.B) === 1;
       const team = (d.TIME || '').trim();
+      const teamUpper = team.toUpperCase();
 
-      const teamRef = data.teamsReference?.find(t => t.TIME && t.TIME.trim().toUpperCase() === team.toUpperCase());
-      const teamLogo = findTeamLogo(team, data.teamsReference);
+      const teamLogo = teamLogoMap.get(teamUpper) || findTeamLogo(team, data.teamsReference);
+      const grupo = teamGroupMap.get(teamUpper);
 
-      // Obter os 4 jogadores e seus loadouts nesta queda
-      const playersLoadout = getTeamDropComposition(
-        data,
+      // Obter os 4 jogadores e seus loadouts nesta queda em O(1)
+      const playersLoadout = dropCompositionIndex.getComposition(
         team,
         d.RD,
         d.Q || d.S,
-        d.CONFRONTO,
-        d.MAPA
+        d.MAPA,
+        d.CONFRONTO
       );
 
       // Contagem e síntese das habilidades ativas
@@ -140,11 +197,25 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
           img: item.img
         }));
 
+      // Análise profunda de combate, kills/mortes por safe e sobrevivência ao End Game com feed indexado O(1)
+      const combatAnalysis = analyzeDropCombat(
+        data,
+        team,
+        d.RD || '1',
+        d.Q || d.S || '1',
+        pos,
+        booyah,
+        playersLoadout,
+        playerToTeamMap,
+        dropKillFeedIndex
+      );
+      combatAnalysis.mapa = d.MAPA || 'N/A';
+
       return {
         id: `${team}_RD${rdClean}_Q${qClean}_${index}`,
         team,
         teamLogo,
-        grupo: teamRef?.GRUPO,
+        grupo,
         rd: d.RD || '1',
         q: d.Q || d.S || '1',
         rdNum: parseInt(rdClean) || 1,
@@ -159,7 +230,8 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
         ondeFechou: d.ONDE_FECHOU,
         playersLoadout,
         activeSkillsSummary,
-        activeSkillNames: activeNames
+        activeSkillNames: activeNames,
+        combatAnalysis
       };
     });
   }, [data]);
@@ -180,6 +252,17 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
     });
     return teamCounts;
   }, [allDropItems, selectedTeam]);
+
+  // Ranking de Chegada ao End Game (Safe 4+) para todas as equipes
+  const teamEndGameRankings = useMemo(() => {
+    return calculateTeamEndGameRankings(allDropItems);
+  }, [allDropItems]);
+
+  // Estatísticas de End Game específicas do time atualmente selecionado
+  const selectedTeamEndGameStats = useMemo(() => {
+    if (selectedTeam === 'ALL') return null;
+    return teamEndGameRankings.find(t => t.team.toUpperCase() === selectedTeam.toUpperCase()) || null;
+  }, [selectedTeam, teamEndGameRankings]);
 
   // Lista única de opções para os filtros
   const filterOptions = useMemo(() => {
@@ -403,6 +486,13 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
         if (!hasSkill) return false;
       }
 
+      // Filtro de chegada ao End Game (Safes 5+)
+      if (selectedEndGameFilter !== 'ALL') {
+        if (selectedEndGameFilter === 'reached' && !item.combatAnalysis.reachedEndGame) return false;
+        if (selectedEndGameFilter === 'fullSquad' && !item.combatAnalysis.isFullSquadAtEndGame) return false;
+        if (selectedEndGameFilter === 'eliminatedEarly' && item.combatAnalysis.reachedEndGame) return false;
+      }
+
       // Busca por texto livre (time, jogador, ativa, mapa)
       if (normSearch) {
         const inTeam = item.team.toUpperCase().includes(normSearch);
@@ -465,18 +555,32 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
       }
       return 0;
     });
-  }, [allDropItems, selectedTeam, selectedRound, selectedDrop, selectedMap, selectedPosition, selectedPtsRange, selectedKillsRange, selectedActiveSkill, searchQuery, sortBy, tableSort]);
+  }, [allDropItems, selectedTeam, selectedRound, selectedDrop, selectedMap, selectedPosition, selectedPtsRange, selectedKillsRange, selectedActiveSkill, selectedEndGameFilter, searchQuery, sortBy, tableSort]);
 
-  // Estatísticas rápidas do recorte
+  // Estatísticas rápidas do recorte incluindo dados de End Game (Safes 5+)
   const metrics = useMemo(() => {
     const total = filteredDrops.length;
     if (total === 0) {
-      return { total: 0, avgPts: '0.0', avgKills: '0.0', booyahs: 0, topActive: null };
+      return { 
+        total: 0, 
+        avgPts: '0.0', 
+        avgKills: '0.0', 
+        booyahs: 0, 
+        topActive: null,
+        endGameCount: 0,
+        endGamePct: 0,
+        fullSquadCount: 0,
+        fullSquadPct: 0,
+        avgAliveEndGame: '0.0'
+      };
     }
 
     const sumPts = filteredDrops.reduce((acc, d) => acc + d.pts, 0);
     const sumKills = filteredDrops.reduce((acc, d) => acc + d.kills, 0);
     const booyahs = filteredDrops.filter(d => d.booyah).length;
+
+    // Resumo de chegadas e sobrevivência ao End Game
+    const endGameSummary = calculateEndGameSummary(filteredDrops.map(d => d.combatAnalysis));
 
     // Ativa mais usada no recorte
     const actMap: Record<string, number> = {};
@@ -493,6 +597,11 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
       avgPts: (sumPts / total).toFixed(1),
       avgKills: (sumKills / total).toFixed(1),
       booyahs,
+      endGameCount: endGameSummary.endGameReachedCount,
+      endGamePct: endGameSummary.endGameReachedPct,
+      fullSquadCount: endGameSummary.fullSquadCount,
+      fullSquadPct: endGameSummary.fullSquadPct,
+      avgAliveEndGame: endGameSummary.avgAliveAtEndGame,
       topActive: topActiveEntry ? { 
         name: topActiveEntry[0], 
         count: topActiveEntry[1], 
@@ -501,6 +610,11 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
       } : null
     };
   }, [filteredDrops, data.hab1]);
+
+  // Limitação de itens visíveis para renderização instantânea
+  const displayedDrops = useMemo(() => {
+    return filteredDrops.slice(0, visibleCount);
+  }, [filteredDrops, visibleCount]);
 
   const toggleExpand = (id: string) => {
     setExpandedDrops(prev => ({ ...prev, [id]: !prev[id] }));
@@ -590,7 +704,7 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
       </div>
 
       {/* Cards de Métricas e KPIs */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
         <div className="bg-[#151518] p-4 rounded-2xl border border-white/5 relative overflow-hidden shadow-lg">
           <span className="text-[9px] font-black uppercase tracking-widest text-gray-500 block">
             Quedas Listadas
@@ -600,6 +714,23 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
           </h3>
           <span className="text-[10px] text-gray-400 font-bold mt-0.5 block">
             Partidas registradas
+          </span>
+        </div>
+
+        <div className="bg-[#151518] p-4 rounded-2xl border border-emerald-500/30 relative overflow-hidden shadow-lg">
+          <div className="flex items-center justify-between">
+            <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400 flex items-center gap-1">
+              <ShieldCheck size={12} /> End Game (Safe 4+)
+            </span>
+            <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
+              S4+
+            </span>
+          </div>
+          <h3 className="text-2xl font-black italic text-emerald-400 mt-1">
+            {metrics.endGameCount} <span className="text-xs font-normal text-gray-400">/ {metrics.total}</span>
+          </h3>
+          <span className="text-[10px] text-emerald-400/90 font-bold mt-0.5 block truncate" title={`Chegou vivo no End Game a partir da Safe 4: ${metrics.endGameCount} vezes (${metrics.endGamePct}%) • ${metrics.fullSquadCount}x Full Squad (4 Vivos) • Média de ${metrics.avgAliveEndGame} jogadores vivos`}>
+            {metrics.endGamePct}% ({metrics.fullSquadCount}x Full Squad)
           </span>
         </div>
 
@@ -639,7 +770,7 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
           </span>
         </div>
 
-        <div className="bg-[#151518] p-4 rounded-2xl border border-white/5 relative overflow-hidden shadow-lg col-span-2 sm:col-span-2 lg:col-span-1">
+        <div className="bg-[#151518] p-4 rounded-2xl border border-white/5 relative overflow-hidden shadow-lg col-span-2 sm:col-span-1 lg:col-span-1">
           <span className="text-[9px] font-black uppercase tracking-widest text-purple-400 block">
             Ativa Mais Usada
           </span>
@@ -660,6 +791,240 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
           </div>
         </div>
       </div>
+
+      {/* Destaque Individual de Chegada ao End Game do Time Selecionado (quando filtrado por equipe) */}
+      {selectedTeam !== 'ALL' && selectedTeamEndGameStats && (
+        <div className="bg-gradient-to-r from-emerald-950/40 via-[#101318] to-indigo-950/30 border border-emerald-500/30 p-4 sm:p-5 rounded-2xl shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-black border border-emerald-500/40 p-2 flex items-center justify-center shrink-0 shadow-lg">
+              {selectedTeamEndGameStats.teamLogo ? (
+                <img src={selectedTeamEndGameStats.teamLogo} alt={selectedTeamEndGameStats.team} className="w-full h-full object-contain" />
+              ) : (
+                <ShieldCheck size={24} className="text-emerald-400" />
+              )}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  Sobrevivência End Game (Safe 4+)
+                </span>
+                <span className="text-[10px] text-gray-400 font-bold uppercase">
+                  {selectedTeamEndGameStats.team}
+                </span>
+              </div>
+              <h4 className="text-base sm:text-lg font-black uppercase italic text-white mt-0.5">
+                Chegou vivo no End Game <span className="text-emerald-400">{selectedTeamEndGameStats.endGameReachedCount} vezes</span> em {selectedTeamEndGameStats.totalDrops} quedas ({selectedTeamEndGameStats.endGameReachedPct}%)
+              </h4>
+              <div className="flex flex-wrap items-center gap-2 mt-1.5 text-[11px] text-gray-300">
+                <span className="bg-black/60 px-2 py-0.5 rounded border border-emerald-500/20 text-emerald-300 font-bold">
+                  🛡️ 4 Vivos (Full Squad): <strong className="text-white font-black">{selectedTeamEndGameStats.fullSquadCount}x</strong> ({selectedTeamEndGameStats.fullSquadPct}%)
+                </span>
+                <span className="bg-black/60 px-2 py-0.5 rounded border border-white/5 text-gray-300 font-bold">
+                  ⚔️ 3 Vivos: <strong className="text-white font-black">{selectedTeamEndGameStats.threeAliveCount}x</strong>
+                </span>
+                <span className="bg-black/60 px-2 py-0.5 rounded border border-white/5 text-gray-300 font-bold">
+                  ⚡ 1-2 Vivos: <strong className="text-white font-black">{selectedTeamEndGameStats.lowAliveCount}x</strong>
+                </span>
+                <span className="bg-black/60 px-2 py-0.5 rounded border border-red-500/20 text-red-300 font-bold">
+                  ❌ Caiu antes da Safe 4: <strong className="text-white font-black">{selectedTeamEndGameStats.eliminatedBeforeSafe4}x</strong> ({selectedTeamEndGameStats.eliminatedBeforeSafe4Pct}%)
+                </span>
+                {selectedTeamEndGameStats.booyahCount > 0 && (
+                  <span className="bg-yellow-500/10 px-2 py-0.5 rounded border border-yellow-500/30 text-yellow-300 font-bold">
+                    👑 {selectedTeamEndGameStats.booyahCount} Booyahs ({selectedTeamEndGameStats.booyahConversionPct}% conversão)
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2 self-stretch md:self-auto justify-end">
+            <button
+              onClick={() => setSelectedEndGameFilter(selectedEndGameFilter === 'reached' ? 'ALL' : 'reached')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 ${
+                selectedEndGameFilter === 'reached'
+                  ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/25'
+                  : 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30'
+              }`}
+            >
+              <ShieldCheck size={14} />
+              {selectedEndGameFilter === 'reached' ? 'Exibindo Apenas End Game' : `Filtrar as ${selectedTeamEndGameStats.endGameReachedCount} Quedas no End Game`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Barra de Ação Rápida para Ranking de End Game (Safe 4+) de Todos os Times */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-[#121216] p-3 sm:p-4 rounded-2xl border border-white/10">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+            <ShieldCheck size={18} />
+          </div>
+          <div>
+            <h4 className="text-xs font-black uppercase tracking-wider text-white flex items-center gap-1.5">
+              <span>Sobrevivência no End Game (A partir da Safe 4)</span>
+              <span className="text-[9px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono font-bold">
+                SAFE 4+
+              </span>
+            </h4>
+            <p className="text-[10px] text-gray-400">
+              Veja quantas vezes cada time chegou vivo no End Game (S4+), com quantos atletas e taxa de Full Squad.
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={() => setShowEndGameRanking(prev => !prev)}
+          className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
+            showEndGameRanking
+              ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/25'
+              : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+          }`}
+        >
+          <Trophy size={14} />
+          <span>{showEndGameRanking ? 'Ocultar Ranking End Game' : 'Ver Ranking de End Game (Todos os Times)'}</span>
+          {showEndGameRanking ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </button>
+      </div>
+
+      {/* Tabela do Ranking de End Game por Time (quando aberta) */}
+      {showEndGameRanking && (
+        <div className="bg-[#111115] border border-emerald-500/30 rounded-2xl p-4 sm:p-5 space-y-4 shadow-2xl">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-3 border-b border-white/10">
+            <div>
+              <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400 flex items-center gap-1">
+                <Trophy size={12} /> Tabela Oficial de Sobrevivência
+              </span>
+              <h3 className="text-base sm:text-lg font-black uppercase italic text-white mt-0.5">
+                Quantas vezes cada time chegou vivo no End Game (Safe 4+)
+              </h3>
+            </div>
+            <span className="text-[10px] text-gray-400 font-bold">
+              Total de 18 equipes analisadas
+            </span>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-white/5">
+            <table className="w-full text-left text-xs text-gray-300">
+              <thead className="bg-black/60 text-[10px] font-black uppercase tracking-wider text-gray-400 border-b border-white/10">
+                <tr>
+                  <th className="px-3 py-3 text-center w-12">#</th>
+                  <th className="px-4 py-3">Equipe</th>
+                  <th className="px-3 py-3 text-center">Quedas</th>
+                  <th className="px-4 py-3 text-center text-emerald-400 font-black">
+                    Chegou no End Game (S4+)
+                  </th>
+                  <th className="px-3 py-3 text-center text-teal-300">
+                    4 Vivos (Full Squad)
+                  </th>
+                  <th className="px-3 py-3 text-center text-gray-400">
+                    3 Vivos
+                  </th>
+                  <th className="px-3 py-3 text-center text-gray-400">
+                    1-2 Vivos
+                  </th>
+                  <th className="px-3 py-3 text-center text-red-400">
+                    Caiu Antes (S1-S3)
+                  </th>
+                  <th className="px-3 py-3 text-center text-yellow-400">
+                    Booyahs
+                  </th>
+                  <th className="px-4 py-3 text-center">Ação</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5 bg-[#141419]">
+                {teamEndGameRankings.map((tRank, idx) => {
+                  const isCurrentTeam = selectedTeam.toUpperCase() === tRank.team.toUpperCase();
+
+                  return (
+                    <tr 
+                      key={tRank.team} 
+                      className={`hover:bg-white/[0.03] transition-colors ${
+                        isCurrentTeam ? 'bg-emerald-500/10' : ''
+                      }`}
+                    >
+                      <td className="px-3 py-3 text-center font-mono font-black text-gray-500">
+                        {idx + 1}º
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-lg bg-black border border-white/10 p-1 flex items-center justify-center shrink-0">
+                            {tRank.teamLogo ? (
+                              <img src={tRank.teamLogo} alt={tRank.team} className="w-full h-full object-contain" />
+                            ) : (
+                              <Shield size={14} className="text-yellow-500" />
+                            )}
+                          </div>
+                          <span className={`font-black uppercase italic ${isCurrentTeam ? 'text-emerald-400' : 'text-white'}`}>
+                            {tRank.team}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-center font-bold text-gray-400">
+                        {tRank.totalDrops}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="font-black text-emerald-400 text-sm">
+                          {tRank.endGameReachedCount}x
+                        </span>
+                        <span className="text-[10px] text-gray-400 font-bold ml-1">
+                          ({tRank.endGameReachedPct}%)
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        <span className="font-black text-teal-300">
+                          {tRank.fullSquadCount}x
+                        </span>
+                        <span className="text-[9px] text-gray-500 ml-1">
+                          ({tRank.fullSquadPct}%)
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 text-center font-bold text-gray-300">
+                        {tRank.threeAliveCount}x
+                      </td>
+                      <td className="px-3 py-3 text-center font-bold text-gray-400">
+                        {tRank.lowAliveCount}x
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        <span className="font-black text-red-400">
+                          {tRank.eliminatedBeforeSafe4}x
+                        </span>
+                        <span className="text-[9px] text-gray-500 ml-1">
+                          ({tRank.eliminatedBeforeSafe4Pct}%)
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        <span className="font-black text-yellow-400">
+                          {tRank.booyahCount}
+                        </span>
+                        {tRank.endGameReachedCount > 0 && (
+                          <span className="text-[9px] text-yellow-500/70 ml-1">
+                            ({tRank.booyahConversionPct}%)
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <button
+                          onClick={() => {
+                            setSelectedTeam(tRank.team);
+                            setShowEndGameRanking(false);
+                          }}
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all cursor-pointer ${
+                            isCurrentTeam
+                              ? 'bg-emerald-500 text-black'
+                              : 'bg-white/5 hover:bg-emerald-500 hover:text-black text-gray-300'
+                          }`}
+                        >
+                          {isCurrentTeam ? 'Filtrado' : 'Filtrar Time'}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Barra de Filtros Completa com Colunas (Mapa, Posição, Pontos, Abates, Ativa) */}
       <div className="bg-[#121215] p-5 rounded-3xl border border-white/10 shadow-2xl space-y-4">
@@ -726,8 +1091,8 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
           </div>
         </div>
 
-        {/* Linha 2: Filtros pelas Colunas (Mapa, Posição, Pontos, Abates, Rodada, Queda) */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 pt-2 border-t border-white/5">
+        {/* Linha 2: Filtros pelas Colunas (Mapa, Posição, Pontos, Abates, End Game, Rodada, Queda) */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-3 pt-2 border-t border-white/5">
           {/* Coluna: Mapa */}
           <div>
             <label className="text-[9px] font-black uppercase text-gray-500 tracking-wider block mb-1">
@@ -812,6 +1177,25 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
             </select>
           </div>
 
+          {/* Coluna: End Game (Safes 4+) */}
+          <div>
+            <label className="text-[9px] font-black uppercase text-emerald-400 tracking-wider block mb-1">
+              End Game (Safe 4+)
+            </label>
+            <select
+              value={selectedEndGameFilter}
+              onChange={e => setSelectedEndGameFilter(e.target.value as any)}
+              className={`w-full bg-black/60 border rounded-xl px-2.5 py-2 text-xs font-bold outline-none focus:border-yellow-500/50 uppercase cursor-pointer ${
+                selectedEndGameFilter !== 'ALL' ? 'border-emerald-500 text-emerald-400 font-black' : 'border-white/10 text-white'
+              }`}
+            >
+              <option value="ALL">Todos os Status</option>
+              <option value="reached">🛡️ Chegou Vivo (S4+)</option>
+              <option value="fullSquad">✨ Full Squad (4 Vivos)</option>
+              <option value="eliminatedEarly">❌ Caiu Antes da S4 (S1-S3)</option>
+            </select>
+          </div>
+
           {/* Rodada */}
           <div>
             <label className="text-[9px] font-black uppercase text-gray-500 tracking-wider block mb-1">
@@ -890,6 +1274,15 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
                   <Zap size={10} /> Ativa: {selectedActiveSkill} ✕
                 </button>
               )}
+              {selectedEndGameFilter !== 'ALL' && (
+                <button
+                  onClick={() => setSelectedEndGameFilter('ALL')}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-black uppercase flex items-center gap-1 hover:bg-emerald-500/25"
+                >
+                  <ShieldCheck size={10} />
+                  End Game: {selectedEndGameFilter === 'reached' ? 'Chegou Vivo (S4+)' : selectedEndGameFilter === 'fullSquad' ? 'Full Squad (4 Vivos)' : 'Caiu Antes da S4'} ✕
+                </button>
+              )}
               {selectedMap !== 'ALL' && (
                 <button
                   onClick={() => setSelectedMap('ALL')}
@@ -945,7 +1338,7 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
             )}
 
             {/* Resetar Todos os Filtros */}
-            {(selectedTeam !== 'ALL' || selectedRound !== 'ALL' || selectedDrop !== 'ALL' || selectedMap !== 'ALL' || selectedPosition !== 'ALL' || selectedPtsRange !== 'ALL' || selectedKillsRange !== 'ALL' || selectedActiveSkill !== 'ALL' || searchQuery) && (
+            {(selectedTeam !== 'ALL' || selectedRound !== 'ALL' || selectedDrop !== 'ALL' || selectedMap !== 'ALL' || selectedPosition !== 'ALL' || selectedPtsRange !== 'ALL' || selectedKillsRange !== 'ALL' || selectedActiveSkill !== 'ALL' || selectedEndGameFilter !== 'ALL' || searchQuery) && (
               <button
                 onClick={() => {
                   setSelectedTeam('ALL');
@@ -956,6 +1349,7 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
                   setSelectedPtsRange('ALL');
                   setSelectedKillsRange('ALL');
                   setSelectedActiveSkill('ALL');
+                  setSelectedEndGameFilter('ALL');
                   setSearchQuery('');
                 }}
                 className="text-[10px] font-black text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 px-3 py-1.5 rounded-xl border border-red-500/20 uppercase tracking-wider transition-colors cursor-pointer"
@@ -1136,18 +1530,19 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
       {viewMode === 'cards' && (
         <div className="space-y-4">
           {filteredDrops.length > 0 ? (
-            filteredDrops.map(drop => {
-              const isExpanded = !!expandedDrops[drop.id];
+            <>
+              {displayedDrops.map(drop => {
+                const isExpanded = !!expandedDrops[drop.id];
 
-              return (
-                <div
-                  key={drop.id}
-                  className={`bg-[#121215] rounded-3xl border transition-all overflow-hidden shadow-xl ${
-                    drop.booyah 
-                      ? 'border-yellow-500/40 shadow-yellow-500/5' 
-                      : 'border-gray-800/80 hover:border-gray-700'
-                  }`}
-                >
+                return (
+                  <div
+                    key={drop.id}
+                    className={`bg-[#121215] rounded-3xl border transition-all overflow-hidden shadow-xl ${
+                      drop.booyah 
+                        ? 'border-yellow-500/40 shadow-yellow-500/5' 
+                        : 'border-gray-800/80 hover:border-gray-700'
+                    }`}
+                  >
                   {/* Topo do Card da Queda */}
                   <div className={`p-4 sm:p-5 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 ${
                     drop.booyah ? 'bg-gradient-to-r from-yellow-500/15 via-black/40 to-transparent' : 'bg-black/40'
@@ -1172,6 +1567,28 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
                           <span className="px-2.5 py-0.5 rounded-lg bg-yellow-500 text-black font-black text-[10px] uppercase tracking-wider">
                             RD {drop.rd} • QUEDA {drop.q}
                           </span>
+
+                          {/* Badge de End Game */}
+                          {drop.combatAnalysis.reachedEndGame ? (
+                            <span 
+                              className={`px-2 py-0.5 rounded-lg font-black text-[9px] uppercase tracking-wider flex items-center gap-1 border ${
+                                drop.combatAnalysis.isFullSquadAtEndGame
+                                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                                  : 'bg-teal-500/20 text-teal-300 border-teal-500/30'
+                              }`}
+                              title={`Chegou vivo no End Game a partir da Safe 4 com ${drop.combatAnalysis.playersAliveAtEndGame} atletas vivos`}
+                            >
+                              <ShieldCheck size={10} />
+                              {drop.combatAnalysis.isFullSquadAtEndGame ? 'End Game S4+ (Full)' : `End Game S4+ (${drop.combatAnalysis.playersAliveAtEndGame}v)`}
+                            </span>
+                          ) : (
+                            <span 
+                              className="px-2 py-0.5 rounded-lg font-bold text-[9px] uppercase tracking-wider flex items-center gap-1 bg-red-500/10 text-red-400/80 border border-red-500/20 hidden sm:inline-flex"
+                              title={`Eliminado antes da Safe 4 (Safe máxima alcançada: ${drop.combatAnalysis.maxSafeReached})`}
+                            >
+                              <Skull size={9} /> Caiu Safe {drop.combatAnalysis.maxSafeReached} (antes S4)
+                            </span>
+                          )}
 
                           {/* Badge de Mapa Clicável */}
                           <button
@@ -1293,17 +1710,19 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
                         </span>
                       </button>
 
-                      {/* Botão de Expandir Loadout Completo */}
+                      {/* Botão de Ações (Kills, Mortes, Safes, End Game e Loadout) */}
                       <button
                         onClick={() => toggleExpand(drop.id)}
-                        className={`p-2.5 rounded-xl border text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer shrink-0 ${
+                        className={`px-3 py-2 rounded-xl border text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
                           isExpanded
                             ? 'bg-yellow-500 text-black border-yellow-400 shadow-md shadow-yellow-500/20'
-                            : 'bg-white/5 hover:bg-white/10 text-gray-300 border-white/10'
+                            : 'bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
                         }`}
-                        title={isExpanded ? 'Recolher detalhes' : 'Ver loadout completo dos 4 jogadores'}
+                        title={isExpanded ? 'Recolher detalhes de ações' : 'Ver ações do time: kills e mortes por safe, jogadores e end game'}
                       >
-                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        <Crosshair size={14} />
+                        <span>Ações</span>
+                        {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                       </button>
                     </div>
                   </div>
@@ -1493,9 +1912,56 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
                       </div>
                     )}
                   </div>
+
+                  {/* Painel Expandido de Ações do Time (Kills, Mortes, Safes e End Game) */}
+                  {isExpanded && (
+                    <div className="p-4 sm:p-5 border-t border-yellow-500/20 bg-black/75">
+                      <div className="mb-3 flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-yellow-500 flex items-center gap-1.5">
+                          <Crosshair size={14} /> Ações do Time na Queda (Killfeed, Safes & Desempenho)
+                        </span>
+                        <span className="text-[9px] text-gray-400 font-bold uppercase">
+                          S1 a S7+ • Abates & Mortes Individuais
+                        </span>
+                      </div>
+                      <DropCombatDetailsView
+                        analysis={drop.combatAnalysis}
+                        playersLoadout={drop.playersLoadout}
+                        onSelectPlayer={onSelectPlayer}
+                        onSelectTeam={onSelectTeam}
+                      />
+                    </div>
+                  )}
                 </div>
               );
-            })
+            })}
+
+            {/* Barra de Paginação / Carregamento Progressivo (Cards) */}
+            {filteredDrops.length > visibleCount && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-2xl bg-[#121215] border border-white/10 mt-4 shadow-xl">
+                <div className="text-xs text-gray-400 font-bold flex items-center gap-2">
+                  <Activity size={15} className="text-yellow-500" />
+                  <span>
+                    Mostrando <strong className="text-yellow-400 font-black">{displayedDrops.length}</strong> de <strong className="text-white font-black">{filteredDrops.length}</strong> quedas
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={() => setVisibleCount(prev => Math.min(prev + 24, filteredDrops.length))}
+                    className="px-4 py-2 rounded-xl bg-yellow-500 hover:bg-yellow-400 text-black text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-yellow-500/20 cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span>Carregar Mais (+24 Quedas)</span>
+                  </button>
+                  <button
+                    onClick={() => setVisibleCount(filteredDrops.length)}
+                    className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10 text-xs font-black uppercase tracking-wider transition-all cursor-pointer"
+                  >
+                    Mostrar Todas ({filteredDrops.length})
+                  </button>
+                </div>
+              </div>
+            )}
+            </>
           ) : (
             <div className="py-16 text-center bg-[#121215] rounded-3xl border border-dashed border-gray-800 p-8 space-y-3">
               <div className="w-12 h-12 rounded-2xl bg-yellow-500/10 text-yellow-500 flex items-center justify-center mx-auto border border-yellow-500/20">
@@ -1579,13 +2045,14 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
                       {renderSortIndicator('kills')}
                     </div>
                   </th>
+                  <th className="px-3 py-3.5 text-center text-emerald-400">End Game (S4+)</th>
                   <th className="px-4 py-3.5">4 Habilidades Ativas da Line-up</th>
                   <th className="px-4 py-3.5 text-center">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800/40 text-xs">
                 {filteredDrops.length > 0 ? (
-                  filteredDrops.map(drop => {
+                  displayedDrops.map(drop => {
                     const isExpanded = !!expandedDrops[drop.id];
 
                     return (
@@ -1702,6 +2169,32 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
                             </button>
                           </td>
 
+                          {/* End Game (Safe 4+) */}
+                          <td className="px-3 py-3 text-center">
+                            {drop.combatAnalysis.reachedEndGame ? (
+                              <button
+                                onClick={() => setSelectedEndGameFilter(selectedEndGameFilter === 'reached' ? 'ALL' : 'reached')}
+                                className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider inline-flex items-center gap-1 border transition-all cursor-pointer ${
+                                  drop.combatAnalysis.isFullSquadAtEndGame
+                                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
+                                    : 'bg-teal-500/20 text-teal-300 border-teal-500/30 hover:bg-teal-500/30'
+                                }`}
+                                title={`Chegou no End Game (S4+) com ${drop.combatAnalysis.playersAliveAtEndGame} atletas vivos`}
+                              >
+                                <ShieldCheck size={11} />
+                                {drop.combatAnalysis.isFullSquadAtEndGame ? 'S4+ (Full)' : `S4+ (${drop.combatAnalysis.playersAliveAtEndGame}v)`}
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => setSelectedEndGameFilter(selectedEndGameFilter === 'eliminatedEarly' ? 'ALL' : 'eliminatedEarly')}
+                                className="px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase tracking-wider inline-flex items-center gap-1 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all cursor-pointer"
+                                title={`Eliminado antes da Safe 4 (Safe ${drop.combatAnalysis.maxSafeReached})`}
+                              >
+                                <Skull size={10} /> Safe {drop.combatAnalysis.maxSafeReached}
+                              </button>
+                            )}
+                          </td>
+
                           {/* As 4 Habilidades Ativas Clicáveis para Filtro & Análise */}
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2 flex-wrap">
@@ -1745,43 +2238,69 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
                           <td className="px-4 py-3 text-center">
                             <button
                               onClick={() => toggleExpand(drop.id)}
-                              className={`p-1.5 rounded-lg border text-[10px] font-black uppercase transition-all cursor-pointer ${
+                              className={`px-2.5 py-1.5 rounded-lg border text-[10px] font-black uppercase transition-all cursor-pointer flex items-center gap-1 mx-auto ${
                                 isExpanded 
-                                  ? 'bg-yellow-500 text-black border-yellow-400' 
-                                  : 'bg-white/5 hover:bg-white/10 text-gray-300 border-white/10'
+                                  ? 'bg-yellow-500 text-black border-yellow-400 shadow-md shadow-yellow-500/20' 
+                                  : 'bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
                               }`}
-                              title={isExpanded ? 'Recolher' : 'Ver Loadout Completo'}
+                              title={isExpanded ? 'Recolher detalhes de ações' : 'Ver ações do time: kills e mortes por safe, jogadores e end game'}
                             >
-                              {isExpanded ? <ChevronUp size={14} /> : <Eye size={14} />}
+                              <Crosshair size={12} />
+                              <span>Ações</span>
+                              {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                             </button>
                           </td>
                         </tr>
 
                         {/* Linha Expandida em Tabela */}
                         {isExpanded && (
-                          <tr className="bg-black/80 border-y border-yellow-500/20">
-                            <td colSpan={8} className="p-4">
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                                {drop.playersLoadout.map((p, idx) => (
-                                  <div key={idx} className="bg-[#141417] p-3 rounded-xl border border-white/5">
-                                    <div className="flex justify-between items-center mb-1.5">
-                                      <span className="text-xs font-black italic uppercase text-white">{p.player}</span>
-                                      {p.funcao && <span className="text-[7px] font-bold text-gray-500 uppercase">{p.funcao}</span>}
+                          <tr className="bg-black/90 border-y border-yellow-500/20">
+                            <td colSpan={9} className="p-5 space-y-4">
+                              {/* Detalhes de Ações e Combate do Time */}
+                              <div className="bg-[#121215] p-4 rounded-2xl border border-white/10">
+                                <div className="mb-3 flex items-center justify-between">
+                                  <span className="text-[10px] font-black uppercase tracking-widest text-yellow-500 flex items-center gap-1.5">
+                                    <Crosshair size={14} /> Ações do Time na Queda (Kills e Mortes por Safe)
+                                  </span>
+                                  <span className="text-[9px] text-gray-400 font-bold uppercase">
+                                    Killfeed Oficial • Sobrevivência End Game
+                                  </span>
+                                </div>
+                                <DropCombatDetailsView
+                                  analysis={drop.combatAnalysis}
+                                  playersLoadout={drop.playersLoadout}
+                                  onSelectPlayer={onSelectPlayer}
+                                  onSelectTeam={onSelectTeam}
+                                />
+                              </div>
+
+                              {/* Loadout dos Atletas da Line-up */}
+                              <div>
+                                <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 block mb-2">
+                                  Line-up Completa, Habilidades e Equipamentos:
+                                </span>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                  {drop.playersLoadout.map((p, idx) => (
+                                    <div key={idx} className="bg-[#141417] p-3 rounded-xl border border-white/5">
+                                      <div className="flex justify-between items-center mb-1.5">
+                                        <span className="text-xs font-black italic uppercase text-white">{p.player}</span>
+                                        {p.funcao && <span className="text-[7px] font-bold text-gray-500 uppercase">{p.funcao}</span>}
+                                      </div>
+                                      <div className="text-[10px] font-bold text-yellow-400 mb-1 flex items-center gap-1">
+                                        <Zap size={10} /> Ativa: {p.hab1}
+                                      </div>
+                                      <div className="text-[8px] text-gray-400 flex flex-wrap gap-1">
+                                        <span>H2: {p.hab2 || '-'}</span> •
+                                        <span>H3: {p.hab3 || '-'}</span> •
+                                        <span>H4: {p.hab4 || '-'}</span>
+                                      </div>
+                                      <div className="text-[8px] text-gray-500 mt-1 flex gap-2">
+                                        <span>Pet: {p.pet || '-'}</span>
+                                        <span>Item: {p.item || '-'}</span>
+                                      </div>
                                     </div>
-                                    <div className="text-[10px] font-bold text-yellow-400 mb-1 flex items-center gap-1">
-                                      <Zap size={10} /> Ativa: {p.hab1}
-                                    </div>
-                                    <div className="text-[8px] text-gray-400 flex flex-wrap gap-1">
-                                      <span>H2: {p.hab2 || '-'}</span> •
-                                      <span>H3: {p.hab3 || '-'}</span> •
-                                      <span>H4: {p.hab4 || '-'}</span>
-                                    </div>
-                                    <div className="text-[8px] text-gray-500 mt-1 flex gap-2">
-                                      <span>Pet: {p.pet || '-'}</span>
-                                      <span>Item: {p.item || '-'}</span>
-                                    </div>
-                                  </div>
-                                ))}
+                                  ))}
+                                </div>
                               </div>
                             </td>
                           </tr>
@@ -1791,7 +2310,7 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
                   })
                 ) : (
                   <tr>
-                    <td colSpan={8} className="py-12 text-center text-gray-500 font-bold uppercase text-xs">
+                    <td colSpan={9} className="py-12 text-center text-gray-500 font-bold uppercase text-xs">
                       Nenhuma queda encontrada para os filtros atuais.
                     </td>
                   </tr>
@@ -1799,6 +2318,32 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
               </tbody>
             </table>
           </div>
+
+          {/* Barra de Paginação / Carregamento Progressivo (Tabela) */}
+          {filteredDrops.length > visibleCount && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 border-t border-gray-800 bg-black/40">
+              <div className="text-xs text-gray-400 font-bold flex items-center gap-2">
+                <Activity size={15} className="text-yellow-500" />
+                <span>
+                  Mostrando <strong className="text-yellow-400 font-black">{displayedDrops.length}</strong> de <strong className="text-white font-black">{filteredDrops.length}</strong> quedas
+                </span>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={() => setVisibleCount(prev => Math.min(prev + 50, filteredDrops.length))}
+                  className="px-4 py-2 rounded-xl bg-yellow-500 hover:bg-yellow-400 text-black text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-yellow-500/20 cursor-pointer flex items-center gap-1.5"
+                >
+                  <span>Carregar Mais (+50 Quedas)</span>
+                </button>
+                <button
+                  onClick={() => setVisibleCount(filteredDrops.length)}
+                  className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10 text-xs font-black uppercase tracking-wider transition-all cursor-pointer"
+                >
+                  Mostrar Todas ({filteredDrops.length})
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
