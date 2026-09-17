@@ -16,7 +16,8 @@ import {
   Activity, 
   Crosshair,
   Award,
-  Layers
+  Layers,
+  Compass
 } from 'lucide-react';
 import { DropCombatAnalysis, SafeCombatSummary, PlayerCombatStats } from '../utils/dropCombatUtils';
 import { PlayerLoadoutDetailed } from '../utils/characterUtils';
@@ -24,6 +25,8 @@ import { PlayerLoadoutDetailed } from '../utils/characterUtils';
 interface DropCombatDetailsViewProps {
   analysis: DropCombatAnalysis;
   playersLoadout: PlayerLoadoutDetailed[];
+  ondeFechou?: string;
+  mapa?: string;
   onSelectPlayer?: (playerName: string) => void;
   onSelectTeam?: (teamName: string) => void;
 }
@@ -31,6 +34,8 @@ interface DropCombatDetailsViewProps {
 export const DropCombatDetailsView: React.FC<DropCombatDetailsViewProps> = ({
   analysis,
   playersLoadout,
+  ondeFechou,
+  mapa,
   onSelectPlayer,
   onSelectTeam,
 }) => {
@@ -59,10 +64,25 @@ export const DropCombatDetailsView: React.FC<DropCombatDetailsViewProps> = ({
                 Baseado no Kill Feed Oficial
               </span>
             </div>
-            <h4 className="text-sm sm:text-base font-black uppercase italic text-white mt-0.5 flex items-center gap-2">
+            <h4 className="text-sm sm:text-base font-black uppercase italic text-white mt-0.5 flex items-center gap-2 flex-wrap">
               <span>{analysis.teamName}</span>
               <span className="text-gray-500 text-xs font-normal">•</span>
               <span className="text-yellow-400 text-xs">RD {analysis.rd} • Q{analysis.q}</span>
+              {mapa && (
+                <>
+                  <span className="text-gray-500 text-xs font-normal">•</span>
+                  <span className="text-gray-300 text-xs font-bold">{mapa}</span>
+                </>
+              )}
+              {ondeFechou && ondeFechou.trim() && ondeFechou !== 'N/A' && (
+                <>
+                  <span className="text-gray-500 text-xs font-normal">•</span>
+                  <span className="px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-black tracking-wider flex items-center gap-1">
+                    <Compass size={11} className="text-amber-400" />
+                    Fechou em: <strong className="text-white">{ondeFechou}</strong>
+                  </span>
+                </>
+              )}
               {analysis.booyah && (
                 <span className="px-2 py-0.5 rounded bg-yellow-500 text-black text-[9px] font-black tracking-wider flex items-center gap-1">
                   <Trophy size={10} /> BOOYAH!
@@ -202,8 +222,16 @@ export const DropCombatDetailsView: React.FC<DropCombatDetailsViewProps> = ({
               </span>
             </div>
           </div>
-          <span className="text-[9px] font-bold text-gray-500 mt-2 block">
-            Safe Máxima: Safe {analysis.maxSafeReached}
+          <span className="text-[9px] font-bold text-gray-400 mt-2 flex items-center gap-1 flex-wrap">
+            <span>Safe Máxima: Safe {analysis.maxSafeReached}</span>
+            {ondeFechou && ondeFechou.trim() && ondeFechou !== 'N/A' && (
+              <>
+                <span className="text-gray-600">•</span>
+                <span className="text-amber-400 font-bold flex items-center gap-0.5">
+                  <Compass size={9} /> Fechou: {ondeFechou}
+                </span>
+              </>
+            )}
           </span>
         </div>
       </div>

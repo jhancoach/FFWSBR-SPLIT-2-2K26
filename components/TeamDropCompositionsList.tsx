@@ -90,7 +90,7 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
   const [selectedPtsRange, setSelectedPtsRange] = useState<string>('ALL');
   const [selectedKillsRange, setSelectedKillsRange] = useState<string>('ALL');
   const [selectedActiveSkill, setSelectedActiveSkill] = useState<string>('ALL');
-  const [selectedEndGameFilter, setSelectedEndGameFilter] = useState<'ALL' | 'reached' | 'fullSquad' | 'eliminatedEarly'>('ALL');
+  const [selectedEndGameFilter, setSelectedEndGameFilter] = useState<'ALL' | 'reached' | 'fullSquad' | '3alive' | '1-2alive' | 'eliminatedEarly'>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<'chronological' | 'recent' | 'points' | 'kills' | 'position'>('chronological');
   const [tableSort, setTableSort] = useState<{
@@ -148,7 +148,18 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
       });
     }
 
-    return data.details.map((d, index) => {
+    // Filtra estritamente as quedas que já foram jogadas e preenchidas na fDetalhes
+    // (Desconsidera linhas de rodadas futuras ou pré-agendadas como R15 a R22 sem mapa ou colocação)
+    const playedDetails = data.details.filter(d => {
+      if (!d || !d.TIME || d.TIME.trim() === '') return false;
+      const mapa = (d.MAPA || '').trim();
+      const pos = (d.POS || '').trim();
+      const pts = parseInt(d.PTS) || 0;
+      const kills = parseInt(d.ABTS) || 0;
+      return mapa !== '' && (pos !== '' || pts > 0 || kills > 0);
+    });
+
+    return playedDetails.map((d, index) => {
       const rdClean = (d.RD || '1').toString().replace(/\D/g, '');
       const qClean = (d.Q || d.S || '1').toString().replace(/\D/g, '');
       const pts = parseInt(d.PTS) || 0;
@@ -486,10 +497,12 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
         if (!hasSkill) return false;
       }
 
-      // Filtro de chegada ao End Game (Safes 5+)
+      // Filtro de chegada ao End Game (Safe 4+)
       if (selectedEndGameFilter !== 'ALL') {
         if (selectedEndGameFilter === 'reached' && !item.combatAnalysis.reachedEndGame) return false;
-        if (selectedEndGameFilter === 'fullSquad' && !item.combatAnalysis.isFullSquadAtEndGame) return false;
+        if (selectedEndGameFilter === 'fullSquad' && (!item.combatAnalysis.reachedEndGame || item.combatAnalysis.playersAliveAtEndGame !== 4)) return false;
+        if (selectedEndGameFilter === '3alive' && (!item.combatAnalysis.reachedEndGame || item.combatAnalysis.playersAliveAtEndGame !== 3)) return false;
+        if (selectedEndGameFilter === '1-2alive' && (!item.combatAnalysis.reachedEndGame || item.combatAnalysis.playersAliveAtEndGame < 1 || item.combatAnalysis.playersAliveAtEndGame > 2)) return false;
         if (selectedEndGameFilter === 'eliminatedEarly' && item.combatAnalysis.reachedEndGame) return false;
       }
 
@@ -815,23 +828,84 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
               <h4 className="text-base sm:text-lg font-black uppercase italic text-white mt-0.5">
                 Chegou vivo no End Game <span className="text-emerald-400">{selectedTeamEndGameStats.endGameReachedCount} vezes</span> em {selectedTeamEndGameStats.totalDrops} quedas ({selectedTeamEndGameStats.endGameReachedPct}%)
               </h4>
-              <div className="flex flex-wrap items-center gap-2 mt-1.5 text-[11px] text-gray-300">
-                <span className="bg-black/60 px-2 py-0.5 rounded border border-emerald-500/20 text-emerald-300 font-bold">
-                  🛡️ 4 Vivos (Full Squad): <strong className="text-white font-black">{selectedTeamEndGameStats.fullSquadCount}x</strong> ({selectedTeamEndGameStats.fullSquadPct}%)
-                </span>
-                <span className="bg-black/60 px-2 py-0.5 rounded border border-white/5 text-gray-300 font-bold">
-                  ⚔️ 3 Vivos: <strong className="text-white font-black">{selectedTeamEndGameStats.threeAliveCount}x</strong>
-                </span>
-                <span className="bg-black/60 px-2 py-0.5 rounded border border-white/5 text-gray-300 font-bold">
-                  ⚡ 1-2 Vivos: <strong className="text-white font-black">{selectedTeamEndGameStats.lowAliveCount}x</strong>
-                </span>
-                <span className="bg-black/60 px-2 py-0.5 rounded border border-red-500/20 text-red-300 font-bold">
-                  ❌ Caiu antes da Safe 4: <strong className="text-white font-black">{selectedTeamEndGameStats.eliminatedBeforeSafe4}x</strong> ({selectedTeamEndGameStats.eliminatedBeforeSafe4Pct}%)
-                </span>
+              <div className="flex flex-wrap items-center gap-2 mt-2 text-[11px] text-gray-300">
+                {/* Filtro: 4 Vivos (Full Squad) */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedEndGameFilter(selectedEndGameFilter === 'fullSquad' ? 'ALL' : 'fullSquad')}
+                  className={`px-2.5 py-1 rounded-xl border text-[11px] transition-all cursor-pointer flex items-center gap-1.5 ${
+                    selectedEndGameFilter === 'fullSquad'
+                      ? 'bg-emerald-500 text-black border-emerald-400 font-black shadow-lg shadow-emerald-500/30 ring-2 ring-emerald-300'
+                      : 'bg-black/60 hover:bg-emerald-500/15 border-emerald-500/30 text-emerald-300 font-bold hover:border-emerald-500/60'
+                  }`}
+                  title="Clique para filtrar apenas partidas com 4 vivos (Full Squad) na Safe 4+"
+                >
+                  <ShieldCheck size={13} className={selectedEndGameFilter === 'fullSquad' ? 'text-black' : 'text-emerald-400'} />
+                  <span>4 Vivos (Full Squad): <strong className={selectedEndGameFilter === 'fullSquad' ? 'text-black font-black' : 'text-white font-black'}>{selectedTeamEndGameStats.fullSquadCount}x</strong> ({selectedTeamEndGameStats.fullSquadPct}%)</span>
+                  {selectedEndGameFilter === 'fullSquad' && <span className="text-[10px] font-black ml-1 bg-black/20 px-1 rounded">✕</span>}
+                </button>
+
+                {/* Filtro: 3 Vivos */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedEndGameFilter(selectedEndGameFilter === '3alive' ? 'ALL' : '3alive')}
+                  className={`px-2.5 py-1 rounded-xl border text-[11px] transition-all cursor-pointer flex items-center gap-1.5 ${
+                    selectedEndGameFilter === '3alive'
+                      ? 'bg-teal-400 text-black border-teal-300 font-black shadow-lg shadow-teal-500/30 ring-2 ring-teal-200'
+                      : 'bg-black/60 hover:bg-teal-500/15 border-white/10 text-gray-300 font-bold hover:border-teal-500/40 hover:text-teal-200'
+                  }`}
+                  title="Clique para filtrar apenas partidas com 3 vivos na Safe 4+"
+                >
+                  <span>⚔️ 3 Vivos: <strong className={selectedEndGameFilter === '3alive' ? 'text-black font-black' : 'text-white font-black'}>{selectedTeamEndGameStats.threeAliveCount}x</strong></span>
+                  {selectedEndGameFilter === '3alive' && <span className="text-[10px] font-black ml-1 bg-black/20 px-1 rounded">✕</span>}
+                </button>
+
+                {/* Filtro: 1-2 Vivos */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedEndGameFilter(selectedEndGameFilter === '1-2alive' ? 'ALL' : '1-2alive')}
+                  className={`px-2.5 py-1 rounded-xl border text-[11px] transition-all cursor-pointer flex items-center gap-1.5 ${
+                    selectedEndGameFilter === '1-2alive'
+                      ? 'bg-amber-400 text-black border-amber-300 font-black shadow-lg shadow-amber-500/30 ring-2 ring-amber-200'
+                      : 'bg-black/60 hover:bg-amber-500/15 border-white/10 text-gray-300 font-bold hover:border-amber-500/40 hover:text-amber-200'
+                  }`}
+                  title="Clique para filtrar apenas partidas com 1 ou 2 vivos na Safe 4+"
+                >
+                  <span>⚡ 1-2 Vivos: <strong className={selectedEndGameFilter === '1-2alive' ? 'text-black font-black' : 'text-white font-black'}>{selectedTeamEndGameStats.lowAliveCount}x</strong></span>
+                  {selectedEndGameFilter === '1-2alive' && <span className="text-[10px] font-black ml-1 bg-black/20 px-1 rounded">✕</span>}
+                </button>
+
+                {/* Filtro: Caiu antes da Safe 4 */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedEndGameFilter(selectedEndGameFilter === 'eliminatedEarly' ? 'ALL' : 'eliminatedEarly')}
+                  className={`px-2.5 py-1 rounded-xl border text-[11px] transition-all cursor-pointer flex items-center gap-1.5 ${
+                    selectedEndGameFilter === 'eliminatedEarly'
+                      ? 'bg-red-500 text-white border-red-400 font-black shadow-lg shadow-red-500/40 ring-2 ring-red-300'
+                      : 'bg-black/60 hover:bg-red-500/15 border-red-500/30 text-red-300 font-bold hover:border-red-500/60'
+                  }`}
+                  title="Clique para filtrar partidas em que a equipe caiu precocemente antes da Safe 4 (Safes 1 a 3)"
+                >
+                  <Skull size={13} className={selectedEndGameFilter === 'eliminatedEarly' ? 'text-white' : 'text-red-400'} />
+                  <span>Caiu antes da Safe 4: <strong className="text-white font-black">{selectedTeamEndGameStats.eliminatedBeforeSafe4}x</strong> ({selectedTeamEndGameStats.eliminatedBeforeSafe4Pct}%)</span>
+                  {selectedEndGameFilter === 'eliminatedEarly' && <span className="text-[10px] font-black ml-1 bg-white/20 px-1 rounded">✕</span>}
+                </button>
+
+                {/* Filtro Rápido de Booyahs */}
                 {selectedTeamEndGameStats.booyahCount > 0 && (
-                  <span className="bg-yellow-500/10 px-2 py-0.5 rounded border border-yellow-500/30 text-yellow-300 font-bold">
-                    👑 {selectedTeamEndGameStats.booyahCount} Booyahs ({selectedTeamEndGameStats.booyahConversionPct}% conversão)
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPosition(selectedPosition === '1' ? 'ALL' : '1')}
+                    className={`px-2.5 py-1 rounded-xl border text-[11px] transition-all cursor-pointer flex items-center gap-1.5 ${
+                      selectedPosition === '1'
+                        ? 'bg-yellow-400 text-black border-yellow-300 font-black shadow-lg shadow-yellow-500/40 ring-2 ring-yellow-200'
+                        : 'bg-yellow-500/10 hover:bg-yellow-500/20 border-yellow-500/30 text-yellow-300 font-bold hover:border-yellow-500/60'
+                    }`}
+                    title="Clique para filtrar apenas os Booyahs (1º lugar)"
+                  >
+                    <span>👑 {selectedTeamEndGameStats.booyahCount} Booyahs ({selectedTeamEndGameStats.booyahConversionPct}% conversão)</span>
+                    {selectedPosition === '1' && <span className="text-[10px] font-black ml-1 bg-black/20 px-1 rounded">✕</span>}
+                  </button>
                 )}
               </div>
             </div>
@@ -842,12 +916,12 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
               onClick={() => setSelectedEndGameFilter(selectedEndGameFilter === 'reached' ? 'ALL' : 'reached')}
               className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 ${
                 selectedEndGameFilter === 'reached'
-                  ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/25'
+                  ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/25 ring-2 ring-emerald-300'
                   : 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30'
               }`}
             >
               <ShieldCheck size={14} />
-              {selectedEndGameFilter === 'reached' ? 'Exibindo Apenas End Game' : `Filtrar as ${selectedTeamEndGameStats.endGameReachedCount} Quedas no End Game`}
+              {selectedEndGameFilter === 'reached' ? 'Exibindo Todas no End Game (S4+)' : `Filtrar as ${selectedTeamEndGameStats.endGameReachedCount} Quedas no End Game`}
             </button>
           </div>
         </div>
@@ -1190,9 +1264,11 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
               }`}
             >
               <option value="ALL">Todos os Status</option>
-              <option value="reached">🛡️ Chegou Vivo (S4+)</option>
-              <option value="fullSquad">✨ Full Squad (4 Vivos)</option>
-              <option value="eliminatedEarly">❌ Caiu Antes da S4 (S1-S3)</option>
+              <option value="reached">🛡️ Chegou no End Game (S4+)</option>
+              <option value="fullSquad">🛡️ 4 Vivos (Full Squad)</option>
+              <option value="3alive">⚔️ 3 Vivos no End Game</option>
+              <option value="1-2alive">⚡ 1-2 Vivos no End Game</option>
+              <option value="eliminatedEarly">❌ Caiu Antes da Safe 4</option>
             </select>
           </div>
 
@@ -1280,7 +1356,13 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
                   className="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-black uppercase flex items-center gap-1 hover:bg-emerald-500/25"
                 >
                   <ShieldCheck size={10} />
-                  End Game: {selectedEndGameFilter === 'reached' ? 'Chegou Vivo (S4+)' : selectedEndGameFilter === 'fullSquad' ? 'Full Squad (4 Vivos)' : 'Caiu Antes da S4'} ✕
+                  End Game: {
+                    selectedEndGameFilter === 'reached' ? 'Chegou no End Game (S4+)' :
+                    selectedEndGameFilter === 'fullSquad' ? '4 Vivos (Full Squad)' :
+                    selectedEndGameFilter === '3alive' ? '3 Vivos' :
+                    selectedEndGameFilter === '1-2alive' ? '1-2 Vivos' :
+                    'Caiu Antes da Safe 4'
+                  } ✕
                 </button>
               )}
               {selectedMap !== 'ALL' && (
@@ -1568,26 +1650,46 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
                             RD {drop.rd} • QUEDA {drop.q}
                           </span>
 
-                          {/* Badge de End Game */}
+                          {/* Badge de End Game Clicável */}
                           {drop.combatAnalysis.reachedEndGame ? (
-                            <span 
-                              className={`px-2 py-0.5 rounded-lg font-black text-[9px] uppercase tracking-wider flex items-center gap-1 border ${
+                            <button 
+                              type="button"
+                              onClick={() => {
+                                if (drop.combatAnalysis.playersAliveAtEndGame === 4) {
+                                  setSelectedEndGameFilter(selectedEndGameFilter === 'fullSquad' ? 'ALL' : 'fullSquad');
+                                } else if (drop.combatAnalysis.playersAliveAtEndGame === 3) {
+                                  setSelectedEndGameFilter(selectedEndGameFilter === '3alive' ? 'ALL' : '3alive');
+                                } else {
+                                  setSelectedEndGameFilter(selectedEndGameFilter === '1-2alive' ? 'ALL' : '1-2alive');
+                                }
+                              }}
+                              className={`px-2 py-0.5 rounded-lg font-black text-[9px] uppercase tracking-wider flex items-center gap-1 border transition-all cursor-pointer ${
                                 drop.combatAnalysis.isFullSquadAtEndGame
-                                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                                  : 'bg-teal-500/20 text-teal-300 border-teal-500/30'
+                                  ? (selectedEndGameFilter === 'fullSquad'
+                                      ? 'bg-emerald-500 text-black border-emerald-300 ring-2 ring-emerald-300 shadow-md'
+                                      : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30')
+                                  : (selectedEndGameFilter === '3alive' || selectedEndGameFilter === '1-2alive'
+                                      ? 'bg-teal-400 text-black border-teal-200 ring-2 ring-teal-200 shadow-md'
+                                      : 'bg-teal-500/20 text-teal-300 border-teal-500/30 hover:bg-teal-500/30')
                               }`}
-                              title={`Chegou vivo no End Game a partir da Safe 4 com ${drop.combatAnalysis.playersAliveAtEndGame} atletas vivos`}
+                              title={`Clique para filtrar partidas com ${drop.combatAnalysis.playersAliveAtEndGame} atletas vivos`}
                             >
                               <ShieldCheck size={10} />
                               {drop.combatAnalysis.isFullSquadAtEndGame ? 'End Game S4+ (Full)' : `End Game S4+ (${drop.combatAnalysis.playersAliveAtEndGame}v)`}
-                            </span>
+                            </button>
                           ) : (
-                            <span 
-                              className="px-2 py-0.5 rounded-lg font-bold text-[9px] uppercase tracking-wider flex items-center gap-1 bg-red-500/10 text-red-400/80 border border-red-500/20 hidden sm:inline-flex"
-                              title={`Eliminado antes da Safe 4 (Safe máxima alcançada: ${drop.combatAnalysis.maxSafeReached})`}
+                            <button 
+                              type="button"
+                              onClick={() => setSelectedEndGameFilter(selectedEndGameFilter === 'eliminatedEarly' ? 'ALL' : 'eliminatedEarly')}
+                              className={`px-2 py-0.5 rounded-lg font-bold text-[9px] uppercase tracking-wider items-center gap-1 border transition-all cursor-pointer hidden sm:inline-flex ${
+                                selectedEndGameFilter === 'eliminatedEarly'
+                                  ? 'bg-red-500 text-white border-red-300 ring-2 ring-red-300 shadow-md'
+                                  : 'bg-red-500/10 text-red-400/80 border-red-500/20 hover:bg-red-500/20'
+                              }`}
+                              title={`Eliminado antes da Safe 4 (Safe ${drop.combatAnalysis.maxSafeReached}). Clique para filtrar.`}
                             >
                               <Skull size={9} /> Caiu Safe {drop.combatAnalysis.maxSafeReached} (antes S4)
-                            </span>
+                            </button>
                           )}
 
                           {/* Badge de Mapa Clicável */}
@@ -1927,6 +2029,8 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
                       <DropCombatDetailsView
                         analysis={drop.combatAnalysis}
                         playersLoadout={drop.playersLoadout}
+                        ondeFechou={drop.ondeFechou}
+                        mapa={drop.mapa}
                         onSelectPlayer={onSelectPlayer}
                         onSelectTeam={onSelectTeam}
                       />
@@ -2173,13 +2277,21 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
                           <td className="px-3 py-3 text-center">
                             {drop.combatAnalysis.reachedEndGame ? (
                               <button
-                                onClick={() => setSelectedEndGameFilter(selectedEndGameFilter === 'reached' ? 'ALL' : 'reached')}
+                                onClick={() => {
+                                  if (drop.combatAnalysis.playersAliveAtEndGame === 4) {
+                                    setSelectedEndGameFilter(selectedEndGameFilter === 'fullSquad' ? 'ALL' : 'fullSquad');
+                                  } else if (drop.combatAnalysis.playersAliveAtEndGame === 3) {
+                                    setSelectedEndGameFilter(selectedEndGameFilter === '3alive' ? 'ALL' : '3alive');
+                                  } else {
+                                    setSelectedEndGameFilter(selectedEndGameFilter === '1-2alive' ? 'ALL' : '1-2alive');
+                                  }
+                                }}
                                 className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider inline-flex items-center gap-1 border transition-all cursor-pointer ${
                                   drop.combatAnalysis.isFullSquadAtEndGame
-                                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
-                                    : 'bg-teal-500/20 text-teal-300 border-teal-500/30 hover:bg-teal-500/30'
+                                    ? (selectedEndGameFilter === 'fullSquad' ? 'bg-emerald-500 text-black border-emerald-300 ring-1 ring-emerald-300' : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30')
+                                    : ((selectedEndGameFilter === '3alive' || selectedEndGameFilter === '1-2alive') ? 'bg-teal-400 text-black border-teal-200 ring-1 ring-teal-200' : 'bg-teal-500/20 text-teal-300 border-teal-500/30 hover:bg-teal-500/30')
                                 }`}
-                                title={`Chegou no End Game (S4+) com ${drop.combatAnalysis.playersAliveAtEndGame} atletas vivos`}
+                                title={`Chegou no End Game (S4+) com ${drop.combatAnalysis.playersAliveAtEndGame} atletas vivos. Clique para filtrar.`}
                               >
                                 <ShieldCheck size={11} />
                                 {drop.combatAnalysis.isFullSquadAtEndGame ? 'S4+ (Full)' : `S4+ (${drop.combatAnalysis.playersAliveAtEndGame}v)`}
@@ -2187,8 +2299,10 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
                             ) : (
                               <button
                                 onClick={() => setSelectedEndGameFilter(selectedEndGameFilter === 'eliminatedEarly' ? 'ALL' : 'eliminatedEarly')}
-                                className="px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase tracking-wider inline-flex items-center gap-1 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all cursor-pointer"
-                                title={`Eliminado antes da Safe 4 (Safe ${drop.combatAnalysis.maxSafeReached})`}
+                                className={`px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase tracking-wider inline-flex items-center gap-1 border transition-all cursor-pointer ${
+                                  selectedEndGameFilter === 'eliminatedEarly' ? 'bg-red-500 text-white border-red-300 ring-1 ring-red-300' : 'bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20'
+                                }`}
+                                title={`Eliminado antes da Safe 4 (Safe ${drop.combatAnalysis.maxSafeReached}). Clique para filtrar.`}
                               >
                                 <Skull size={10} /> Safe {drop.combatAnalysis.maxSafeReached}
                               </button>
@@ -2269,6 +2383,8 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
                                 <DropCombatDetailsView
                                   analysis={drop.combatAnalysis}
                                   playersLoadout={drop.playersLoadout}
+                                  ondeFechou={drop.ondeFechou}
+                                  mapa={drop.mapa}
                                   onSelectPlayer={onSelectPlayer}
                                   onSelectTeam={onSelectTeam}
                                 />
