@@ -42,7 +42,8 @@ import {
   ShieldCheck,
   Skull,
   Crosshair,
-  Activity
+  Activity,
+  Compass
 } from 'lucide-react';
 
 interface TeamDropItem {
@@ -91,6 +92,7 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
   const [selectedKillsRange, setSelectedKillsRange] = useState<string>('ALL');
   const [selectedActiveSkill, setSelectedActiveSkill] = useState<string>('ALL');
   const [selectedEndGameFilter, setSelectedEndGameFilter] = useState<'ALL' | 'reached' | 'fullSquad' | '3alive' | '1-2alive' | 'eliminatedEarly'>('ALL');
+  const [selectedSafeLocation, setSelectedSafeLocation] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<'chronological' | 'recent' | 'points' | 'kills' | 'position'>('chronological');
   const [tableSort, setTableSort] = useState<{
@@ -115,6 +117,7 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
     selectedRound,
     selectedDrop,
     selectedMap,
+    selectedSafeLocation,
     selectedPosition,
     selectedPtsRange,
     selectedKillsRange,
@@ -281,6 +284,7 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
     const roundsSet = new Set<string>();
     const dropsSet = new Set<string>();
     const mapsSet = new Set<string>();
+    const safeLocationsSet = new Set<string>();
     const skillsMap = new Map<string, { name: string; count: number; teamCount: number; img?: string }>();
 
     allDropItems.forEach(item => {
@@ -288,6 +292,9 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
       if (item.rd) roundsSet.add(item.rd);
       if (item.q) dropsSet.add(item.q);
       if (item.mapa && item.mapa !== 'N/A') mapsSet.add(item.mapa);
+      if (item.ondeFechou && item.ondeFechou.trim() && item.ondeFechou !== 'N/A') {
+        safeLocationsSet.add(item.ondeFechou.trim());
+      }
 
       item.activeSkillNames.forEach(sk => {
         const key = sk.trim().toUpperCase();
@@ -323,7 +330,9 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
       return b.count - a.count;
     });
 
-    return { teams, rounds, drops, maps, skills };
+    const safeLocations = Array.from(safeLocationsSet).sort((a, b) => a.localeCompare(b));
+
+    return { teams, rounds, drops, maps, safeLocations, skills };
   }, [allDropItems, data.hab1, selectedTeam, skillUsageByTeam]);
 
   // Estatísticas aprofundadas da Habilidade Ativa Selecionada (incluindo pelo Time Filtrado)
@@ -504,6 +513,13 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
         if (selectedEndGameFilter === '3alive' && (!item.combatAnalysis.reachedEndGame || item.combatAnalysis.playersAliveAtEndGame !== 3)) return false;
         if (selectedEndGameFilter === '1-2alive' && (!item.combatAnalysis.reachedEndGame || item.combatAnalysis.playersAliveAtEndGame < 1 || item.combatAnalysis.playersAliveAtEndGame > 2)) return false;
         if (selectedEndGameFilter === 'eliminatedEarly' && item.combatAnalysis.reachedEndGame) return false;
+      }
+
+      // Filtro de local onde a safe fechou
+      if (selectedSafeLocation !== 'ALL') {
+        if (!item.ondeFechou || item.ondeFechou.trim().toUpperCase() !== selectedSafeLocation.trim().toUpperCase()) {
+          return false;
+        }
       }
 
       // Busca por texto livre (time, jogador, ativa, mapa)
@@ -1165,8 +1181,8 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
           </div>
         </div>
 
-        {/* Linha 2: Filtros pelas Colunas (Mapa, Posição, Pontos, Abates, End Game, Rodada, Queda) */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-3 pt-2 border-t border-white/5">
+        {/* Linha 2: Filtros pelas Colunas (Mapa, Safe Fechou, Posição, Pontos, Abates, End Game, Rodada, Queda) */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-3 pt-2 border-t border-white/5">
           {/* Coluna: Mapa */}
           <div>
             <label className="text-[9px] font-black uppercase text-gray-500 tracking-wider block mb-1">
@@ -1182,6 +1198,25 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
               <option value="ALL">Todos os Mapas</option>
               {filterOptions.maps.map(m => (
                 <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Coluna: Onde a Safe Fechou */}
+          <div>
+            <label className="text-[9px] font-black uppercase text-amber-400 tracking-wider block mb-1">
+              Safe Fechou (Local)
+            </label>
+            <select
+              value={selectedSafeLocation}
+              onChange={e => setSelectedSafeLocation(e.target.value)}
+              className={`w-full bg-black/60 border rounded-xl px-2.5 py-2 text-xs font-bold outline-none focus:border-amber-500/50 uppercase cursor-pointer ${
+                selectedSafeLocation !== 'ALL' ? 'border-amber-500 text-amber-300 font-black bg-amber-500/10' : 'border-white/10 text-white'
+              }`}
+            >
+              <option value="ALL">Todas as Safes ({filterOptions.safeLocations.length})</option>
+              {filterOptions.safeLocations.map(loc => (
+                <option key={loc} value={loc}>📍 {loc}</option>
               ))}
             </select>
           </div>
@@ -1363,6 +1398,15 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
                     selectedEndGameFilter === '1-2alive' ? '1-2 Vivos' :
                     'Caiu Antes da Safe 4'
                   } ✕
+                </button>
+              )}
+              {selectedSafeLocation !== 'ALL' && (
+                <button
+                  onClick={() => setSelectedSafeLocation('ALL')}
+                  className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black uppercase flex items-center gap-1 hover:bg-amber-500/30"
+                >
+                  <Compass size={10} className="text-amber-400" />
+                  Safe Fechou: {selectedSafeLocation} ✕
                 </button>
               )}
               {selectedMap !== 'ALL' && (
@@ -1704,6 +1748,23 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
                           >
                             <MapPin size={10} className={selectedMap === drop.mapa ? "text-black" : "text-yellow-500"} /> {drop.mapa}
                           </button>
+
+                          {/* Badge de Onde a Safe Fechou Clicável */}
+                          {drop.ondeFechou && drop.ondeFechou.trim() && drop.ondeFechou !== 'N/A' && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedSafeLocation(selectedSafeLocation === drop.ondeFechou?.trim() ? 'ALL' : (drop.ondeFechou?.trim() || 'ALL'))}
+                              className={`px-2.5 py-0.5 rounded-lg border text-[10px] uppercase flex items-center gap-1 transition-all cursor-pointer ${
+                                selectedSafeLocation === drop.ondeFechou.trim()
+                                  ? 'bg-amber-400 text-black border-amber-300 font-black ring-2 ring-amber-300 shadow-md'
+                                  : 'bg-amber-500/15 border-amber-500/30 text-amber-300 font-bold hover:bg-amber-500/25 hover:border-amber-500/50'
+                              }`}
+                              title={`Safe final fechou em: ${drop.ondeFechou}. Clique para filtrar partidas nesta safe.`}
+                            >
+                              <Compass size={10} className={selectedSafeLocation === drop.ondeFechou.trim() ? "text-black" : "text-amber-400"} />
+                              <span>Safe: {drop.ondeFechou}</span>
+                            </button>
+                          )}
 
                           {/* Confronto */}
                           {drop.confronto && drop.confronto !== 'N/A' && (
@@ -2188,19 +2249,37 @@ export const TeamDropCompositionsList: React.FC<TeamDropCompositionsListProps> =
                             </button>
                           </td>
 
-                          {/* Mapa (Filtro Clicável) */}
+                          {/* Mapa e Safe Fechou (Filtro Clicável) */}
                           <td className="px-4 py-3">
-                            <button
-                              onClick={() => setSelectedMap(selectedMap === drop.mapa ? 'ALL' : drop.mapa)}
-                              className={`font-bold uppercase text-[10px] px-2 py-0.5 rounded border transition-colors cursor-pointer ${
-                                selectedMap === drop.mapa
-                                  ? 'bg-yellow-500 text-black border-yellow-400 font-black'
-                                  : 'text-gray-300 hover:text-white border-white/5 hover:border-white/20 bg-white/[0.02]'
-                              }`}
-                              title={`Filtrar por ${drop.mapa}`}
-                            >
-                              {drop.mapa}
-                            </button>
+                            <div className="flex flex-col gap-1 items-start">
+                              <button
+                                onClick={() => setSelectedMap(selectedMap === drop.mapa ? 'ALL' : drop.mapa)}
+                                className={`font-bold uppercase text-[10px] px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+                                  selectedMap === drop.mapa
+                                    ? 'bg-yellow-500 text-black border-yellow-400 font-black'
+                                    : 'text-gray-300 hover:text-white border-white/5 hover:border-white/20 bg-white/[0.02]'
+                                }`}
+                                title={`Filtrar por ${drop.mapa}`}
+                              >
+                                {drop.mapa}
+                              </button>
+
+                              {drop.ondeFechou && drop.ondeFechou.trim() && drop.ondeFechou !== 'N/A' && (
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedSafeLocation(selectedSafeLocation === drop.ondeFechou?.trim() ? 'ALL' : (drop.ondeFechou?.trim() || 'ALL'))}
+                                  className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded border transition-colors cursor-pointer flex items-center gap-1 ${
+                                    selectedSafeLocation === drop.ondeFechou.trim()
+                                      ? 'bg-amber-400 text-black border-amber-300 font-black ring-1 ring-amber-300'
+                                      : 'text-amber-400/90 hover:text-amber-300 border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/15'
+                                  }`}
+                                  title={`Safe final: ${drop.ondeFechou}. Clique para filtrar.`}
+                                >
+                                  <Compass size={9} />
+                                  <span>{drop.ondeFechou}</span>
+                                </button>
+                              )}
+                            </div>
                           </td>
 
                           {/* Posição (Filtro Clicável) */}

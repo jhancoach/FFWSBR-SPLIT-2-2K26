@@ -11,6 +11,7 @@ import { db, isFirebasePlaceholder } from '../firebase';
 import { OperationType, handleFirestoreError } from '../utils/firestoreError';
 import { DashboardData } from '../types';
 import { findTeamLogo } from '../utils/teamUtils';
+import { FastMapView } from './FastMapView';
 
 export interface FightRecord {
     id: string;
@@ -200,27 +201,30 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
 
     const containerRef = useRef<HTMLDivElement>(null);
 
-    // Load Data from Firestore or LocalStorage for current map
+    // Load Data from Firestore or LocalStorage for current map with 0ms instant cache
     useEffect(() => {
         setZoom(1);
         setPan({ x: 0, y: 0 });
 
         const storageKey = `studies_fights_${selectedMap.id}`;
 
-        if (isFirebasePlaceholder) {
-            try {
-                const saved = localStorage.getItem(storageKey);
-                if (saved) {
-                    setFights(JSON.parse(saved));
-                } else {
-                    setFights([]);
+        // Synchronous 0ms local hydration
+        try {
+            const saved = localStorage.getItem(storageKey);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed)) {
+                    setFights(parsed);
                 }
-            } catch (e) {
-                console.error("Error reading local fight studies:", e);
+            } else {
                 setFights([]);
             }
-            return;
+        } catch (e) {
+            console.error("Error reading local fight studies:", e);
+            setFights([]);
         }
+
+        if (isFirebasePlaceholder) return;
 
         const docRef = doc(db, 'studies', `fights_${selectedMap.id}`);
         const unsubscribe = onSnapshot(docRef, (snapshot) => {
@@ -230,21 +234,18 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
                     try {
                         const parsed = JSON.parse(snapData.fights);
                         setFights(parsed);
+                        localStorage.setItem(storageKey, snapData.fights);
                     } catch (e) {
-                        setFights([]);
+                        // ignore
                     }
-                } else {
-                    setFights([]);
                 }
-            } else {
-                setFights([]);
             }
         }, (error) => {
             handleFirestoreError(error, OperationType.GET, `studies/fights_${selectedMap.id}`);
         });
 
         return () => unsubscribe();
-    }, [selectedMap]);
+    }, [selectedMap.id]);
 
     // Save Records Helper
     const saveFights = async (newFights: FightRecord[]) => {
@@ -1272,153 +1273,120 @@ export const FightStudies: React.FC<FightStudiesProps> = ({
                     </div>
 
                     {/* Interactive Map Canvas Container */}
-                    <div 
-                        className="relative w-full aspect-square rounded-2xl overflow-hidden bg-[#0a0a0a] border-2 border-gray-800 cursor-crosshair shadow-inner flex items-center justify-center select-none"
-                        ref={containerRef}
-                        onWheel={(e) => {
-                            e.preventDefault();
-                            if (e.deltaY < 0) {
-                                setZoom(z => Math.min(z + 0.2, 4));
-                            } else {
-                                setZoom(z => Math.max(z - 0.2, 1));
-                            }
-                        }}
-                        onMouseDown={(e) => {
-                            if (e.button === 1 || e.altKey) {
-                                e.preventDefault();
-                                setIsDragging(true);
-                                setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
-                            }
-                        }}
-                        onMouseMove={(e) => {
-                            if (isDragging) {
-                                setPan({
-                                    x: e.clientX - dragStart.x,
-                                    y: e.clientY - dragStart.y
-                                });
-                            }
-                        }}
-                        onMouseUp={() => setIsDragging(false)}
-                        onMouseLeave={() => setIsDragging(false)}
-                    >
-                        <div 
-                            className="relative w-full h-full transition-transform duration-75 ease-out origin-center"
-                            style={{ transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)` }}
-                        >
-                            <img 
-                                src={selectedMap.url} 
-                                alt={selectedMap.name} 
-                                className="w-full h-full object-cover select-none pointer-events-none opacity-85" 
-                                draggable={false}
-                            />
-
-                            {/* Heatmap Layer */}
-                            <HeatmapOverlay
-                                points={heatmapPoints}
-                                visible={heatmapMode !== 'markers'}
-                                palette="fire"
-                                radius={heatmapRadius}
-                                opacity={0.8}
-                            />
-
-                            {/* Target Coords Indicator when Modal is open */}
-                            {showModal && clickCoords && (
-                                <div 
-                                    className="absolute transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-30 flex items-center justify-center"
-                                    style={{ left: `${clickCoords.x}%`, top: `${clickCoords.y}%` }}
-                                >
-                                    <div className="w-10 h-10 rounded-full border-2 border-yellow-400 animate-ping opacity-75"></div>
-                                    <div className="w-3.5 h-3.5 rounded-full bg-yellow-400 border-2 border-black absolute shadow-lg"></div>
-                                </div>
-                            )}
-
-                            {/* Click layer */}
-                            <div 
-                                className="absolute inset-0 z-10" 
-                                onClick={handleMapClick}
-                            >
-                                {groupedFights.map((group) => {
-                                    const isHovered = hoveredRecordId === group.id;
-
-                                    return (
+                    <div className="flex justify-center w-full">
+                        <FastMapView
+                            selectedMap={selectedMap}
+                            zoom={zoom}
+                            setZoom={setZoom}
+                            pan={pan}
+                            setPan={setPan}
+                            isAdmin={isAdmin}
+                            showClearButton={true}
+                            onClearMap={handleClearAll}
+                            overlayLayer={
+                                <>
+                                    <HeatmapOverlay
+                                        points={heatmapPoints}
+                                        visible={heatmapMode !== 'markers'}
+                                        palette="fire"
+                                        radius={heatmapRadius}
+                                        opacity={0.8}
+                                    />
+                                    {/* Target Coords Indicator when Modal is open */}
+                                    {showModal && clickCoords && (
                                         <div 
-                                            key={group.id}
-                                            onClick={(e) => handleMarkerClick(group, e)}
-                                            onContextMenu={(e) => handleMarkerRightClick(group, e)}
-                                            onMouseEnter={() => setHoveredRecordId(group.id)}
-                                            onMouseLeave={() => setHoveredRecordId(null)}
-                                            className={`absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer z-20 group transition-all duration-200 ${
-                                                heatmapMode === 'heatmap' ? 'hidden' : ''
-                                            } ${
-                                                isHovered ? 'scale-125 z-30' : 'hover:scale-110'
-                                            }`}
-                                            style={{ left: `${group.x}%`, top: `${group.y}%` }}
-                                            title="Clique para Ver/Adicionar | Botão Direito para -1"
+                                            className="absolute transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-30 flex items-center justify-center"
+                                            style={{ left: `${clickCoords.x}%`, top: `${clickCoords.y}%` }}
                                         >
-                                            {/* Pulse Aura */}
-                                            <div className="absolute -inset-2 rounded-full bg-red-500/30 blur-sm animate-ping pointer-events-none"></div>
+                                            <div className="w-10 h-10 rounded-full border-2 border-yellow-400 animate-ping opacity-75"></div>
+                                            <div className="w-3.5 h-3.5 rounded-full bg-yellow-400 border-2 border-black absolute shadow-lg"></div>
+                                        </div>
+                                    )}
+                                </>
+                            }
+                            onMapClick={handleMapClick}
+                        >
+                            {groupedFights.map((group) => {
+                                const isHovered = hoveredRecordId === group.id;
 
-                                            {/* Pin Marker - ONLY QUANTITY NUMBER */}
-                                            <div className={`relative flex items-center justify-center rounded-full border-2 shadow-2xl transition-all ${
-                                                isHovered 
-                                                ? 'bg-yellow-400 text-black border-white ring-4 ring-yellow-400/50 scale-110' 
-                                                : 'bg-black/95 text-red-400 border-red-500 hover:bg-black'
-                                            } min-w-[32px] h-8 px-2 font-mono text-xs font-black`}>
-                                                {group.count}
-                                            </div>
+                                return (
+                                    <div 
+                                        key={group.id}
+                                        onClick={(e) => handleMarkerClick(group, e)}
+                                        onContextMenu={(e) => handleMarkerRightClick(group, e)}
+                                        onMouseEnter={() => setHoveredRecordId(group.id)}
+                                        onMouseLeave={() => setHoveredRecordId(null)}
+                                        className={`absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer z-20 group transition-all duration-200 ${
+                                            heatmapMode === 'heatmap' ? 'hidden' : ''
+                                        } ${
+                                            isHovered ? 'scale-125 z-30' : 'hover:scale-110'
+                                        }`}
+                                        style={{ left: `${group.x}%`, top: `${group.y}%` }}
+                                        title="Clique para Ver/Adicionar | Botão Direito para -1"
+                                    >
+                                        {/* Pulse Aura */}
+                                        <div className="absolute -inset-2 rounded-full bg-red-500/30 blur-sm animate-ping pointer-events-none"></div>
 
-                                            {/* Tooltip on Hover (pointer-events-none so it NEVER blocks clicks on the map or markers) */}
-                                            {showHoverTooltips && (
-                                                <div className={`absolute left-1/2 -translate-x-1/2 ${
-                                                    group.y > 65 ? 'bottom-full mb-2' : 'top-full mt-2'
-                                                } bg-[#111111]/98 backdrop-blur-md border border-red-500/50 p-2.5 rounded-2xl text-[11px] text-white shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-150 z-50 pointer-events-none min-w-[200px] max-w-[280px]`}>
-                                                    <div className="font-black text-red-400 uppercase italic flex items-center justify-between gap-2 pb-1 border-b border-white/10">
-                                                        <span className="truncate">{group.locationName}</span>
-                                                        <span className="text-black bg-yellow-400 font-black text-[9px] px-1.5 py-0.2 rounded-full uppercase shrink-0 shadow-sm">
-                                                            {group.count} {group.count > 1 ? 'TROCAÇÕES' : 'TROCAÇÃO'}
-                                                        </span>
-                                                    </div>
+                                        {/* Pin Marker - ONLY QUANTITY NUMBER */}
+                                        <div className={`relative flex items-center justify-center rounded-full border-2 shadow-2xl transition-all ${
+                                            isHovered 
+                                            ? 'bg-yellow-400 text-black border-white ring-4 ring-yellow-400/50 scale-110' 
+                                            : 'bg-black/95 text-red-400 border-red-500 hover:bg-black'
+                                        } min-w-[32px] h-8 px-2 font-mono text-xs font-black`}>
+                                            {group.count}
+                                        </div>
 
-                                                    <div className="mt-1 flex flex-col gap-1 max-h-36 overflow-y-auto pr-1">
-                                                        {group.items.slice(0, 5).map((rec, idx) => (
-                                                            <div 
-                                                                key={rec.id || idx} 
-                                                                className="text-gray-300 font-mono text-[10px] bg-white/5 p-1 rounded-lg border border-white/5 flex items-center justify-between gap-1.5"
-                                                            >
-                                                                <div className="flex items-center gap-1.5 truncate">
-                                                                    <span className="font-bold text-yellow-400 shrink-0">#{idx + 1}</span>
-                                                                    <span className="px-1 py-0.2 bg-red-500/20 text-red-400 text-[8px] rounded font-bold shrink-0">S{rec.safeNumber || 1}</span>
-                                                                    <span className="text-gray-400 shrink-0 text-[9px]">{formatMinutesToMS(rec.timeInMinutes)}</span>
-                                                                    {rec.teamA && (
-                                                                        <span className="text-white font-sans text-[9px] truncate ml-0.5">
-                                                                            {rec.teamA} {rec.teamB ? `x ${rec.teamB}` : ''}
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                                {rec.winnerTeam && (
-                                                                    <span className="text-[8px] text-green-400 font-sans font-bold shrink-0">
-                                                                        👑 {rec.winnerTeam}
+                                        {/* Tooltip on Hover */}
+                                        {showHoverTooltips && (
+                                            <div className={`absolute left-1/2 -translate-x-1/2 ${
+                                                group.y > 65 ? 'bottom-full mb-2' : 'top-full mt-2'
+                                            } bg-[#111111]/98 backdrop-blur-md border border-red-500/50 p-2.5 rounded-2xl text-[11px] text-white shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-150 z-50 pointer-events-none min-w-[200px] max-w-[280px]`}>
+                                                <div className="font-black text-red-400 uppercase italic flex items-center justify-between gap-2 pb-1 border-b border-white/10">
+                                                    <span className="truncate">{group.locationName}</span>
+                                                    <span className="text-black bg-yellow-400 font-black text-[9px] px-1.5 py-0.2 rounded-full uppercase shrink-0 shadow-sm">
+                                                        {group.count} {group.count > 1 ? 'TROCAÇÕES' : 'TROCAÇÃO'}
+                                                    </span>
+                                                </div>
+
+                                                <div className="mt-1 flex flex-col gap-1 max-h-36 overflow-y-auto pr-1">
+                                                    {group.items.slice(0, 5).map((rec, idx) => (
+                                                        <div 
+                                                            key={rec.id || idx} 
+                                                            className="text-gray-300 font-mono text-[10px] bg-white/5 p-1 rounded-lg border border-white/5 flex items-center justify-between gap-1.5"
+                                                        >
+                                                            <div className="flex items-center gap-1.5 truncate">
+                                                                <span className="font-bold text-yellow-400 shrink-0">#{idx + 1}</span>
+                                                                <span className="px-1 py-0.2 bg-red-500/20 text-red-400 text-[8px] rounded font-bold shrink-0">S{rec.safeNumber || 1}</span>
+                                                                <span className="text-gray-400 shrink-0 text-[9px]">{formatMinutesToMS(rec.timeInMinutes)}</span>
+                                                                {rec.teamA && (
+                                                                    <span className="text-white font-sans text-[9px] truncate ml-0.5">
+                                                                        {rec.teamA} {rec.teamB ? `x ${rec.teamB}` : ''}
                                                                     </span>
                                                                 )}
                                                             </div>
-                                                        ))}
-                                                        {group.items.length > 5 && (
-                                                            <div className="text-center text-[9px] text-yellow-400 font-semibold py-0.5">
-                                                                +{group.items.length - 5} outras ocorrências
-                                                            </div>
-                                                        )}
-                                                    </div>
-
-                                                    <div className="mt-1.5 pt-1 border-t border-white/10 text-center text-[9px] text-gray-400 font-bold">
-                                                        👉 Clique no pino para abrir / editar
-                                                    </div>
+                                                            {rec.winnerTeam && (
+                                                                <span className="text-[8px] text-green-400 font-sans font-bold shrink-0">
+                                                                    👑 {rec.winnerTeam}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                    {group.items.length > 5 && (
+                                                        <div className="text-center text-[9px] text-yellow-400 font-semibold py-0.5">
+                                                            +{group.items.length - 5} outras ocorrências
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
+
+                                                <div className="mt-1.5 pt-1 border-t border-white/10 text-center text-[9px] text-gray-400 font-bold">
+                                                    👉 Clique no pino para abrir / editar
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </FastMapView>
                     </div>
 
                     {/* Footer Tip */}

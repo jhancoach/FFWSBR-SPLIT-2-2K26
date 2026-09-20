@@ -9,6 +9,7 @@ import { db, isFirebasePlaceholder } from '../firebase';
 import { OperationType, handleFirestoreError } from '../utils/firestoreError';
 import { DashboardData } from '../types';
 import { HeatmapOverlay } from './HeatmapOverlay';
+import { FastMapView } from './FastMapView';
 
 export interface DangerRecord {
     id: string;
@@ -607,75 +608,27 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
                         </div>
 
                         {/* Interactive Canvas Container */}
-                        <div 
-                            className="relative w-full aspect-square max-w-[800px] rounded-2xl overflow-hidden bg-[#0a0a0a] border-2 border-amber-500/30 cursor-crosshair shadow-inner flex items-center justify-center select-none"
-                            ref={containerRef}
-                            onWheel={(e) => {
-                                e.preventDefault();
-                                if (e.deltaY < 0) setZoom(z => Math.min(z + 0.2, 4));
-                                else setZoom(z => Math.max(z - 0.2, 1));
-                            }}
-                            onMouseDown={(e) => {
-                                if (e.button === 1 || e.altKey) {
-                                    e.preventDefault();
-                                    setIsDragging(true);
-                                    setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+                        <div className="flex justify-center w-full">
+                            <FastMapView
+                                selectedMap={selectedMap}
+                                zoom={zoom}
+                                setZoom={setZoom}
+                                pan={pan}
+                                setPan={setPan}
+                                isAdmin={isAdmin}
+                                showClearButton={true}
+                                onClearMap={handleClearMap}
+                                overlayLayer={
+                                    <HeatmapOverlay
+                                        points={heatmapPoints}
+                                        visible={heatmapMode !== 'markers'}
+                                        palette="danger"
+                                        radius={heatmapRadius}
+                                        opacity={0.8}
+                                    />
                                 }
-                            }}
-                            onMouseMove={(e) => {
-                                if (isDragging) {
-                                    setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
-                                }
-                            }}
-                            onMouseUp={() => setIsDragging(false)}
-                            onMouseLeave={() => setIsDragging(false)}
-                        >
-                            {/* Map Controls Floating Overlay */}
-                            <div className="absolute top-4 right-4 z-30 flex flex-col gap-2 bg-black/80 p-2 rounded-xl border border-gray-800 backdrop-blur-sm shadow-xl">
-                                <button onClick={() => setZoom(z => Math.min(z + 0.5, 4))} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors" title="Aumentar Zoom">
-                                    <ZoomIn size={18} />
-                                </button>
-                                <button onClick={() => setZoom(z => Math.max(z - 0.5, 1))} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors" title="Diminuir Zoom">
-                                    <ZoomOut size={18} />
-                                </button>
-                                <button onClick={() => {setZoom(1); setPan({x:0,y:0})}} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors" title="Resetar Posição">
-                                    <Move size={18} />
-                                </button>
-                                <div className="h-px bg-white/10 my-1"></div>
-                                <button onClick={handleClearMap} className="p-2 bg-red-500/10 hover:bg-red-500/20 rounded-lg text-red-500 transition-colors" title="Limpar Dangers Deste Mapa">
-                                    <Trash2 size={18} />
-                                </button>
-                            </div>
-
-                            <div 
-                                className="relative w-full h-full transition-transform duration-75 ease-out origin-center"
-                                style={{
-                                    transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`
-                                }}
+                                onMapClick={handleMapClick}
                             >
-                                {/* Map Background Image */}
-                                <img 
-                                    src={selectedMap.url} 
-                                    alt={selectedMap.name} 
-                                    className="w-full h-full object-cover pointer-events-none"
-                                />
-
-                                {/* Heatmap Layer */}
-                                <HeatmapOverlay
-                                    points={heatmapPoints}
-                                    visible={heatmapMode !== 'markers'}
-                                    palette="danger"
-                                    radius={heatmapRadius}
-                                    opacity={0.8}
-                                />
-
-                                {/* Click layer */}
-                                <div 
-                                    className="absolute inset-0 z-10" 
-                                    onClick={handleMapClick}
-                                >
-
-                                {/* Render Danger Pins */}
                                 {groupedDangers.map((group) => {
                                     return (
                                         <div 
@@ -697,7 +650,7 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
                                                 {group.count}
                                             </div>
 
-                                            {/* Tooltip on Hover (pointer-events-none so it NEVER blocks clicks on the map or markers) */}
+                                            {/* Tooltip on Hover */}
                                             {showHoverTooltips && (
                                                 <div className={`absolute left-1/2 -translate-x-1/2 ${
                                                     group.y > 65 ? 'bottom-full mb-2' : 'top-full mt-2'
@@ -740,8 +693,7 @@ export const DangerStudies: React.FC<DangerStudiesProps> = ({
                                         </div>
                                     );
                                 })}
-                                </div>
-                            </div>
+                            </FastMapView>
                         </div>
 
                         {/* Footer Tip */}

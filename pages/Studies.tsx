@@ -9,14 +9,10 @@ import { getRestedTeamsInRound, parseRoundNumber } from '../utils/scheduleData';
 import { RevivalStudies } from '../components/RevivalStudies';
 import { FightStudies } from '../components/FightStudies';
 import { DangerStudies } from '../components/DangerStudies';
+import { MAPS_CONFIG, preloadAllMaps } from '../utils/mapPreloader';
+import { FastMapView } from '../components/FastMapView';
 
-const MAPS = [
-    { id: 'BER', name: 'Bermuda', url: 'https://i.ibb.co/q34yct8f/BERMUDA-MAPA.png' },
-    { id: 'PUR', name: 'Purgatório', url: 'https://i.ibb.co/G4sGkqk1/image.png' },
-    { id: 'KAL', name: 'Kalahari', url: 'https://i.ibb.co/7t4mHjWy/image.png' },
-    { id: 'NT', name: 'Nova Terra', url: 'https://i.ibb.co/vC4pT91L/image.png' },
-    { id: 'SOL', name: 'Solara', url: 'https://i.ibb.co/sdQ8hqbM/image.png' }
-];
+const MAPS = MAPS_CONFIG.map(m => ({ id: m.id, name: m.name, url: m.url }));
 
 interface MapStreamItem {
     id: string;
@@ -212,25 +208,28 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
         }
     };
 
+    // Load Safe Points for current map with instant optimistic hydration
     useEffect(() => {
-        setPoints([]);
         setZoom(1);
         setPan({ x: 0, y: 0 });
 
-        if (isFirebasePlaceholder) {
-            try {
-                const saved = localStorage.getItem('studies_' + selectedMap.id);
-                if (saved) {
-                    setPoints(JSON.parse(saved));
-                } else {
-                    setPoints([]);
+        // Synchronous 0ms hydration from local cache
+        try {
+            const saved = localStorage.getItem('studies_' + selectedMap.id);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed)) {
+                    setPoints(parsed);
                 }
-            } catch (e) {
-                console.error("Error reading local studies data:", e);
+            } else {
                 setPoints([]);
             }
-            return; // Exit early, no snapshot needed
+        } catch (e) {
+            console.error("Error reading local studies data:", e);
+            setPoints([]);
         }
+
+        if (isFirebasePlaceholder) return;
 
         const unsubscribeSnapshot = onSnapshot(doc(db, 'studies', selectedMap.id), (snapshot) => {
             if (snapshot.exists()) {
@@ -239,24 +238,20 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
                     try {
                         const parsed = JSON.parse(data.points);
                         setPoints(parsed);
+                        localStorage.setItem('studies_' + selectedMap.id, data.points);
                     } catch (e) {
-                        setPoints([]);
+                        // ignore
                     }
-                } else {
-                    setPoints([]);
                 }
-            } else {
-                setPoints([]);
             }
         }, (error) => {
             handleFirestoreError(error, OperationType.GET, `studies/${selectedMap.id}`);
         });
 
         return () => unsubscribeSnapshot();
-    }, [selectedMap]);
+    }, [selectedMap.id]);
 
     const savePoints = async (newPoints: SafePoint[]) => {
-        const previousPoints = [...points];
         setPoints(newPoints); // Optimistic UI update
 
         try {
@@ -317,23 +312,9 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
         }
     };
 
-    const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
-        if (isDragging) return; // Prevent adding points when dragging
-        
-        const rect = e.currentTarget.getBoundingClientRect();
-        
-        // Compute click coordinates relative to the original image dimensions without zoom
-        // rect width and height are the visual size (including zoom if transformed, but we attach click to the inner container or image)
-        
-        const xPercent = ((e.clientX - rect.left) / rect.width) * 100;
-        const yPercent = ((e.clientY - rect.top) / rect.height) * 100;
-
-        // Snap to grid or just use coordinate points and cluster them visually
-        // Clustering visually via overlapping radial gradients is smoother, 
-        // but user asked "numero de vezes em que a safe fechou ao clicar... vai acrescentando a quantidade".
-        // Let's quantize the coordinates to 2% blocks (e.g. 50x50 grid)
-        const cellX = Math.floor(xPercent / 2) * 2;
-        const cellY = Math.floor(yPercent / 2) * 2;
+    const handleMapClickCoords = (coords: { xPercent: number; yPercent: number }) => {
+        const cellX = Math.floor(coords.xPercent / 2) * 2;
+        const cellY = Math.floor(coords.yPercent / 2) * 2;
 
         const existingPointIndex = points.findIndex(p => p.x === cellX && p.y === cellY);
 
@@ -346,14 +327,9 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
         }
     };
 
-    const handleMapRightClick = (e: React.MouseEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        const rect = e.currentTarget.getBoundingClientRect();
-        const xPercent = ((e.clientX - rect.left) / rect.width) * 100;
-        const yPercent = ((e.clientY - rect.top) / rect.height) * 100;
-
-        const cellX = Math.floor(xPercent / 2) * 2;
-        const cellY = Math.floor(yPercent / 2) * 2;
+    const handleMapRightClickCoords = (coords: { xPercent: number; yPercent: number }) => {
+        const cellX = Math.floor(coords.xPercent / 2) * 2;
+        const cellY = Math.floor(coords.yPercent / 2) * 2;
 
         const existingPointIndex = points.findIndex(p => p.x === cellX && p.y === cellY);
 
@@ -366,7 +342,7 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
             }
             savePoints(newPoints);
         }
-    }
+    };
 
     const handleClear = () => {
         if (!isAdmin) {
@@ -737,95 +713,43 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
                         </div>
                     </div>
 
-                    <div className="bg-[#1a1a1a] rounded-3xl border border-gray-800 p-6 flex flex-col items-center gap-6 shadow-2xl relative overflow-hidden">
-                        {/* Controls */}
-                        <div className="absolute top-8 right-8 z-20 flex flex-col gap-2 bg-black/80 p-2 rounded-xl border border-gray-800 backdrop-blur-sm">
-                            <button onClick={() => setZoom(z => Math.min(z + 0.5, 4))} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors" title="Zoom In">
-                                <ZoomIn size={20} />
-                            </button>
-                            <button onClick={() => setZoom(z => Math.max(z - 0.5, 1))} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors" title="Zoom Out">
-                                <ZoomOut size={20} />
-                            </button>
-                            <button onClick={() => {setZoom(1); setPan({x:0,y:0})}} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors" title="Reset">
-                                <Move size={20} />
-                            </button>
-                            <div className="h-px bg-white/10 my-1"></div>
-                            <button onClick={handleClear} className="p-2 bg-red-500/10 hover:bg-red-500/20 rounded-lg text-red-500 transition-colors" title="Limpar Mapa">
-                                <Trash2 size={20} />
-                            </button>
-                        </div>
-
-                        <div 
-                            className="relative w-full max-w-[800px] aspect-square rounded-2xl overflow-hidden bg-[#0a0a0a] border-2 border-gray-800 cursor-crosshair shadow-inner flex items-center justify-center"
-                            ref={containerRef}
-                            onWheel={(e) => {
-                                e.preventDefault();
-                                if (e.deltaY < 0) {
-                                    setZoom(z => Math.min(z + 0.2, 4));
-                                } else {
-                                    setZoom(z => Math.max(z - 0.2, 1));
-                                }
-                            }}
-                            onMouseDown={(e) => {
-                                if (e.button === 1 || e.altKey) {
-                                    e.preventDefault();
-                                    setIsDragging(true);
-                                    setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
-                                }
-                            }}
-                            onMouseMove={(e) => {
-                                if (isDragging) {
-                                    setPan({
-                                        x: e.clientX - dragStart.x,
-                                        y: e.clientY - dragStart.y
-                                    });
-                                }
-                            }}
-                            onMouseUp={() => setIsDragging(false)}
-                            onMouseLeave={() => setIsDragging(false)}
+                    <div className="bg-[#1a1a1a] rounded-3xl border border-gray-800 p-4 sm:p-6 flex flex-col items-center gap-6 shadow-2xl relative overflow-hidden">
+                        <FastMapView
+                            selectedMap={selectedMap}
+                            zoom={zoom}
+                            setZoom={setZoom}
+                            pan={pan}
+                            setPan={setPan}
+                            isAdmin={isAdmin}
+                            showClearButton={true}
+                            onClearMap={handleClear}
+                            onMapClick={(_, coords) => handleMapClickCoords(coords)}
+                            onMapRightClick={(_, coords) => handleMapRightClickCoords(coords)}
                         >
-                            <div 
-                                className="relative w-full h-full transition-transform duration-75 ease-out origin-center"
-                                style={{ transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)` }}
-                            >
-                                <img 
-                                    src={selectedMap.url} 
-                                    alt={selectedMap.name} 
-                                    className="w-full h-full object-cover select-none pointer-events-none opacity-80" 
-                                    draggable={false}
-                                />
+                            {points.map((p, i) => {
+                                const intensity = p.count / maxCount;
+                                
+                                let bgColor = 'bg-yellow-400';
+                                if (intensity > 0.3) bgColor = 'bg-orange-500';
+                                if (intensity > 0.6) bgColor = 'bg-red-500';
+                                if (intensity > 0.8) bgColor = 'bg-red-600';
 
-                                <div 
-                                    className="absolute inset-0 z-10" 
-                                    onClick={handleMapClick}
-                                    onContextMenu={handleMapRightClick}
-                                >
-                                    {points.map((p, i) => {
-                                        const intensity = p.count / maxCount;
-                                        
-                                        let bgColor = 'bg-yellow-400';
-                                        if (intensity > 0.3) bgColor = 'bg-orange-500';
-                                        if (intensity > 0.6) bgColor = 'bg-red-500';
-                                        if (intensity > 0.8) bgColor = 'bg-red-600';
-
-                                        return (
-                                            <div 
-                                                key={i}
-                                                className="absolute transform -translate-x-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none z-20"
-                                                style={{ left: `${p.x + 1}%`, top: `${p.y + 1}%` }}
-                                            >
-                                                <div className={`absolute w-10 h-10 rounded-full ${bgColor} blur-md opacity-60 mix-blend-screen`}></div>
-                                                <div className="relative z-10 flex items-center justify-center pointer-events-none">
-                                                    <div className="bg-black/95 rounded-full border-2 border-yellow-400 px-2.5 py-1 shadow-2xl text-center flex items-center justify-center font-mono text-xs font-black text-yellow-400 min-w-[28px] h-7">
-                                                        {p.count}
-                                                    </div>
-                                                </div>
+                                return (
+                                    <div 
+                                        key={i}
+                                        className="absolute transform -translate-x-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none z-20 transition-transform duration-150 scale-100 hover:scale-110"
+                                        style={{ left: `${p.x + 1}%`, top: `${p.y + 1}%` }}
+                                    >
+                                        <div className={`absolute w-9 h-9 rounded-full ${bgColor} blur-md opacity-60 mix-blend-screen animate-pulse`}></div>
+                                        <div className="relative z-10 flex items-center justify-center pointer-events-none">
+                                            <div className="bg-black/95 rounded-full border-2 border-yellow-400 px-2 py-0.5 shadow-2xl text-center flex items-center justify-center font-mono text-[11px] font-black text-yellow-400 min-w-[26px] h-6.5">
+                                                {p.count}
                                             </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </FastMapView>
 
                         <div className="flex flex-wrap items-center justify-center gap-6 bg-black/40 px-8 py-4 rounded-xl border border-white/5">
                             <div className="flex items-center gap-3">
