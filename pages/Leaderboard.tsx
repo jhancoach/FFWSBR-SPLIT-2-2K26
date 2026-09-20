@@ -3,9 +3,10 @@ import React, { useMemo, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardData, TeamStats } from '../types';
 import { calculateTeamStats } from '../services/dataService';
-import { Trophy, Crosshair, Crown, Layers, Star, ChevronRight, Shield, CheckCircle2, TrendingUp, Medal, Settings2, ArrowUpDown, ArrowUp, ArrowDown, Eye, EyeOff, BookOpen, Globe, Info, LayoutGrid, ChevronDown, ChevronUp, SlidersHorizontal, Search, X } from 'lucide-react';
+import { Trophy, Crosshair, Crown, Layers, Star, ChevronRight, Shield, CheckCircle2, TrendingUp, Medal, Settings2, ArrowUpDown, ArrowUp, ArrowDown, Eye, EyeOff, BookOpen, Globe, Info, LayoutGrid, ChevronDown, ChevronUp, SlidersHorizontal, Search, X, Target } from 'lucide-react';
 import FilterBar from '../components/FilterBar';
 import RulesModal from '../components/RulesModal';
+import MundialProjectionView from '../components/MundialProjectionView';
 import { formatTeamName } from '../utils/teamUtils';
 
 interface LeaderboardProps {
@@ -20,6 +21,8 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
   const [showColumnMenu, setShowColumnMenu] = useState(false);
   const [showSectionMenu, setShowSectionMenu] = useState(false);
   const [showRulesModal, setShowRulesModal] = useState(false);
+  const [showProjectionModal, setShowProjectionModal] = useState(false);
+  const [showProjectionView, setShowProjectionView] = useState(true);
   
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
   const [searchTerm, setSearchTerm] = useState('');
@@ -1055,6 +1058,16 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
               <BookOpen size={16} /> Regulamento
             </button>
 
+            {phase === 'RUMO_AO_MUNDIAL' && (
+              <button 
+                onClick={() => setShowProjectionModal(true)}
+                className="bg-purple-600 hover:bg-purple-500 text-white px-3.5 py-2.5 rounded-xl border border-purple-400/50 shadow-[0_0_15px_rgba(168,85,247,0.3)] flex items-center gap-2 text-[10px] font-black uppercase tracking-widest cursor-pointer transition-all"
+                title="Abrir Simulador de Projeções do Rumo ao Mundial"
+              >
+                <Target size={16} /> Projeção Mundial
+              </button>
+            )}
+
             <div className="bg-yellow-500/10 border border-yellow-500/30 px-4 py-2 rounded-xl flex items-center gap-3">
                <Crown size={18} className="text-yellow-500" />
                <span className="text-[10px] font-black text-white uppercase tracking-widest italic">Critério: Pontos &gt; Booyahs &gt; Abates</span>
@@ -1090,22 +1103,72 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
       )}
 
       {phase === 'RUMO_AO_MUNDIAL' && (
-        <div className="bg-gradient-to-r from-purple-950/40 via-purple-900/20 to-transparent border border-purple-500/30 px-4 py-3.5 rounded-2xl text-xs text-purple-200 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-lg">
-          <div className="flex items-center gap-2.5">
-            <span className="font-black px-2.5 py-1 bg-purple-500/20 border border-purple-500/40 rounded-lg text-purple-300 uppercase text-[10px] tracking-widest flex items-center gap-1.5">
-              <Globe size={13} className="text-purple-400" /> 2ª Fase • Rumo ao Mundial
-            </span>
-            <span>
-              As <strong>12 equipes classificadas</strong> disputam 6 rodadas (RD 15 a 20) iniciando com a <strong>pontuação bônus</strong> da 1ª Fase. Os <strong>Top 2</strong> garantem vaga no <strong>FFWS Grand Finals</strong>!
-            </span>
+        <div className="space-y-4">
+          <div className="bg-gradient-to-r from-purple-950/40 via-purple-900/20 to-transparent border border-purple-500/30 px-4 py-3.5 rounded-2xl text-xs text-purple-200 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-lg">
+            <div className="flex items-center gap-2.5">
+              <span className="font-black px-2.5 py-1 bg-purple-500/20 border border-purple-500/40 rounded-lg text-purple-300 uppercase text-[10px] tracking-widest flex items-center gap-1.5">
+                <Globe size={13} className="text-purple-400" /> 2ª Fase • Rumo ao Mundial
+              </span>
+              <span>
+                As <strong>12 equipes classificadas</strong> disputam 6 rodadas (RD 15 a 20) iniciando com a <strong>pontuação bônus</strong> da 1ª Fase. Os <strong>Top 2</strong> garantem vaga no <strong>FFWS Grand Finals</strong>!
+              </span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
+                <Globe size={11} /> Top 2: Vaga Mundial
+              </span>
+              <span className="px-2.5 py-1 rounded-lg bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
+                <Trophy size={11} /> Top 12: Grande Final
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
-              <Globe size={11} /> Top 2: Vaga Mundial
-            </span>
-            <span className="px-2.5 py-1 rounded-lg bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
-              <Trophy size={11} /> Top 12: Grande Final
-            </span>
+
+          {/* Bar / Teaser de Projeção Interativa para a LOUD e demais equipes */}
+          <div className="bg-gradient-to-r from-[#181226] via-[#121216] to-[#121215] border border-purple-500/40 rounded-2xl p-4 sm:p-5 shadow-[0_0_30px_rgba(168,85,247,0.12)]">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="flex items-start sm:items-center gap-3.5">
+                <div className="p-2.5 bg-yellow-500/20 border border-yellow-500/40 rounded-xl text-yellow-400 shrink-0 shadow-[0_0_15px_rgba(234,179,8,0.2)]">
+                  <Target size={24} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-yellow-500/20 border border-yellow-500/30 text-yellow-300">
+                      🎯 Projeção Oficial • 24 Quedas Restantes (R17 a R20)
+                    </span>
+                    <span className="text-xs font-black text-white">
+                      Meta LOUD SNICKERS no Rumo ao Mundial
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-300 mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
+                    <span>
+                      🥇 <strong>Top 1 (Líder LOS):</strong> precisa de <strong className="text-yellow-400 font-mono text-sm">18,42 pts/queda</strong> (+2,46 pts a mais que a LOS por queda)
+                    </span>
+                    <span className="text-gray-600 hidden sm:inline">•</span>
+                    <span>
+                      🌍 <strong>Top 2 (Vaga Mundial):</strong> precisa de <strong className="text-purple-300 font-mono text-sm">16,79 pts/queda</strong> (+1,33 pts a mais que a INTZ)
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => setShowProjectionView(!showProjectionView)}
+                  className="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all shadow-lg cursor-pointer"
+                >
+                  <SlidersHorizontal size={14} />
+                  <span>{showProjectionView ? 'Ocultar Simulador' : 'Abrir Simulador'}</span>
+                  {showProjectionView ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+              </div>
+            </div>
+
+            {/* Simulador Interativo Embutido */}
+            {showProjectionView && (
+              <div className="mt-5 pt-5 border-t border-purple-500/20 animate-in fade-in duration-300">
+                <MundialProjectionView data={data} initialTeam="LOUD SNICKERS" />
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1519,6 +1582,17 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
       </div>
 
       <RulesModal isOpen={showRulesModal} onClose={() => setShowRulesModal(false)} />
+
+      {showProjectionModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+          <MundialProjectionView 
+            data={data} 
+            initialTeam="LOUD SNICKERS" 
+            isModal={true} 
+            onClose={() => setShowProjectionModal(false)} 
+          />
+        </div>
+      )}
     </div>
   );
 };
