@@ -88,6 +88,7 @@ import { TeamVsTeamCombatCompare } from "../components/TeamVsTeamCombatCompare";
 import { TeamKpmAnalysis } from "../components/TeamKpmAnalysis";
 import { TeamVsTeamSafeKillsCompare } from "../components/TeamVsTeamSafeKillsCompare";
 import { TeamVsTeamMapCompare } from "../components/TeamVsTeamMapCompare";
+import { TeamPointsEvolutionChart } from "../components/TeamPointsEvolutionChart";
 interface TeamsProps {
 data: DashboardData;
 }
@@ -163,6 +164,7 @@ const [activeTab, setActiveTab] = useState<
 | "mapAnalysis"
 | "safeAnalysis"
 | "comparison"
+| "evolution"
 | "pointsTable"
 | "teamRounds"
 | "mapStats"
@@ -236,6 +238,7 @@ const [compareSubTab, setCompareSubTab] = useState<
 | "mapKills"
 | "safeKills"
 | "safes"
+| "evolution"
 >("all");
 // Active Skills Analysis States
 const [selectedActiveSkillFilter, setSelectedActiveSkillFilter] =
@@ -4032,6 +4035,12 @@ onClick={() => setActiveTab("comparison")}
 className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === "comparison" ? "bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black" : "text-gray-400 hover:text-white hover:bg-white/5"}`}
 >
 <Scale size={15} /> Comparar
+</button>
+<button
+onClick={() => setActiveTab("evolution")}
+className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === "evolution" ? "bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black" : "text-gray-400 hover:text-white hover:bg-white/5"}`}
+>
+<TrendingUp size={15} /> Evolução (Área)
 </button>
 <button
 onClick={() => setActiveTab("activeSkills")}
@@ -8335,7 +8344,11 @@ direction: "desc",
 </div>
 )}
 </div>
-) : activeTab === "momentum" ? (<TeamMomentum data={data} />) : activeTab === "mapStats" ? (
+) : activeTab === "momentum" ? (
+<TeamMomentum data={data} />
+) : activeTab === "evolution" ? (
+<TeamPointsEvolutionChart data={data} />
+) : activeTab === "mapStats" ? (
 <div className="space-y-8 animate-in fade-in duration-300">
 {/* Header Banner */}
 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gradient-to-r from-yellow-500/10 via-amber-500/5 to-transparent p-6 rounded-3xl border border-yellow-500/20 backdrop-blur-md">
@@ -10429,6 +10442,20 @@ compareSubTab === "safes"
 />
 ),
 },
+{
+id: "evolution",
+label: "Evolução Acumulada",
+icon: (
+<TrendingUp
+size={14}
+className={
+compareSubTab === "evolution"
+? "text-black"
+: "text-yellow-400"
+}
+/>
+),
+},
 ].map((tab) => (
 <button
 key={tab.id}
@@ -11291,6 +11318,23 @@ Total Registrado
 })}
 </div>
 </div>
+</div>
+)}
+{/* SUB-TAB: Evolução de Pontos Acumulados (Área Empilhada) */}
+{(compareSubTab === "evolution" || compareSubTab === "all") && (
+<div className="space-y-6 animate-in fade-in duration-300">
+{compareSubTab === "all" && (
+<div className="flex flex-col items-center pt-8">
+<div className="h-0.5 w-28 bg-gradient-to-r from-transparent via-yellow-500 to-transparent mb-3" />
+<div className="flex items-center gap-2 text-yellow-500 font-black uppercase tracking-[0.4em] italic text-xs">
+<TrendingUp size={16} /> Evolução Acumulada Rodada a Rodada (Sem Bônus)
+</div>
+</div>
+)}
+<TeamPointsEvolutionChart
+data={data}
+initialSelectedTeams={[filters.team[0], compareTeamB]}
+/>
 </div>
 )}
 </div>

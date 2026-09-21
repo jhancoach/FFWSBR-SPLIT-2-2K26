@@ -1141,11 +1141,11 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
                   </div>
                   <div className="text-xs text-gray-300 mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
                     <span>
-                      🥇 <strong>Top 1 (Líder LOS):</strong> precisa de <strong className="text-yellow-400 font-mono text-sm">18,42 pts/queda</strong> (+2,46 pts a mais que a LOS por queda)
+                      🥇 <strong>Top 1 (Líder LOS):</strong> precisa de <strong className="text-yellow-400 font-mono text-sm">18,42 pts/queda sem bônus</strong> (+2,50 pts a mais que a média de campo da LOS de 15,92 pts/q)
                     </span>
                     <span className="text-gray-600 hidden sm:inline">•</span>
                     <span>
-                      🌍 <strong>Top 2 (Vaga Mundial):</strong> precisa de <strong className="text-purple-300 font-mono text-sm">16,79 pts/queda</strong> (+1,33 pts a mais que a INTZ)
+                      🌍 <strong>Top 2 (Vaga Mundial - INTZ):</strong> precisa de <strong className="text-purple-300 font-mono text-sm">17,04 pts/queda sem bônus</strong> (+1,62 pts a mais que a média de campo da INTZ de 15,42 pts/q)
                     </span>
                   </div>
                 </div>

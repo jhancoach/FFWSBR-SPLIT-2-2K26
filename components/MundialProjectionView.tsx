@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Trophy, 
   Globe, 
@@ -19,7 +19,8 @@ import {
   ChevronDown, 
   ChevronUp, 
   Crosshair,
-  ArrowUpRight
+  ArrowUpRight,
+  Info
 } from 'lucide-react';
 import { DashboardData, TeamStats } from '../types';
 import { calculateTeamStats } from '../services/dataService';
@@ -173,6 +174,29 @@ export const MundialProjectionView: React.FC<MundialProjectionViewProps> = ({
 
   // Equipe Alvo da Projeção
   const targetTeam = targetType === 'TOP_1' ? top1Team : targetType === 'TOP_2' ? top2Team : null;
+
+  // Atualizar ritmo simulado automaticamente quando mudar o alvo e estiver no modo CURRENT
+  useEffect(() => {
+    if (pacePreset === 'CURRENT') {
+      const active = targetType === 'TOP_1' ? top1Team : targetType === 'TOP_2' ? top2Team : null;
+      if (active && active.avgPts > 0) {
+        setSimulatedOpponentPace(active.avgPts);
+      }
+    }
+  }, [targetType, top1Team?.avgPts, top2Team?.avgPts, pacePreset]);
+
+  // Selecionar alvo e atualizar ritmo imediatamente
+  const selectTarget = (newTarget: 'TOP_1' | 'TOP_2' | 'CUSTOM') => {
+    setTargetType(newTarget);
+    setPacePreset('CURRENT');
+    if (newTarget === 'TOP_1') {
+      const pace = top1Team && top1Team.avgPts > 0 ? top1Team.avgPts : 15.92;
+      setSimulatedOpponentPace(pace);
+    } else if (newTarget === 'TOP_2') {
+      const pace = top2Team && top2Team.avgPts > 0 ? top2Team.avgPts : 15.42;
+      setSimulatedOpponentPace(pace);
+    }
+  };
 
   // Atualizar preset de ritmo quando o alvo muda
   const handlePacePreset = (preset: 'CURRENT' | 'STRONG' | 'MEDIUM' | 'LOW') => {
@@ -395,7 +419,7 @@ export const MundialProjectionView: React.FC<MundialProjectionViewProps> = ({
               <img src={currentSelectedTeam.image} alt={currentSelectedTeam.name} className="w-4 h-4 object-contain rounded" />
               <span>
                 Pontuação Atual: <strong className="text-yellow-400">{currentSelectedTeam.totalPts} pts</strong> 
-                {' '}(Bônus: +{currentSelectedTeam.bonus} | Quedas: {currentSelectedTeam.rawPts} pts • Média: {currentSelectedTeam.avgPts.toFixed(2)} pts/q)
+                {' '}(Bônus: +{currentSelectedTeam.bonus} | Quedas: {currentSelectedTeam.rawPts} pts • Média Sem Bônus: <strong className="text-white">{currentSelectedTeam.avgPts.toFixed(2)} pts/q</strong>)
               </span>
             </div>
           </div>
@@ -408,10 +432,7 @@ export const MundialProjectionView: React.FC<MundialProjectionViewProps> = ({
             <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  setTargetType('TOP_1');
-                  handlePacePreset('CURRENT');
-                }}
+                onClick={() => selectTarget('TOP_1')}
                 className={`px-3 py-2 rounded-xl text-[11px] font-black uppercase flex flex-col items-center justify-center transition-all cursor-pointer border ${
                   targetType === 'TOP_1'
                     ? 'bg-yellow-500 text-black border-yellow-400 shadow-[0_0_15px_rgba(234,179,8,0.3)] font-black'
@@ -426,10 +447,7 @@ export const MundialProjectionView: React.FC<MundialProjectionViewProps> = ({
 
               <button
                 type="button"
-                onClick={() => {
-                  setTargetType('TOP_2');
-                  handlePacePreset('CURRENT');
-                }}
+                onClick={() => selectTarget('TOP_2')}
                 className={`px-3 py-2 rounded-xl text-[11px] font-black uppercase flex flex-col items-center justify-center transition-all cursor-pointer border ${
                   targetType === 'TOP_2'
                     ? 'bg-purple-600 text-white border-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.4)] font-black'
@@ -444,7 +462,7 @@ export const MundialProjectionView: React.FC<MundialProjectionViewProps> = ({
 
               <button
                 type="button"
-                onClick={() => setTargetType('CUSTOM')}
+                onClick={() => selectTarget('CUSTOM')}
                 className={`px-3 py-2 rounded-xl text-[11px] font-black uppercase flex flex-col items-center justify-center transition-all cursor-pointer border ${
                   targetType === 'CUSTOM'
                     ? 'bg-blue-600 text-white border-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.4)] font-black'
@@ -475,6 +493,15 @@ export const MundialProjectionView: React.FC<MundialProjectionViewProps> = ({
           </div>
         </div>
 
+        {/* Banner de Esclarecimento sobre o Bônus vs Médias */}
+        <div className="flex items-start sm:items-center gap-3 p-3.5 bg-gradient-to-r from-blue-950/40 via-purple-950/30 to-blue-950/40 border border-blue-500/30 rounded-2xl text-xs text-blue-200 shadow-sm">
+          <Info size={18} className="shrink-0 text-blue-400 mt-0.5 sm:mt-0" />
+          <div className="leading-relaxed">
+            <strong className="text-white uppercase tracking-wider text-[11px] block sm:inline mr-2">📌 Regra de Cálculo Oficial:</strong>
+            Os pontos bônus da 1ª Fase entram <strong>apenas na pontuação total acumulada</strong>. Todas as médias por partida (M.PTS) e os ritmos necessários projetados são calculados <strong>estritamente sobre os pontos das quedas (Sem o Bônus)</strong>.
+          </div>
+        </div>
+
         {/* Big Impact Highlight Cards (Os Números Chave da Projeção) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           
@@ -484,7 +511,7 @@ export const MundialProjectionView: React.FC<MundialProjectionViewProps> = ({
               <Zap size={64} />
             </div>
             <span className="text-[10px] font-black uppercase text-purple-300 tracking-wider block mb-1">
-              Média por Partida Necessária
+              Média / Queda Necessária (Sem Bônus)
             </span>
             <div className="flex items-baseline gap-2">
               <span className="text-3xl sm:text-4xl font-black font-mono text-yellow-400 drop-shadow-[0_0_15px_rgba(234,179,8,0.3)]">
@@ -493,7 +520,7 @@ export const MundialProjectionView: React.FC<MundialProjectionViewProps> = ({
               <span className="text-xs font-bold text-gray-400 uppercase">pts / queda</span>
             </div>
             <p className="text-[11px] text-gray-300 mt-2 font-medium">
-              Média de pontuação exata por partida em cada uma das <strong className="text-white">{remainingMatches} quedas</strong> restantes.
+              Média pura de campo (abates + colocação, sem somar bônus) em cada uma das <strong className="text-white">{remainingMatches} quedas</strong> restantes.
             </p>
           </div>
 
@@ -516,7 +543,7 @@ export const MundialProjectionView: React.FC<MundialProjectionViewProps> = ({
           {/* Card 3: Diferencial Direto em Confronto */}
           <div className="bg-[#15151a] border border-gray-800 rounded-2xl p-5 shadow-lg relative overflow-hidden">
             <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider block mb-1">
-              Diferencial em Relação ao Alvo
+              Diferencial Necessário / Queda
             </span>
             <div className="flex items-baseline gap-2">
               <span className="text-3xl sm:text-4xl font-black font-mono text-emerald-400">
@@ -525,7 +552,7 @@ export const MundialProjectionView: React.FC<MundialProjectionViewProps> = ({
               <span className="text-xs font-bold text-gray-400 uppercase">pts a mais / q</span>
             </div>
             <p className="text-[11px] text-gray-400 mt-2">
-              Vantagem líquida que a {currentSelectedTeam.name} precisa abrir sobre o adversário ({targetName}) por partida.
+              Vantagem líquida que a {currentSelectedTeam.name} precisa abrir sobre o ritmo de campo do adversário ({targetName}) por partida.
             </p>
           </div>
 
@@ -566,7 +593,7 @@ export const MundialProjectionView: React.FC<MundialProjectionViewProps> = ({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-gray-300">
-                  Ritmo Projetado do Adversário ({targetTeam?.name || 'Alvo'}):
+                  Ritmo de Campo do Adversário ({targetTeam?.name || 'Alvo'}) <span className="text-gray-400 font-normal">[Sem Bônus]</span>:
                 </span>
                 <span className="text-sm font-black font-mono text-yellow-400 bg-black/60 px-2.5 py-0.5 rounded-lg border border-yellow-500/30">
                   {simulatedOpponentPace.toFixed(2)} pts / queda
@@ -598,7 +625,7 @@ export const MundialProjectionView: React.FC<MundialProjectionViewProps> = ({
                       : 'bg-black/40 text-gray-400 border-gray-800 hover:text-white'
                   }`}
                 >
-                  Ritmo Atual ({targetTeam ? targetTeam.avgPts.toFixed(1) : '15.9'} pts)
+                  Ritmo Atual Sem Bônus ({targetTeam ? targetTeam.avgPts.toFixed(2) : '15.92'} pts/q)
                 </button>
                 <button
                   type="button"
