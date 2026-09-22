@@ -1,8 +1,14 @@
 
 import React, { useState, useMemo } from 'react';
 import { DashboardData } from '../types';
-import { Crosshair, ShieldAlert, Swords, Disc, List, User, FilterX, Shield, History, Clock, MapPin, Target, Skull, BarChart3, TrendingUp, Zap, Flame, Sparkles } from 'lucide-react';
+import { 
+  Crosshair, ShieldAlert, Swords, Disc, List, User, FilterX, Shield, 
+  History, Clock, MapPin, Target, Skull, BarChart3, TrendingUp, Zap, 
+  Flame, Sparkles, Eye, EyeOff, Maximize2, Minimize2, ChevronDown, 
+  ChevronUp, ChevronsUpDown, LayoutGrid
+} from 'lucide-react';
 import FilterBar from '../components/FilterBar';
+import { FullListModal } from '../components/FullListModal';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 import { findTeamLogo } from '../utils/teamUtils';
 
@@ -28,6 +34,30 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
   const [compareType, setCompareType] = useState<'RD' | 'CONFRONTO'>('RD');
   const [compareItem1, setCompareItem1] = useState<string>('');
   const [compareItem2, setCompareItem2] = useState<string>('');
+
+  // Controle de visibilidade de seções da página
+  const [sectionVisibility, setSectionVisibility] = useState({
+    phaseFilter: true,
+    phaseHighlights: true,
+    rankingsGrid: true,
+    killLog: true,
+  });
+
+  // Estado para expandir todas as 6 listas na página
+  const [expandAllLists, setExpandAllLists] = useState(false);
+
+  // Configuração do modal de lista inteira em tela cheia
+  const [modalConfig, setModalConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    items: Array<{ name: string; count: number }>;
+    totalCount: number;
+    type: 'weapon' | 'team' | 'player' | 'safe';
+    isVictimList?: boolean;
+    color?: string;
+    onSelect?: (name: string) => void;
+    activeValues?: string[];
+  } | null>(null);
   
   const [filters, setFilters] = useState({
     team: [] as string[], 
@@ -538,6 +568,26 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
   const victimTeamList = Object.entries(stats.victimTeamCounts).map(([name, count]) => ({name, count: count as number}));
   const totalEvents = filteredFeed.length;
 
+  const openFullListModal = (
+    title: string,
+    items: Array<{ name: string; count: number }>,
+    type: 'weapon' | 'team' | 'player' | 'safe',
+    isVictimList?: boolean,
+    onSelect?: (name: string) => void,
+    activeValues?: string[]
+  ) => {
+    setModalConfig({
+      isOpen: true,
+      title,
+      items,
+      totalCount: totalEvents,
+      type,
+      isVictimList,
+      onSelect,
+      activeValues,
+    });
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-12">
         <div className="flex flex-col md:flex-row justify-between items-center gap-4">
@@ -575,8 +625,96 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
         
         <FilterBar filters={filters} setFilters={setFilters} options={filterOptions} defaultOpen={false} />
 
+        {/* BARRA DE GESTÃO DE SEÇÕES & VISUALIZAÇÃO COMPLETA */}
+        <div className="bg-[#121217] p-3.5 rounded-2xl border border-white/10 shadow-lg flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-black uppercase tracking-wider text-gray-400 flex items-center gap-1.5 mr-1">
+                    <Eye size={14} className="text-yellow-400" /> Exibir Seções:
+                </span>
+
+                <button
+                    onClick={() => setSectionVisibility(prev => ({ ...prev, phaseFilter: !prev.phaseFilter }))}
+                    className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase transition-all flex items-center gap-1.5 border ${
+                        sectionVisibility.phaseFilter 
+                            ? 'bg-blue-500/10 text-blue-300 border-blue-500/30' 
+                            : 'bg-black/40 text-gray-500 border-white/5 line-through opacity-60'
+                    }`}
+                >
+                    {sectionVisibility.phaseFilter ? <Eye size={12} className="text-blue-400" /> : <EyeOff size={12} />}
+                    Filtro por Fase
+                </button>
+
+                <button
+                    onClick={() => setSectionVisibility(prev => ({ ...prev, phaseHighlights: !prev.phaseHighlights }))}
+                    className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase transition-all flex items-center gap-1.5 border ${
+                        sectionVisibility.phaseHighlights 
+                            ? 'bg-amber-500/10 text-amber-300 border-amber-500/30' 
+                            : 'bg-black/40 text-gray-500 border-white/5 line-through opacity-60'
+                    }`}
+                >
+                    {sectionVisibility.phaseHighlights ? <Eye size={12} className="text-amber-400" /> : <EyeOff size={12} />}
+                    Destaques de Ritmo
+                </button>
+
+                <button
+                    onClick={() => setSectionVisibility(prev => ({ ...prev, rankingsGrid: !prev.rankingsGrid }))}
+                    className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase transition-all flex items-center gap-1.5 border ${
+                        sectionVisibility.rankingsGrid 
+                            ? 'bg-yellow-500/10 text-yellow-300 border-yellow-500/30' 
+                            : 'bg-black/40 text-gray-500 border-white/5 line-through opacity-60'
+                    }`}
+                >
+                    {sectionVisibility.rankingsGrid ? <Eye size={12} className="text-yellow-400" /> : <EyeOff size={12} />}
+                    Arsenal & Rankings
+                </button>
+
+                <button
+                    onClick={() => setSectionVisibility(prev => ({ ...prev, killLog: !prev.killLog }))}
+                    className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase transition-all flex items-center gap-1.5 border ${
+                        sectionVisibility.killLog 
+                            ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30' 
+                            : 'bg-black/40 text-gray-500 border-white/5 line-through opacity-60'
+                    }`}
+                >
+                    {sectionVisibility.killLog ? <Eye size={12} className="text-emerald-400" /> : <EyeOff size={12} />}
+                    Live Kill Log
+                </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+                <button
+                    onClick={() => setExpandAllLists(prev => !prev)}
+                    className={`px-3.5 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-1.5 border shadow-sm ${
+                        expandAllLists
+                            ? 'bg-yellow-500 text-black border-yellow-400 shadow-[0_0_15px_rgba(234,179,8,0.3)]'
+                            : 'bg-black/60 text-yellow-400 border-yellow-500/40 hover:bg-yellow-500/10'
+                    }`}
+                    title="Alternar entre modo compacto com barra de rolagem ou expandir todas as 6 listas completas na tela"
+                >
+                    <ChevronsUpDown size={13} />
+                    {expandAllLists ? 'Recolher Todas as Listas' : 'Expandir Todas as Listas (Ver Inteiras)'}
+                </button>
+
+                <button
+                    onClick={() => {
+                        const anyVisible = Object.values(sectionVisibility).some(Boolean);
+                        setSectionVisibility({
+                            phaseFilter: !anyVisible,
+                            phaseHighlights: !anyVisible,
+                            rankingsGrid: !anyVisible,
+                            killLog: !anyVisible,
+                        });
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl bg-black/40 hover:bg-white/5 text-gray-400 hover:text-white border border-white/10 text-[10px] font-bold uppercase transition-all"
+                >
+                    {Object.values(sectionVisibility).some(Boolean) ? 'Ocultar Todas' : 'Mostrar Todas'}
+                </button>
+            </div>
+        </div>
+
         {/* BARRA DE FILTRO RÁPIDO POR FASE DE JOGO (EARLY, MID & LATE GAME) */}
-        <div className="bg-[#111111] p-4 rounded-2xl border border-white/10 shadow-xl space-y-3">
+        {sectionVisibility.phaseFilter ? (
+          <div className="bg-[#111111] p-4 rounded-2xl border border-white/10 shadow-xl space-y-3">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-white/10 pb-2.5">
                 <div className="flex items-center gap-2">
                     <Flame size={18} className="text-amber-500 animate-pulse" />
@@ -584,9 +722,18 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
                         Filtro por Fase de Jogo (Ritmo & Agressividade)
                     </span>
                 </div>
-                <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
-                    Early (S1-S2) • Mid (S3-S4) • Late / End (S5+)
-                </span>
+                <div className="flex items-center gap-3">
+                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest hidden sm:inline">
+                        Early (S1-S2) • Mid (S3-S4) • Late / End (S5+)
+                    </span>
+                    <button
+                        onClick={() => setSectionVisibility(prev => ({ ...prev, phaseFilter: false }))}
+                        className="p-1 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                        title="Ocultar esta seção"
+                    >
+                        <ChevronUp size={14} />
+                    </button>
+                </div>
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -675,91 +822,139 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
                     </div>
                 </button>
             </div>
-        </div>
+          </div>
+        ) : (
+          <div 
+            onClick={() => setSectionVisibility(prev => ({ ...prev, phaseFilter: true }))}
+            className="p-3 rounded-xl bg-[#121217] border border-white/5 flex items-center justify-between cursor-pointer hover:border-white/20 transition-colors shadow-sm"
+          >
+            <div className="flex items-center gap-2">
+              <Flame size={14} className="text-amber-500 opacity-70" />
+              <span className="text-[11px] font-black uppercase italic text-gray-400">
+                Filtro por Fase de Jogo (Seção Oculta)
+              </span>
+            </div>
+            <span className="text-[9px] font-black uppercase text-yellow-400 flex items-center gap-1">
+              <Eye size={11} /> Clique para Mostrar
+            </span>
+          </div>
+        )}
 
         {/* DESTAQUES DE AGRESSIVIDADE POR FASE */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Early Game Profile */}
-            <div className="bg-[#151515] p-4 rounded-xl border border-blue-500/30 space-y-3">
-                <div className="flex items-center justify-between border-b border-blue-500/20 pb-2">
-                    <span className="text-xs font-black text-blue-400 uppercase italic flex items-center gap-1.5">
-                        <Sparkles size={14} /> Early Game (Safes 1-2)
-                    </span>
-                    <span className="text-[10px] font-black text-white bg-blue-500/20 px-2 py-0.5 rounded border border-blue-500/30">
-                        {stats.phaseBreakdown.early.count} Abates ({stats.phaseBreakdown.early.pct}%)
-                    </span>
-                </div>
-                <div className="space-y-1.5">
-                    <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block">Top Equipes Letais</span>
-                    {stats.phaseBreakdown.early.topTeams.slice(0, 3).map((t, idx) => (
-                        <div key={t.name} className="flex justify-between items-center bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/5 text-xs">
-                            <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-black text-blue-400">#{idx + 1}</span>
-                                <span className="font-bold text-white uppercase italic">{t.name}</span>
-                            </div>
-                            <span className="font-black text-blue-400">{t.count} K</span>
-                        </div>
-                    ))}
-                    {stats.phaseBreakdown.early.topTeams.length === 0 && (
-                        <span className="text-[10px] text-gray-500 italic">Sem abates registrados nesta fase.</span>
-                    )}
-                </div>
+        {sectionVisibility.phaseHighlights ? (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-[11px] font-black uppercase italic text-gray-400 flex items-center gap-1.5">
+                <Zap size={13} className="text-yellow-400" /> Destaques de Agressividade por Momento de Partida
+              </span>
+              <button
+                onClick={() => setSectionVisibility(prev => ({ ...prev, phaseHighlights: false }))}
+                className="text-[10px] text-gray-500 hover:text-white flex items-center gap-1 transition-colors"
+                title="Ocultar destaques de ritmo"
+              >
+                <ChevronUp size={12} /> Ocultar
+              </button>
             </div>
 
-            {/* Mid Game Profile */}
-            <div className="bg-[#151515] p-4 rounded-xl border border-orange-500/30 space-y-3">
-                <div className="flex items-center justify-between border-b border-orange-500/20 pb-2">
-                    <span className="text-xs font-black text-orange-400 uppercase italic flex items-center gap-1.5">
-                        <Zap size={14} /> Mid Game (Safes 3-4)
-                    </span>
-                    <span className="text-[10px] font-black text-white bg-orange-500/20 px-2 py-0.5 rounded border border-orange-500/30">
-                        {stats.phaseBreakdown.mid.count} Abates ({stats.phaseBreakdown.mid.pct}%)
-                    </span>
-                </div>
-                <div className="space-y-1.5">
-                    <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block">Top Equipes Letais</span>
-                    {stats.phaseBreakdown.mid.topTeams.slice(0, 3).map((t, idx) => (
-                        <div key={t.name} className="flex justify-between items-center bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/5 text-xs">
-                            <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-black text-orange-400">#{idx + 1}</span>
-                                <span className="font-bold text-white uppercase italic">{t.name}</span>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Early Game Profile */}
+                <div className="bg-[#151515] p-4 rounded-xl border border-blue-500/30 space-y-3">
+                    <div className="flex items-center justify-between border-b border-blue-500/20 pb-2">
+                        <span className="text-xs font-black text-blue-400 uppercase italic flex items-center gap-1.5">
+                            <Sparkles size={14} /> Early Game (Safes 1-2)
+                        </span>
+                        <span className="text-[10px] font-black text-white bg-blue-500/20 px-2 py-0.5 rounded border border-blue-500/30">
+                            {stats.phaseBreakdown.early.count} Abates ({stats.phaseBreakdown.early.pct}%)
+                        </span>
+                    </div>
+                    <div className="space-y-1.5">
+                        <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block">Top Equipes Letais</span>
+                        {stats.phaseBreakdown.early.topTeams.slice(0, 3).map((t, idx) => (
+                            <div key={t.name} className="flex justify-between items-center bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/5 text-xs">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-black text-blue-400">#{idx + 1}</span>
+                                    <span className="font-bold text-white uppercase italic">{t.name}</span>
+                                </div>
+                                <span className="font-black text-blue-400">{t.count} K</span>
                             </div>
-                            <span className="font-black text-orange-400">{t.count} K</span>
-                        </div>
-                    ))}
-                    {stats.phaseBreakdown.mid.topTeams.length === 0 && (
-                        <span className="text-[10px] text-gray-500 italic">Sem abates registrados nesta fase.</span>
-                    )}
+                        ))}
+                        {stats.phaseBreakdown.early.topTeams.length === 0 && (
+                            <span className="text-[10px] text-gray-500 italic">Sem abates registrados nesta fase.</span>
+                        )}
+                    </div>
                 </div>
-            </div>
 
-            {/* Late Game Profile */}
-            <div className="bg-[#151515] p-4 rounded-xl border border-rose-500/30 space-y-3">
-                <div className="flex items-center justify-between border-b border-rose-500/20 pb-2">
-                    <span className="text-xs font-black text-rose-400 uppercase italic flex items-center gap-1.5">
-                        <Flame size={14} /> Late Game / End (Safes 5+)
-                    </span>
-                    <span className="text-[10px] font-black text-white bg-rose-500/20 px-2 py-0.5 rounded border border-rose-500/30">
-                        {stats.phaseBreakdown.late.count} Abates ({stats.phaseBreakdown.late.pct}%)
-                    </span>
-                </div>
-                <div className="space-y-1.5">
-                    <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block">Top Equipes Letais</span>
-                    {stats.phaseBreakdown.late.topTeams.slice(0, 3).map((t, idx) => (
-                        <div key={t.name} className="flex justify-between items-center bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/5 text-xs">
-                            <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-black text-rose-400">#{idx + 1}</span>
-                                <span className="font-bold text-white uppercase italic">{t.name}</span>
+                {/* Mid Game Profile */}
+                <div className="bg-[#151515] p-4 rounded-xl border border-orange-500/30 space-y-3">
+                    <div className="flex items-center justify-between border-b border-orange-500/20 pb-2">
+                        <span className="text-xs font-black text-orange-400 uppercase italic flex items-center gap-1.5">
+                            <Zap size={14} /> Mid Game (Safes 3-4)
+                        </span>
+                        <span className="text-[10px] font-black text-white bg-orange-500/20 px-2 py-0.5 rounded border border-orange-500/30">
+                            {stats.phaseBreakdown.mid.count} Abates ({stats.phaseBreakdown.mid.pct}%)
+                        </span>
+                    </div>
+                    <div className="space-y-1.5">
+                        <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block">Top Equipes Letais</span>
+                        {stats.phaseBreakdown.mid.topTeams.slice(0, 3).map((t, idx) => (
+                            <div key={t.name} className="flex justify-between items-center bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/5 text-xs">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-black text-orange-400">#{idx + 1}</span>
+                                    <span className="font-bold text-white uppercase italic">{t.name}</span>
+                                </div>
+                                <span className="font-black text-orange-400">{t.count} K</span>
                             </div>
-                            <span className="font-black text-rose-400">{t.count} K</span>
-                        </div>
-                    ))}
-                    {stats.phaseBreakdown.late.topTeams.length === 0 && (
-                        <span className="text-[10px] text-gray-500 italic">Sem abates registrados nesta fase.</span>
-                    )}
+                        ))}
+                        {stats.phaseBreakdown.mid.topTeams.length === 0 && (
+                            <span className="text-[10px] text-gray-500 italic">Sem abates registrados nesta fase.</span>
+                        )}
+                    </div>
+                </div>
+
+                {/* Late Game Profile */}
+                <div className="bg-[#151515] p-4 rounded-xl border border-rose-500/30 space-y-3">
+                    <div className="flex items-center justify-between border-b border-rose-500/20 pb-2">
+                        <span className="text-xs font-black text-rose-400 uppercase italic flex items-center gap-1.5">
+                            <Flame size={14} /> Late Game / End (Safes 5+)
+                        </span>
+                        <span className="text-[10px] font-black text-white bg-rose-500/20 px-2 py-0.5 rounded border border-rose-500/30">
+                            {stats.phaseBreakdown.late.count} Abates ({stats.phaseBreakdown.late.pct}%)
+                        </span>
+                    </div>
+                    <div className="space-y-1.5">
+                        <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block">Top Equipes Letais</span>
+                        {stats.phaseBreakdown.late.topTeams.slice(0, 3).map((t, idx) => (
+                            <div key={t.name} className="flex justify-between items-center bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/5 text-xs">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-black text-rose-400">#{idx + 1}</span>
+                                    <span className="font-bold text-white uppercase italic">{t.name}</span>
+                                </div>
+                                <span className="font-black text-rose-400">{t.count} K</span>
+                            </div>
+                        ))}
+                        {stats.phaseBreakdown.late.topTeams.length === 0 && (
+                            <span className="text-[10px] text-gray-500 italic">Sem abates registrados nesta fase.</span>
+                        )}
+                    </div>
                 </div>
             </div>
-        </div>
+          </div>
+        ) : (
+          <div 
+            onClick={() => setSectionVisibility(prev => ({ ...prev, phaseHighlights: true }))}
+            className="p-3 rounded-xl bg-[#121217] border border-white/5 flex items-center justify-between cursor-pointer hover:border-white/20 transition-colors shadow-sm"
+          >
+            <div className="flex items-center gap-2">
+              <Zap size={14} className="text-yellow-400 opacity-70" />
+              <span className="text-[11px] font-black uppercase italic text-gray-400">
+                Destaques de Agressividade por Momento (Seção Oculta)
+              </span>
+            </div>
+            <span className="text-[9px] font-black uppercase text-yellow-400 flex items-center gap-1">
+              <Eye size={11} /> Clique para Mostrar
+            </span>
+          </div>
+        )}
 
         {tab === 'fases' ? (
             <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
@@ -1135,6 +1330,12 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
                             icon={<Disc size={16} className="text-blue-500"/>} 
                             totalCount={totalEvents} 
                             getImage={getSafeImg}
+                            forceExpanded={expandAllLists}
+                            onOpenModal={() => openFullListModal(
+                                "Abates por Safe Zone • Lista Comparativa",
+                                comparativeData?.safeChart || [],
+                                'safe'
+                            )}
                         />
 
                         <RenderList 
@@ -1142,6 +1343,12 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
                             items={comparativeData?.mapChart || []} 
                             icon={<MapPin size={16} className="text-green-500"/>} 
                             totalCount={totalEvents} 
+                            forceExpanded={expandAllLists}
+                            onOpenModal={() => openFullListModal(
+                                "Abates por Mapa • Lista Comparativa",
+                                comparativeData?.mapChart || [],
+                                'safe'
+                            )}
                         />
 
                         <RenderList 
@@ -1151,6 +1358,13 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
                             totalCount={totalEvents} 
                             getImage={getTeamImg}
                             isTeam
+                            forceExpanded={expandAllLists}
+                            onOpenModal={() => openFullListModal(
+                                "Times com Mais Abates • Comparativo",
+                                comparativeData?.teamKillsChart || [],
+                                'team',
+                                false
+                            )}
                         />
 
                         <RenderList 
@@ -1161,87 +1375,221 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
                             getImage={getTeamImg}
                             isTeam
                             isVictimList
+                            forceExpanded={expandAllLists}
+                            onOpenModal={() => openFullListModal(
+                                "Times que Mais Morrem • Comparativo",
+                                comparativeData?.teamDeathsChart || [],
+                                'team',
+                                true
+                            )}
                         />
                     </div>
                 )}
             </div>
         ) : (
             <>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <StatGrid 
-                title={tab === 'kills' ? "Arsenal Fatal" : "Armas Eliminadoras"} 
-                items={weaponList} 
-                getImage={getWeaponImg} 
-                icon={<Swords size={16}/>} 
-                color="text-orange-500" 
-                onSelect={(val) => handleToggleFilter('weapon', val)} 
-                activeValues={filters.weapon} 
-            />
-            
-            <StatGrid 
-                title="Confrontos por Safe" 
-                items={safeList} 
-                getImage={getSafeImg} 
-                icon={<Disc size={16}/>} 
-                color="text-blue-500" 
-                onSelect={(val) => handleToggleFilter('safe', val)} 
-                activeValues={filters.safe} 
-            />
+              {sectionVisibility.rankingsGrid ? (
+                <div className="space-y-4">
+                  <div className="bg-[#121217] px-4 py-3 rounded-2xl border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+                    <div className="flex items-center gap-2.5">
+                      <Swords size={18} className={tab === 'kills' ? "text-yellow-400" : "text-red-400"} />
+                      <div>
+                        <h3 className="text-xs sm:text-sm font-black italic uppercase text-white tracking-wider">
+                          {tab === 'kills' ? "Arsenal Fatal & Rankings de Combate" : "Armas Eliminadoras & Vulnerabilidades"}
+                        </h3>
+                        <p className="text-[10px] text-gray-400">
+                          {tab === 'kills' 
+                            ? "Armas mais letais, zonas de confronto, times dominantes e top atiradores" 
+                            : "Armas que causaram eliminações, safes de risco, times mais eliminados e baixas"}
+                        </p>
+                      </div>
+                    </div>
 
-            {/* LISTA 3: Clicável para filtrar a lateral */}
-            <RenderList 
-                title={tab === 'kills' ? "Mais Letais (Abates)" : "Mais Vulneráveis (Mortes)"} 
-                items={tab === 'kills' ? killerTeamList : victimTeamList} 
-                icon={<Shield size={16} className="text-yellow-500"/>} 
-                totalCount={totalEvents} 
-                getImage={getTeamImg}
-                isTeam
-                onSelect={(name) => handleToggleFilter('team', name)}
-                activeValues={filters.team}
-            />
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setExpandAllLists(prev => !prev)}
+                        className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-1.5 border ${
+                          expandAllLists
+                            ? 'bg-yellow-500 text-black border-yellow-400 shadow-[0_0_15px_rgba(234,179,8,0.25)]'
+                            : 'bg-black/50 text-gray-300 hover:text-white border-white/10 hover:border-yellow-500/40'
+                        }`}
+                        title="Alternar entre visualização completa (todas as linhas) ou compacta"
+                      >
+                        <ChevronsUpDown size={12} />
+                        {expandAllLists ? 'Modo Compacto' : 'Ver Listas Inteiras'}
+                      </button>
 
-            {/* LISTA 4 (RESULTADO): Não clicável, reflete o filtro da Lista 3 */}
-            <RenderList 
-                title={tab === 'kills' ? "Equipes que mais Morrem" : "Equipes que mais Abatem"} 
-                items={tab === 'kills' ? victimTeamList : killerTeamList} 
-                icon={<Skull size={16} className={tab === 'kills' ? "text-red-500" : "text-green-500"}/>} 
-                totalCount={totalEvents} 
-                getImage={getTeamImg}
-                isTeam
-                isVictimList
-                /* onSelect omitido para manter não clicável */
-            />
+                      <button
+                        onClick={() => setSectionVisibility(prev => ({ ...prev, rankingsGrid: false }))}
+                        className="p-1.5 rounded-xl bg-black/50 hover:bg-white/10 text-gray-400 hover:text-white border border-white/10 transition-colors"
+                        title="Ocultar esta seção de rankings"
+                      >
+                        <ChevronUp size={15} />
+                      </button>
+                    </div>
+                  </div>
 
-            {/* LISTA 5: Clicável para filtrar a lateral */}
-            <RenderList 
-                title={tab === 'kills' ? "Top Atiradores" : "Perfil de Baixas"} 
-                items={tab === 'kills' ? killerPlayerList : victimPlayerList} 
-                icon={<User size={16} className="text-yellow-500"/>} 
-                totalCount={totalEvents} 
-                getImage={(name: string) => getPlayerImg(name, tab === 'deaths')}
-                getRole={getPlayerRole}
-                isPlayer
-                onSelect={(name: string) => handleToggleFilter('players', name)}
-                activeValues={filters.players}
-            />
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {/* LISTA 1: ARSENAL FATAL */}
+                    <StatGrid 
+                      title={tab === 'kills' ? "Arsenal Fatal" : "Armas Eliminadoras"} 
+                      items={weaponList} 
+                      getImage={getWeaponImg} 
+                      icon={<Swords size={16}/>} 
+                      color="text-orange-500" 
+                      onSelect={(val: string) => handleToggleFilter('weapon', val)} 
+                      activeValues={filters.weapon} 
+                      totalCount={totalEvents}
+                      type="weapon"
+                      forceExpanded={expandAllLists}
+                      onOpenModal={() => openFullListModal(
+                        tab === 'kills' ? "Arsenal Fatal • Todas as Armas Utilizadas" : "Armas Eliminadoras • Todas as Armas",
+                        weaponList,
+                        'weapon',
+                        tab === 'deaths',
+                        (val) => handleToggleFilter('weapon', val),
+                        filters.weapon
+                      )}
+                    />
+                    
+                    {/* LISTA 2: CONFRONTOS POR SAFE */}
+                    <StatGrid 
+                      title="Confrontos por Safe" 
+                      items={safeList} 
+                      getImage={getSafeImg} 
+                      icon={<Disc size={16}/>} 
+                      color="text-blue-500" 
+                      onSelect={(val: string) => handleToggleFilter('safe', val)} 
+                      activeValues={filters.safe} 
+                      totalCount={totalEvents}
+                      type="safe"
+                      forceExpanded={expandAllLists}
+                      onOpenModal={() => openFullListModal(
+                        "Confrontos por Safe Zone • Todas as Fases",
+                        safeList,
+                        'safe',
+                        false,
+                        (val) => handleToggleFilter('safe', val),
+                        filters.safe
+                      )}
+                    />
 
-            {/* LISTA 6 (NOVA): Jogadores que mais morrem (na aba letais) ou que mais matam (na aba vítimas) */}
-            <RenderList 
-                title={tab === 'kills' ? "Jogadores que mais Morrem" : "Jogadores que mais Matam"} 
-                items={tab === 'kills' ? victimPlayerList : killerPlayerList} 
-                icon={<Skull size={16} className={tab === 'kills' ? "text-red-500" : "text-green-500"}/>} 
-                totalCount={totalEvents} 
-                getImage={(name: string) => getPlayerImg(name, tab === 'kills')}
-                getRole={getPlayerRole}
-                isPlayer
-                isVictimList={tab === 'kills'}
-                /* onSelect omitido para manter não clicável ou opcional */
-            />
-        </div>
-        </>
+                    {/* LISTA 3: MAIS LETAIS / MAIS VULNERÁVEIS */}
+                    <RenderList 
+                      title={tab === 'kills' ? "Mais Letais (Abates)" : "Mais Vulneráveis (Mortes)"} 
+                      items={tab === 'kills' ? killerTeamList : victimTeamList} 
+                      icon={<Shield size={16} className="text-yellow-500"/>} 
+                      totalCount={totalEvents} 
+                      getImage={getTeamImg}
+                      isTeam
+                      onSelect={(name: string) => handleToggleFilter('team', name)}
+                      activeValues={filters.team}
+                      forceExpanded={expandAllLists}
+                      tab={tab}
+                      onOpenModal={() => openFullListModal(
+                        tab === 'kills' ? "Mais Letais (Abates) • Lista Completa de Equipes" : "Mais Vulneráveis (Mortes) • Lista Completa de Equipes",
+                        tab === 'kills' ? killerTeamList : victimTeamList,
+                        'team',
+                        tab === 'deaths',
+                        (name) => handleToggleFilter('team', name),
+                        filters.team
+                      )}
+                    />
+
+                    {/* LISTA 4: EQUIPES QUE MAIS MORREM / MAIS ABATEM */}
+                    <RenderList 
+                      title={tab === 'kills' ? "Equipes que mais Morrem" : "Equipes que mais Abatem"} 
+                      items={tab === 'kills' ? victimTeamList : killerTeamList} 
+                      icon={<Skull size={16} className={tab === 'kills' ? "text-red-500" : "text-green-500"}/>} 
+                      totalCount={totalEvents} 
+                      getImage={getTeamImg}
+                      isTeam
+                      isVictimList={tab === 'kills'}
+                      forceExpanded={expandAllLists}
+                      tab={tab}
+                      onOpenModal={() => openFullListModal(
+                        tab === 'kills' ? "Equipes que mais Morrem • Lista Completa" : "Equipes que mais Abatem • Lista Completa",
+                        tab === 'kills' ? victimTeamList : killerTeamList,
+                        'team',
+                        tab === 'kills'
+                      )}
+                    />
+
+                    {/* LISTA 5: TOP ATIRADORES / PERFIL DE BAIXAS */}
+                    <RenderList 
+                      title={tab === 'kills' ? "Top Atiradores" : "Perfil de Baixas"} 
+                      items={tab === 'kills' ? killerPlayerList : victimPlayerList} 
+                      icon={<User size={16} className="text-yellow-500"/>} 
+                      totalCount={totalEvents} 
+                      getImage={(name: string) => getPlayerImg(name, tab === 'deaths')}
+                      getRole={getPlayerRole}
+                      getPlayerTeam={(pName: string) => playerToTeamMap.get(normalize(pName))}
+                      getTeamLogo={getTeamImg}
+                      isPlayer
+                      onSelect={(name: string) => handleToggleFilter('players', name)}
+                      activeValues={filters.players}
+                      forceExpanded={expandAllLists}
+                      tab={tab}
+                      onOpenModal={() => openFullListModal(
+                        tab === 'kills' ? "Top Atiradores • Lista Completa de Jogadores" : "Perfil de Baixas • Lista Completa de Jogadores",
+                        tab === 'kills' ? killerPlayerList : victimPlayerList,
+                        'player',
+                        tab === 'deaths',
+                        (name) => handleToggleFilter('players', name),
+                        filters.players
+                      )}
+                    />
+
+                    {/* LISTA 6: JOGADORES QUE MAIS MORREM / JOGADORES QUE MAIS MATAM */}
+                    <RenderList 
+                      title={tab === 'kills' ? "Jogadores que mais Morrem" : "Jogadores que mais Matam"} 
+                      items={tab === 'kills' ? victimPlayerList : killerPlayerList} 
+                      icon={<Skull size={16} className={tab === 'kills' ? "text-red-500" : "text-green-500"}/>} 
+                      totalCount={totalEvents} 
+                      getImage={(name: string) => getPlayerImg(name, tab === 'kills')}
+                      getRole={getPlayerRole}
+                      getPlayerTeam={(pName: string) => playerToTeamMap.get(normalize(pName))}
+                      getTeamLogo={getTeamImg}
+                      isPlayer
+                      isVictimList={tab === 'kills'}
+                      forceExpanded={expandAllLists}
+                      tab={tab}
+                      onOpenModal={() => openFullListModal(
+                        tab === 'kills' ? "Jogadores que mais Morrem • Lista Completa de Atletas" : "Jogadores que mais Matam • Lista Completa de Atletas",
+                        tab === 'kills' ? victimPlayerList : killerPlayerList,
+                        'player',
+                        tab === 'kills'
+                      )}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div 
+                  onClick={() => setSectionVisibility(prev => ({ ...prev, rankingsGrid: true }))}
+                  className="p-4 rounded-2xl bg-[#121217] border border-white/10 flex items-center justify-between cursor-pointer hover:border-yellow-500/40 transition-colors shadow-lg"
+                >
+                  <div className="flex items-center gap-3">
+                    <Swords size={18} className="text-yellow-400 opacity-60" />
+                    <div>
+                      <span className="text-xs font-black uppercase italic text-gray-200 block">
+                        Arsenal & Rankings de Combate (Seção Oculta)
+                      </span>
+                      <span className="text-[10px] text-gray-500">
+                        {weaponList.length} Armas • {safeList.length} Safes • {killerTeamList.length} Times • {killerPlayerList.length} Atletas
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-black uppercase px-3 py-1.5 rounded-xl bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 flex items-center gap-1.5">
+                    <Eye size={12} /> Clique para Mostrar Seção
+                  </span>
+                </div>
+              )}
+            </>
         )}
 
-        <div className="bg-[#1a1a1a] rounded-2xl border border-gray-800 shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-700">
+        {/* LIVE KILL LOG */}
+        {sectionVisibility.killLog ? (
+          <div className="bg-[#1a1a1a] rounded-2xl border border-gray-800 shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-700">
             <div className="bg-black/60 p-6 border-b border-gray-800 flex items-center justify-between">
                 <h3 className="text-lg font-black italic text-white flex items-center gap-3 uppercase tracking-tighter">
                     <History className="text-yellow-500" size={20} />
@@ -1250,6 +1598,13 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
                 <div className="flex items-center gap-4">
                     <div className="h-2 w-2 rounded-full bg-red-600 animate-pulse"></div>
                     <span className="text-[10px] font-mono text-gray-500 uppercase tracking-widest">{totalEvents} Eventos Filtrados</span>
+                    <button
+                        onClick={() => setSectionVisibility(prev => ({ ...prev, killLog: false }))}
+                        className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white border border-white/10 transition-colors"
+                        title="Ocultar tabela Live Kill Log"
+                    >
+                        <ChevronUp size={16} />
+                    </button>
                 </div>
             </div>
             <div className="overflow-x-auto custom-scrollbar">
@@ -1372,93 +1727,455 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
                     </tbody>
                 </table>
             </div>
-        </div>
+          </div>
+        ) : (
+          <div 
+            onClick={() => setSectionVisibility(prev => ({ ...prev, killLog: true }))}
+            className="p-4 rounded-2xl bg-[#1a1a1a] border border-gray-800 flex items-center justify-between cursor-pointer hover:border-gray-700 transition-colors shadow-lg"
+          >
+            <div className="flex items-center gap-3">
+              <History size={18} className="text-yellow-500 opacity-60" />
+              <div>
+                <span className="text-xs font-black uppercase italic text-gray-200 block">
+                  Live Kill Log ({tab === 'kills' ? 'ABATES' : 'MORTES'}) - Seção Oculta
+                </span>
+                <span className="text-[10px] font-mono text-gray-500">{totalEvents} Eventos Filtrados</span>
+              </div>
+            </div>
+            <span className="text-[10px] font-black uppercase px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-yellow-400 flex items-center gap-1.5">
+              <Eye size={12} /> Clique para Mostrar Log
+            </span>
+          </div>
+        )}
+
+      {/* MODAL DE LISTA COMPLETA EM TELA CHEIA */}
+      {modalConfig && (
+        <FullListModal
+          isOpen={modalConfig.isOpen}
+          onClose={() => setModalConfig(null)}
+          title={modalConfig.title}
+          items={modalConfig.items}
+          totalCount={modalConfig.totalCount}
+          type={modalConfig.type}
+          getImage={(name) => {
+            if (modalConfig.type === 'weapon') return getWeaponImg(name);
+            if (modalConfig.type === 'team') return getTeamImg(name);
+            if (modalConfig.type === 'safe') return getSafeImg(name);
+            return getPlayerImg(name, modalConfig.isVictimList);
+          }}
+          getRole={getPlayerRole}
+          getPlayerTeam={(pName) => playerToTeamMap.get(normalize(pName))}
+          getTeamLogo={getTeamImg}
+          isVictimList={modalConfig.isVictimList}
+          activeValues={modalConfig.activeValues}
+          onSelect={modalConfig.onSelect}
+          tab={tab === 'deaths' ? 'deaths' : 'kills'}
+        />
+      )}
     </div>
   );
 };
 
-const RenderList = ({ title, items, icon, totalCount, getImage, getRole, isTeam, isPlayer, onSelect, activeValues = [], isVictimList }: any) => (
-    <div className={`bg-[#1a1a1a] rounded-xl border ${isVictimList ? 'border-red-500/20' : 'border-gray-800'} overflow-hidden flex flex-col h-full shadow-lg transition-all ${onSelect ? 'hover:border-yellow-600/30' : ''}`}>
-        <div className="p-4 border-b border-gray-800 bg-black/80">
-            <h3 className={`font-black uppercase text-[11px] tracking-widest flex items-center gap-2 ${isVictimList ? 'text-red-500' : 'text-white'}`}>
-                {icon}{title}
-            </h3>
-        </div>
-        <div className="overflow-y-auto max-h-[400px] p-2 space-y-1 custom-scrollbar bg-black/20">
-            {items.sort((a:any,b:any) => b.count - a.count).map((item:any, i:number) => {
-                const percent = totalCount ? ((item.count / totalCount) * 100).toFixed(1) : "0.0";
-                const img = getImage && getImage(item.name);
-                const role = getRole && getRole(item.name);
-                const isActive = activeValues.includes(item.name);
-                
-                return (
-                <div 
-                    key={i} 
-                    onClick={() => onSelect && onSelect(item.name)}
-                    className={`flex items-center justify-between p-3 rounded-lg transition-all border ${onSelect ? 'cursor-pointer hover:bg-white/5 hover:border-gray-800' : 'cursor-default border-transparent'} group ${isActive ? 'bg-yellow-500/10 border-yellow-500/50 shadow-[0_0_15px_rgba(234,179,8,0.15)] scale-[1.02]' : ''}`}
-                >
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <span className={`text-[10px] font-mono font-bold w-4 ${isActive ? 'text-yellow-500' : 'text-gray-600'}`}>#{i+1}</span>
-                        {(isTeam || isPlayer) && (
-                            <div className={`w-8 h-8 rounded border p-1 flex items-center justify-center shrink-0 transition-colors bg-black ${isActive ? 'border-yellow-500' : 'border-gray-800'}`}>
-                                {img ? <img src={img} className={`w-full h-full ${isPlayer ? 'object-cover rounded-full' : 'object-contain'}`} alt={item.name}/> : isTeam ? <Shield size={12} className="opacity-20" /> : <User size={12} className="opacity-20" />}
-                            </div>
-                        )}
-                        <div className="flex-1 min-w-0 pr-2">
-                            <div className="flex items-center gap-2">
-                                <span className={`text-[11px] font-black truncate block group-hover:text-white uppercase italic leading-none ${isActive ? 'text-yellow-400' : isVictimList ? 'text-red-400' : 'text-gray-300'}`}>
-                                    {item.name}
-                                </span>
-                                {role && (
-                                    <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-gray-400 shrink-0">
-                                        {role}
-                                    </span>
-                                )}
-                            </div>
-                            <div className="w-full bg-gray-950 h-1 mt-2 rounded-full overflow-hidden border border-white/5">
-                                <div className={`h-full rounded-full transition-all duration-700 ${isVictimList ? 'bg-red-600/40' : isActive ? 'bg-yellow-400' : 'bg-yellow-600/40'}`} style={{ width: `${percent}%` }}></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="text-right flex flex-col items-end pl-2">
-                        <span className={`text-[11px] font-black px-2 py-0.5 rounded shadow-sm transition-all ${isVictimList ? 'bg-red-900/40 text-red-500 border border-red-500/30' : isActive ? 'bg-yellow-500 text-black' : 'bg-gray-800 text-gray-400 group-hover:bg-yellow-500 group-hover:text-black'}`}>
-                            {item.count}
-                        </span>
-                    </div>
-                </div>
-            )})}
-            {items.length === 0 && <div className="p-8 text-center text-gray-800 font-black italic uppercase text-[9px]">Sem dados</div>}
-        </div>
-    </div>
-);
+const RenderList = ({ 
+  title, 
+  items, 
+  icon, 
+  totalCount, 
+  getImage, 
+  getRole, 
+  getPlayerTeam,
+  getTeamLogo,
+  isTeam, 
+  isPlayer, 
+  onSelect, 
+  activeValues = [], 
+  isVictimList,
+  forceExpanded = false,
+  onOpenModal,
+  tab = 'kills'
+}: any) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
+  const effectiveExpanded = forceExpanded || isExpanded;
 
-const StatGrid = ({ title, items, getImage, icon, color, onSelect, activeValues }: any) => (
-    <div className={`bg-[#1a1a1a] rounded-xl border ${activeValues.length > 0 ? 'border-yellow-500 shadow-[0_0_20px_rgba(234,179,8,0.2)]' : 'border-gray-800'} flex flex-col h-full shadow-lg overflow-hidden transition-all duration-300`}>
-       <div className="p-4 border-b border-gray-800 bg-black/80 flex justify-between items-center">
-            <h3 className={`font-black uppercase text-[11px] tracking-widest flex items-center gap-2 ${color}`}>{icon} {title}</h3>
-       </div>
-       <div className="p-4 overflow-y-auto max-h-[400px] custom-scrollbar bg-black/10">
-            <div className="grid grid-cols-2 gap-3">
-                {items.sort((a:any,b:any) => b.count - a.count).map((item:any, i:number) => (
-                    <div key={i} onClick={() => onSelect && onSelect(item.name)} className={`rounded-xl border p-3 flex flex-col items-center relative group cursor-pointer transition-all shadow-md ${activeValues.includes(item.name) ? 'bg-yellow-900/20 border-yellow-500 scale-[1.05] z-10' : 'bg-[#0f0f0f] border-gray-800 hover:border-yellow-500/50 hover:bg-[#252525]'}`}>
-                        <div className="absolute top-2 left-2 text-[9px] font-mono text-gray-600 font-bold">#{i+1}</div>
-                        <div className="absolute top-2 right-2 font-bold text-white text-[9px] bg-gray-900 px-1.5 py-0.5 rounded border border-gray-800 shadow-inner">{item.count}</div>
-                        <div className="h-10 w-full flex items-center justify-center my-2 mt-4">
-                            {getImage && getImage(item.name) ? (
-                                <img src={getImage(item.name)} className="h-full w-full object-contain group-hover:scale-110 transition-transform duration-500" alt={item.name}/>
-                            ) : (
-                                <Swords size={18} className="text-gray-800 opacity-20" />
-                            )}
+  const sortedItems = useMemo(() => {
+    return [...items].sort((a: any, b: any) => b.count - a.count);
+  }, [items]);
+
+  const displayItems = effectiveExpanded ? sortedItems : sortedItems.slice(0, 8);
+
+  const getRankBadgeClass = (idx: number) => {
+    if (idx === 0) return 'text-yellow-400 font-bold bg-yellow-500/10 border-yellow-500/30';
+    if (idx === 1) return 'text-slate-300 font-bold bg-slate-400/10 border-slate-400/30';
+    if (idx === 2) return 'text-amber-500 font-bold bg-amber-600/10 border-amber-600/30';
+    return 'text-gray-500 bg-white/5 border-white/5';
+  };
+
+  return (
+    <div className={`bg-[#16161b] rounded-2xl border ${isVictimList ? 'border-red-500/20' : 'border-white/10'} overflow-hidden flex flex-col h-full shadow-xl transition-all`}>
+      {/* HEADER DO CARD */}
+      <div className="p-3.5 sm:p-4 border-b border-white/10 bg-black/60 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="shrink-0">{icon}</span>
+          <h3 className={`font-black uppercase text-[11px] sm:text-xs tracking-wider truncate ${isVictimList ? 'text-red-400' : 'text-white'}`}>
+            {title}
+          </h3>
+          <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-gray-400 shrink-0">
+            {items.length} {isTeam ? 'Times' : isPlayer ? 'Atletas' : 'Itens'}
+          </span>
+        </div>
+
+        {/* AÇÕES NO TOPO DO CARD */}
+        <div className="flex items-center gap-1 shrink-0">
+          {onOpenModal && (
+            <button
+              onClick={onOpenModal}
+              className="p-1.5 rounded-lg bg-white/5 hover:bg-yellow-500/20 text-gray-400 hover:text-yellow-400 border border-white/5 transition-colors"
+              title="Abrir lista completa em tela cheia"
+            >
+              <Maximize2 size={13} />
+            </button>
+          )}
+
+          <button
+            onClick={() => setIsExpanded(prev => !prev)}
+            className={`p-1.5 rounded-lg border transition-colors ${
+              effectiveExpanded 
+                ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/40' 
+                : 'bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white border-white/5'
+            }`}
+            title={effectiveExpanded ? 'Recolher para modo compacto' : 'Expandir lista inteira no card'}
+          >
+            <ChevronsUpDown size={13} />
+          </button>
+
+          <button
+            onClick={() => setIsMinimized(prev => !prev)}
+            className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white border border-white/5 transition-colors"
+            title={isMinimized ? 'Expandir conteúdo do card' : 'Minimizar card'}
+          >
+            {isMinimized ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
+          </button>
+        </div>
+      </div>
+
+      {/* CORPO DO CARD */}
+      {!isMinimized && (
+        <>
+          <div className={`p-2 space-y-1.5 custom-scrollbar bg-black/20 ${
+            effectiveExpanded ? 'max-h-none overflow-visible' : 'overflow-y-auto max-h-[380px]'
+          }`}>
+            {displayItems.map((item: any, i: number) => {
+              const percent = totalCount ? ((item.count / totalCount) * 100).toFixed(1) : "0.0";
+              const img = getImage && getImage(item.name);
+              const role = getRole && getRole(item.name);
+              const playerTeam = getPlayerTeam && getPlayerTeam(item.name);
+              const teamLogo = playerTeam && getTeamLogo && getTeamLogo(playerTeam);
+              const isActive = activeValues.includes(item.name);
+
+              return (
+                <div 
+                  key={item.name} 
+                  onClick={() => onSelect && onSelect(item.name)}
+                  className={`flex items-center justify-between p-2.5 rounded-xl transition-all border ${
+                    onSelect ? 'cursor-pointer hover:bg-white/5 hover:border-gray-700' : 'cursor-default border-transparent'
+                  } group ${
+                    isActive 
+                      ? 'bg-yellow-500/10 border-yellow-500/60 shadow-[0_0_15px_rgba(234,179,8,0.15)] scale-[1.01]' 
+                      : 'border-white/5 bg-[#121217]'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                    <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border text-center min-w-6 ${getRankBadgeClass(i)}`}>
+                      #{i + 1}
+                    </span>
+
+                    {(isTeam || isPlayer) && (
+                      <div className="relative shrink-0">
+                        <div className={`w-8 h-8 rounded-lg border p-1 flex items-center justify-center transition-colors bg-black ${
+                          isActive ? 'border-yellow-500' : 'border-white/10'
+                        }`}>
+                          {img ? (
+                            <img 
+                              src={img} 
+                              className={`w-full h-full ${isPlayer ? 'object-cover rounded-full' : 'object-contain'}`} 
+                              alt={item.name}
+                            />
+                          ) : isTeam ? (
+                            <Shield size={14} className="opacity-20 text-gray-400" />
+                          ) : (
+                            <User size={14} className="opacity-20 text-gray-400" />
+                          )}
                         </div>
-                        <div className={`text-[9px] font-black text-center truncate w-full mt-2 px-1 rounded py-1 border uppercase italic tracking-tighter transition-colors ${activeValues.includes(item.name) ? 'text-black bg-yellow-500 border-yellow-600' : 'text-gray-400 bg-[#151515] border-gray-800/50'}`}>
-                            {item.name || "N/A"}
-                        </div>
+                        {isPlayer && teamLogo && (
+                          <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-black border border-white/20 p-0.5 shadow">
+                            <img src={teamLogo} alt={playerTeam} className="w-full h-full object-contain" />
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex-1 min-w-0 pr-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={`text-xs font-black truncate block uppercase italic leading-tight ${
+                          isActive ? 'text-yellow-400' : isVictimList ? 'text-red-400' : 'text-gray-200 group-hover:text-white'
+                        }`}>
+                          {item.name}
+                        </span>
+                        {isPlayer && playerTeam && (
+                          <span className="text-[9px] font-bold text-gray-400 uppercase truncate">
+                            • {playerTeam}
+                          </span>
+                        )}
+                        {role && (
+                          <span className="text-[8px] font-black uppercase px-1.5 py-0.2 rounded bg-white/5 border border-white/10 text-gray-400 shrink-0">
+                            {role}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="w-full bg-black/60 h-1.5 mt-1.5 rounded-full overflow-hidden border border-white/5">
+                        <div 
+                          className={`h-full rounded-full transition-all duration-700 ${
+                            isVictimList ? 'bg-red-500' : isActive ? 'bg-yellow-400' : 'bg-yellow-500/50 group-hover:bg-yellow-400'
+                          }`} 
+                          style={{ width: `${Math.min(100, Math.max(3, parseFloat(percent)))}%` }}
+                        />
+                      </div>
                     </div>
-                ))}
-                {items.length === 0 && <div className="col-span-2 py-10 text-center text-gray-800 font-black italic uppercase text-[9px]">Sem registros</div>}
-            </div>
-       </div>
+                  </div>
+
+                  <div className="text-right flex flex-col items-end pl-2 shrink-0">
+                    <span className={`text-xs font-black px-2 py-0.5 rounded-md shadow-sm transition-all ${
+                      isVictimList 
+                        ? 'bg-red-950/60 text-red-400 border border-red-500/30' 
+                        : isActive 
+                        ? 'bg-yellow-500 text-black' 
+                        : 'bg-white/5 text-gray-300 border border-white/5 group-hover:bg-yellow-500 group-hover:text-black'
+                    }`}>
+                      {item.count}
+                    </span>
+                    <span className="text-[8px] font-mono text-gray-500 mt-0.5">
+                      {percent}%
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+
+            {items.length === 0 && (
+              <div className="p-8 text-center text-gray-600 font-black italic uppercase text-[10px]">
+                Nenhum registro encontrado
+              </div>
+            )}
+          </div>
+
+          {/* RODAPÉ DO CARD COM BOTÕES DE EXPANSÃO */}
+          <div className="p-2.5 bg-black/50 border-t border-white/5 flex items-center justify-between text-xs gap-2">
+            <button
+              onClick={() => setIsExpanded(prev => !prev)}
+              className="text-[10px] font-bold text-gray-400 hover:text-white uppercase tracking-wider flex items-center gap-1 transition-colors"
+            >
+              {effectiveExpanded ? (
+                <>
+                  <ChevronUp size={12} /> Recolher ({items.length} itens)
+                </>
+              ) : (
+                <>
+                  <ChevronDown size={12} /> Ver Lista Inteira ({items.length} itens)
+                </>
+              )}
+            </button>
+
+            {onOpenModal && (
+              <button
+                onClick={onOpenModal}
+                className="text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-lg bg-white/5 hover:bg-yellow-500/20 text-yellow-400 border border-white/10 hover:border-yellow-500/40 flex items-center gap-1 transition-all"
+              >
+                <Maximize2 size={11} /> Tela Cheia
+              </button>
+            )}
+          </div>
+        </>
+      )}
     </div>
-);
+  );
+};
+
+const StatGrid = ({ 
+  title, 
+  items, 
+  getImage, 
+  icon, 
+  color, 
+  onSelect, 
+  activeValues = [],
+  totalCount,
+  forceExpanded = false,
+  onOpenModal,
+  type = 'weapon'
+}: any) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
+  const effectiveExpanded = forceExpanded || isExpanded;
+
+  const sortedItems = useMemo(() => {
+    return [...items].sort((a: any, b: any) => b.count - a.count);
+  }, [items]);
+
+  const displayItems = effectiveExpanded ? sortedItems : sortedItems.slice(0, 8);
+
+  return (
+    <div className={`bg-[#16161b] rounded-2xl border ${
+      activeValues.length > 0 ? 'border-yellow-500 shadow-[0_0_20px_rgba(234,179,8,0.2)]' : 'border-white/10'
+    } flex flex-col h-full shadow-xl overflow-hidden transition-all duration-300`}>
+      {/* HEADER DO CARD */}
+      <div className="p-3.5 sm:p-4 border-b border-white/10 bg-black/60 flex justify-between items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="shrink-0">{icon}</span>
+          <h3 className={`font-black uppercase text-[11px] sm:text-xs tracking-wider truncate ${color}`}>
+            {title}
+          </h3>
+          <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-gray-400 shrink-0">
+            {items.length} {type === 'safe' ? 'Safes' : 'Armas'}
+          </span>
+        </div>
+
+        {/* AÇÕES NO TOPO DO CARD */}
+        <div className="flex items-center gap-1 shrink-0">
+          {onOpenModal && (
+            <button
+              onClick={onOpenModal}
+              className="p-1.5 rounded-lg bg-white/5 hover:bg-yellow-500/20 text-gray-400 hover:text-yellow-400 border border-white/5 transition-colors"
+              title="Abrir arsenal completo em tela cheia com busca e imagens"
+            >
+              <Maximize2 size={13} />
+            </button>
+          )}
+
+          <button
+            onClick={() => setIsExpanded(prev => !prev)}
+            className={`p-1.5 rounded-lg border transition-colors ${
+              effectiveExpanded 
+                ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/40' 
+                : 'bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white border-white/5'
+            }`}
+            title={effectiveExpanded ? 'Recolher para modo compacto' : 'Expandir lista inteira no card'}
+          >
+            <ChevronsUpDown size={13} />
+          </button>
+
+          <button
+            onClick={() => setIsMinimized(prev => !prev)}
+            className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white border border-white/5 transition-colors"
+            title={isMinimized ? 'Expandir conteúdo do card' : 'Minimizar card'}
+          >
+            {isMinimized ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
+          </button>
+        </div>
+      </div>
+
+      {/* CORPO DO CARD */}
+      {!isMinimized && (
+        <>
+          <div className={`p-3.5 bg-black/15 custom-scrollbar ${
+            effectiveExpanded ? 'max-h-none overflow-visible' : 'overflow-y-auto max-h-[380px]'
+          }`}>
+            <div className="grid grid-cols-2 gap-3">
+              {displayItems.map((item: any, i: number) => {
+                const percent = totalCount ? ((item.count / totalCount) * 100).toFixed(1) : '0.0';
+                const img = getImage && getImage(item.name);
+                const isActive = activeValues.includes(item.name);
+
+                return (
+                  <div 
+                    key={item.name} 
+                    onClick={() => onSelect && onSelect(item.name)} 
+                    className={`rounded-xl border p-3 flex flex-col items-center justify-between relative group cursor-pointer transition-all shadow-md ${
+                      isActive 
+                        ? 'bg-yellow-900/20 border-yellow-500 ring-2 ring-yellow-500/30 scale-[1.03] z-10' 
+                        : 'bg-[#101014] border-white/5 hover:border-yellow-500/50 hover:bg-[#181820]'
+                    }`}
+                  >
+                    <div className="w-full flex items-center justify-between mb-1">
+                      <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded border ${
+                        i === 0 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/40' : 'bg-white/5 text-gray-500 border-white/5'
+                      }`}>
+                        #{i + 1}
+                      </span>
+                      <span className="font-bold text-white text-[10px] bg-black/60 px-2 py-0.5 rounded-md border border-white/10 font-mono">
+                        {item.count}
+                      </span>
+                    </div>
+
+                    <div className="h-14 w-full flex items-center justify-center my-1.5 p-1 bg-black/30 rounded-lg border border-white/5">
+                      {img ? (
+                        <img 
+                          src={img} 
+                          className="h-full w-full object-contain group-hover:scale-110 transition-transform duration-300 drop-shadow" 
+                          alt={item.name}
+                        />
+                      ) : (
+                        <Swords size={22} className="text-gray-700" />
+                      )}
+                    </div>
+
+                    <div className="w-full text-center mt-1">
+                      <span className={`text-[10px] font-black truncate block uppercase italic tracking-tight ${
+                        isActive ? 'text-yellow-400' : 'text-gray-300 group-hover:text-white'
+                      }`}>
+                        {item.name || "N/A"}
+                      </span>
+                      
+                      <div className="w-full bg-black/60 h-1 mt-1.5 rounded-full overflow-hidden border border-white/5">
+                        <div 
+                          className="h-full bg-orange-500 rounded-full" 
+                          style={{ width: `${Math.min(100, Math.max(4, parseFloat(percent)))}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {items.length === 0 && (
+                <div className="col-span-2 py-10 text-center text-gray-600 font-black italic uppercase text-[10px]">
+                  Sem registros
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* RODAPÉ DO CARD */}
+          <div className="p-2.5 bg-black/50 border-t border-white/5 flex items-center justify-between text-xs gap-2">
+            <button
+              onClick={() => setIsExpanded(prev => !prev)}
+              className="text-[10px] font-bold text-gray-400 hover:text-white uppercase tracking-wider flex items-center gap-1 transition-colors"
+            >
+              {effectiveExpanded ? (
+                <>
+                  <ChevronUp size={12} /> Recolher ({items.length} itens)
+                </>
+              ) : (
+                <>
+                  <ChevronDown size={12} /> Ver Lista Inteira ({items.length} itens)
+                </>
+              )}
+            </button>
+
+            {onOpenModal && (
+              <button
+                onClick={onOpenModal}
+                className="text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-lg bg-white/5 hover:bg-yellow-500/20 text-yellow-400 border border-white/10 hover:border-yellow-500/40 flex items-center gap-1 transition-all"
+              >
+                <Maximize2 size={11} /> Tela Cheia
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
 
 export default KillFeedPage;
