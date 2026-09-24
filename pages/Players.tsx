@@ -12,6 +12,9 @@ import { PlayerVsTeamCompare } from '../components/PlayerVsTeamCompare';
 import { PlayerVsPlayerCompare } from '../components/PlayerVsPlayerCompare';
 import PlayerKpmAnalysis from '../components/PlayerKpmAnalysis';
 import TopStatsAnalysis from '../components/TopStatsAnalysis';
+import PlayerHsHighlightCard from '../components/PlayerHsHighlightCard';
+import PlayerHsEvolutionChart from '../components/PlayerHsEvolutionChart';
+import PlayerRadarChart from '../components/PlayerRadarChart';
 import { Camera } from 'lucide-react';
 import { findTeamLogo } from '../utils/teamUtils';
 import { findDimImg } from '../utils/skillImages';
@@ -90,6 +93,9 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
   } | null>(null);
 
   const [showLegend, setShowLegend] = useState(false);
+  const [selectedHsPlayer, setSelectedHsPlayer] = useState<string>('');
+  const [showHsHighlightCard, setShowHsHighlightCard] = useState<boolean>(true);
+  const [showHsEvolutionChart, setShowHsEvolutionChart] = useState<boolean>(true);
   
   const [filters, setFilters] = useState({
     team: [] as string[],
@@ -4447,7 +4453,87 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                         }} 
                     />
                 ) : (
-                <div className="bg-[#1a1a1a] rounded-2xl overflow-hidden border border-gray-800 shadow-xl">
+                <div className="space-y-6">
+                  {rankingSubTab === 'general' && (
+                    <div className="space-y-4">
+                      {/* Barra de Controles Rápidos de Visualização: Card de Destaque & Gráfico de Evolução */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-black/40 rounded-xl border border-white/5 text-xs">
+                        <div className="flex items-center gap-2">
+                          <Sparkles size={15} className="text-amber-400" />
+                          <span className="text-[11px] font-black uppercase tracking-wider text-white">
+                            Destaques & Evolução de Precisão (HS)
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            onClick={() => setShowHsHighlightCard(!showHsHighlightCard)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                              showHsHighlightCard
+                                ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
+                                : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 border border-white/5'
+                            }`}
+                            title={showHsHighlightCard ? 'Ocultar Card de Destaque' : 'Exibir Card de Destaque'}
+                          >
+                            {showHsHighlightCard ? <EyeOff size={12} /> : <Eye size={12} />}
+                            <span>{showHsHighlightCard ? 'Ocultar Card de Destaque' : 'Exibir Card de Destaque'}</span>
+                          </button>
+
+                          <button
+                            onClick={() => setShowHsEvolutionChart(!showHsEvolutionChart)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                              showHsEvolutionChart
+                                ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
+                                : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 border border-white/5'
+                            }`}
+                            title={showHsEvolutionChart ? 'Ocultar Gráfico de Evolução' : 'Exibir Gráfico de Evolução'}
+                          >
+                            {showHsEvolutionChart ? <EyeOff size={12} /> : <Eye size={12} />}
+                            <span>{showHsEvolutionChart ? 'Ocultar Gráfico' : 'Exibir Gráfico'}</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Card de Destaque: Identifica automaticamente o jogador com maior evolução de média de HS na última rodada */}
+                      {showHsHighlightCard && (
+                        <PlayerHsHighlightCard 
+                          data={data}
+                          onHide={() => setShowHsHighlightCard(false)}
+                          onSelectPlayerForChart={(pName) => {
+                            setSelectedHsPlayer(pName);
+                            setShowHsEvolutionChart(true);
+                            const el = document.getElementById('player-hs-evolution-section');
+                            if (el) {
+                              el.scrollIntoView({ behavior: 'smooth' });
+                            }
+                          }}
+                          onViewPlayerProfile={(pName) => {
+                            setFilters(prev => ({ ...prev, players: [pName] }));
+                            setActiveTab('report');
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                        />
+                      )}
+
+                      {/* Componente de Gráfico de Linhas usando Recharts para Evolução de HS */}
+                      {showHsEvolutionChart && (
+                        <div className="space-y-2 animate-in fade-in duration-200">
+                          <PlayerHsEvolutionChart 
+                            data={data}
+                            selectedPlayer={selectedHsPlayer}
+                            onSelectPlayer={(pName) => setSelectedHsPlayer(pName)}
+                            onViewProfile={(pName) => {
+                              setFilters(prev => ({ ...prev, players: [pName] }));
+                              setActiveTab('report');
+                              window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="bg-[#1a1a1a] rounded-2xl overflow-hidden border border-gray-800 shadow-xl">
                 <div className="overflow-x-auto custom-scrollbar">
                     <table className="w-full text-left whitespace-nowrap border-separate border-spacing-0">
                         <thead className="bg-[#0a0a0a] text-gray-500 text-[9px] uppercase font-bold tracking-widest sticky top-0 z-20">
@@ -4713,7 +4799,19 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                                             <td className="px-2 py-3 text-center text-yellow-500 font-black italic bg-yellow-500/5">{player.avgDmg}</td>
                                             <td className="px-2 py-3 text-center text-blue-400 font-black">{player.assists}</td>
                                             <td className="px-2 py-3 text-center text-yellow-500 font-mono">{player.hs}</td>
-                                            <td className="px-2 py-3 text-center text-purple-400 font-black italic bg-purple-500/5">{player.avgHs}</td>
+                                            <td 
+                                              className="px-2 py-3 text-center text-purple-400 font-black italic bg-purple-500/5 cursor-pointer hover:bg-purple-500/25 hover:text-purple-300 transition-colors"
+                                              title="Clique para ver o gráfico de evolução de HS deste jogador"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSelectedHsPlayer(player.name);
+                                                setShowHsEvolutionChart(true);
+                                                const el = document.getElementById('player-hs-evolution-section');
+                                                if (el) el.scrollIntoView({ behavior: 'smooth' });
+                                              }}
+                                            >
+                                              {player.avgHs}
+                                            </td>
                                             <td className="px-2 py-3 text-center text-orange-500 font-black">{player.knocks}</td>
                                             <td className="px-2 py-3 text-center text-yellow-500 font-black italic bg-yellow-500/5">{player.avgKnocks}</td>
                                             <td className="px-2 py-3 text-center text-white font-black">{player.matches}</td>
@@ -4752,6 +4850,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                         </tbody>
                     </table>
                 </div>
+            </div>
             </div>
             )}
           </div>
@@ -6819,10 +6918,12 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                     )}
 
                     {playerVisibleSections.radar && (
-                    <PlayerRadarComponent 
+                    <PlayerRadarChart 
                         p1Stats={stats} 
                         p1Name={playerName} 
-                        title={`GRÁFICO RADAR DE DESEMPENHO: ${playerName}`} 
+                        rankingData={rankingData}
+                        data={data}
+                        title={`RADAR DE ATRIBUTOS: ${playerName} vs MÉDIA DA LIGA`} 
                         onHide={() => togglePlayerSection('radar')}
                     />
                     )}
@@ -6956,6 +7057,14 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                             </div>
                         </div>
                         )}
+                    </div>
+
+                    {/* Gráfico de Linhas Recharts: Evolução da Média de HS por Rodada */}
+                    <div className="mt-6">
+                        <PlayerHsEvolutionChart 
+                            data={data}
+                            selectedPlayer={playerName}
+                        />
                     </div>
 
                     {playerVisibleSections.victimsKillers && (

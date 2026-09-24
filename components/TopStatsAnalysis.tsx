@@ -3,7 +3,7 @@ import {
   Trophy, Crown, Skull, Flame, Target, Crosshair, Zap, Users, Shield, 
   ShieldAlert, Activity, Scale, BarChart2, CheckCircle2, MapPin, Search, 
   ArrowLeft, ChevronRight, ChevronLeft, LayoutGrid, Award, ArrowUpRight,
-  Sparkles, ExternalLink
+  Sparkles, ExternalLink, Filter, X
 } from 'lucide-react';
 
 export interface StatMetricDefinition {
@@ -37,6 +37,7 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
 }) => {
   const [selectedMetricId, setSelectedMetricId] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [roleFilter, setRoleFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Lista completa e oficial de todas as estatísticas do Ranking Geral
@@ -436,6 +437,47 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
     return baseList;
   }, [allSafeNames]);
 
+  // Lista dinâmica de Funções extraídas dos atletas
+  const availableRoles = useMemo(() => {
+    const rolesMap = new Map<string, number>();
+    rankingData.forEach(p => {
+      const r1 = (p.funcao || '').trim().toUpperCase();
+      const r2 = (p.funcao2 || '').trim().toUpperCase();
+      if (r1 && r1 !== 'N/A') {
+        rolesMap.set(r1, (rolesMap.get(r1) || 0) + 1);
+      }
+      if (r2 && r2 !== 'N/A' && r2 !== r1) {
+        rolesMap.set(r2, (rolesMap.get(r2) || 0) + 1);
+      }
+    });
+
+    const standardOrder = ['CPT', 'RUSH', 'SUPORTE', 'GRANADEIRO'];
+    const keys = Array.from(rolesMap.keys()).sort((a, b) => {
+      const idxA = standardOrder.indexOf(a);
+      const idxB = standardOrder.indexOf(b);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return a.localeCompare(b);
+    });
+
+    return keys.map(role => ({
+      role,
+      count: rolesMap.get(role) || 0
+    }));
+  }, [rankingData]);
+
+  // Atletas filtrados pela Função selecionada
+  const filteredRankingDataByRole = useMemo(() => {
+    if (roleFilter === 'all') return rankingData;
+    const target = roleFilter.trim().toUpperCase();
+    return rankingData.filter(p => {
+      const r1 = (p.funcao || '').trim().toUpperCase();
+      const r2 = (p.funcao2 || '').trim().toUpperCase();
+      return r1 === target || r2 === target;
+    });
+  }, [rankingData, roleFilter]);
+
   const categories = useMemo(() => {
     return ['all', 'Combate', 'Dano & Precisão', 'Knockdowns & MVPs', 'Suporte & Utilidade', 'Safes'];
   }, []);
@@ -456,9 +498,9 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
     });
   }, [metricsList, categoryFilter, searchQuery]);
 
-  // Função auxiliar para calcular o Top 10 de qualquer métrica
+  // Função auxiliar para calcular o Top 10 de qualquer métrica considerando a função
   const getTop10 = (metric: StatMetricDefinition) => {
-    return [...rankingData]
+    return [...filteredRankingDataByRole]
       .sort((a, b) => {
         const valA = metric.getValue(a);
         const valB = metric.getValue(b);
@@ -490,6 +532,39 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
     }
   };
 
+  // Cores e ícones dos botões de função
+  const getRoleButtonColor = (r: string, isSelected: boolean) => {
+    if (isSelected) {
+      if (r === 'CPT') return 'bg-yellow-500 text-black shadow-md shadow-yellow-500/30 font-black scale-105';
+      if (r === 'RUSH') return 'bg-red-500 text-white shadow-md shadow-red-500/30 font-black scale-105';
+      if (r === 'SUPORTE') return 'bg-blue-500 text-white shadow-md shadow-blue-500/30 font-black scale-105';
+      if (r === 'GRANADEIRO') return 'bg-orange-500 text-white shadow-md shadow-orange-500/30 font-black scale-105';
+      return 'bg-purple-500 text-white shadow-md shadow-purple-500/30 font-black scale-105';
+    }
+    if (r === 'CPT') return 'bg-black/40 text-yellow-400 hover:bg-yellow-500/10 border border-yellow-500/30';
+    if (r === 'RUSH') return 'bg-black/40 text-red-400 hover:bg-red-500/10 border border-red-500/30';
+    if (r === 'SUPORTE') return 'bg-black/40 text-blue-400 hover:bg-blue-500/10 border border-blue-500/30';
+    if (r === 'GRANADEIRO') return 'bg-black/40 text-orange-400 hover:bg-orange-500/10 border border-orange-500/30';
+    return 'bg-black/40 text-purple-400 hover:bg-purple-500/10 border border-purple-500/30';
+  };
+
+  const getRoleIcon = (r: string) => {
+    if (r === 'CPT') return <Crown size={12} />;
+    if (r === 'RUSH') return <Flame size={12} />;
+    if (r === 'SUPORTE') return <Shield size={12} />;
+    if (r === 'GRANADEIRO') return <Zap size={12} />;
+    return <Award size={12} />;
+  };
+
+  const getRoleBadgeStyle = (r: string) => {
+    const roleNorm = (r || '').trim().toUpperCase();
+    if (roleNorm === 'CPT') return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/40';
+    if (roleNorm === 'RUSH') return 'bg-red-500/20 text-red-400 border-red-500/40';
+    if (roleNorm === 'SUPORTE') return 'bg-blue-500/20 text-blue-400 border-blue-500/40';
+    if (roleNorm === 'GRANADEIRO') return 'bg-orange-500/20 text-orange-400 border-orange-500/40';
+    return 'bg-purple-500/20 text-purple-400 border-purple-500/40';
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       {/* BARRA DE COMANDO / CONTROLE SUPERIOR */}
@@ -500,23 +575,50 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
               <Trophy size={24} />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-xl font-black text-white uppercase italic tracking-tight">
                   Top 10 de Estatísticas do Ranking Geral
                 </h2>
                 <span className="px-2.5 py-0.5 rounded-full bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-[10px] font-black uppercase tracking-wider">
                   Oficial
                 </span>
+                {roleFilter !== 'all' && (
+                  <span className="px-2.5 py-0.5 rounded-full bg-red-500/20 border border-red-500/40 text-red-400 text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
+                    <Crown size={11} /> Função: {roleFilter}
+                  </span>
+                )}
               </div>
               <p className="text-xs text-gray-400 font-medium mt-0.5">
-                Selecione qualquer métrica do Ranking Geral para explorar o Top 10 com pódio e detalhes ou veja o mosaico completo.
+                Filtre por função, selecione qualquer métrica para explorar o pódio e Top 10 detalhado ou navegue no mosaico geral.
               </p>
             </div>
           </div>
 
-          {/* Menu Dropdown de Seleção de Estatística */}
+          {/* Menus Dropdowns de Seleção de Estatística e Função */}
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2 bg-black/50 p-1.5 rounded-2xl border border-white/10 min-w-[260px] sm:min-w-[320px]">
+            {/* Seletor de Função Dropdown */}
+            <div className="flex items-center gap-2 bg-black/50 p-1.5 rounded-2xl border border-white/10 min-w-[200px]">
+              <span className="text-[10px] font-black uppercase text-yellow-500 px-2 tracking-wider flex items-center gap-1">
+                <Crown size={11} /> Função:
+              </span>
+              <select
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
+                className="bg-transparent text-xs font-black text-white focus:outline-none cursor-pointer w-full py-1 pr-2"
+              >
+                <option value="all" className="bg-[#1a1a1a] text-yellow-400 font-black">
+                  Todas as Funções ({rankingData.length})
+                </option>
+                {availableRoles.map(({ role, count }) => (
+                  <option key={role} value={role} className="bg-[#1a1a1a] text-white font-bold">
+                    {role} ({count} atletas)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Seletor de Estatística Dropdown */}
+            <div className="flex items-center gap-2 bg-black/50 p-1.5 rounded-2xl border border-white/10 min-w-[240px] sm:min-w-[280px]">
               <span className="text-[10px] font-black uppercase text-yellow-500 px-2 tracking-wider">Estatística:</span>
               <select
                 value={selectedMetricId}
@@ -524,7 +626,7 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
                 className="bg-transparent text-xs font-black text-white focus:outline-none cursor-pointer w-full py-1 pr-2"
               >
                 <option value="all" className="bg-[#1a1a1a] text-yellow-400 font-black">
-                  🌟 Visualizar Todas as Estatísticas (Mosaico)
+                  🌟 Visualizar Todas (Mosaico)
                 </option>
                 <optgroup label="Combate" className="bg-[#1a1a1a] text-gray-400 font-bold">
                   {metricsList.filter(m => m.category === 'Combate').map(m => (
@@ -577,10 +679,72 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
           </div>
         </div>
 
-        {/* Categorias & Busca */}
+        {/* BARRA DEDICADA DE FILTRO POR FUNÇÃO (Botões Rápidos Interativos) */}
+        <div className="bg-black/30 p-3.5 rounded-2xl border border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Filter size={15} className="text-yellow-500" />
+            <span className="text-xs font-black uppercase text-white tracking-wider">Filtrar por Função:</span>
+            {roleFilter !== 'all' && (
+              <span className="text-[11px] font-bold text-yellow-400 bg-yellow-500/10 px-2 py-0.5 rounded-md border border-yellow-500/20">
+                {filteredRankingDataByRole.length} atletas na função
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setRoleFilter('all')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                roleFilter === 'all'
+                  ? 'bg-yellow-500 text-black shadow-md shadow-yellow-500/20 font-black scale-105'
+                  : 'bg-black/40 text-gray-400 hover:text-white hover:bg-white/5 border border-white/5'
+              }`}
+            >
+              <Users size={13} className={roleFilter === 'all' ? 'text-black' : 'text-gray-400'} />
+              <span>Todas as Funções</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono ${roleFilter === 'all' ? 'bg-black/20 text-black' : 'bg-black/40 text-gray-500'}`}>
+                {rankingData.length}
+              </span>
+            </button>
+
+            {availableRoles.map(({ role, count }) => {
+              const isSelected = roleFilter === role;
+              return (
+                <button
+                  key={role}
+                  onClick={() => setRoleFilter(role)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${getRoleButtonColor(role, isSelected)}`}
+                  title={`Filtrar estatísticas apenas para a função ${role}`}
+                >
+                  {getRoleIcon(role)}
+                  <span>{role}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono ${isSelected ? 'bg-black/20 text-current' : 'bg-black/40 text-gray-400'}`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+
+            {roleFilter !== 'all' && (
+              <button
+                onClick={() => setRoleFilter('all')}
+                className="px-2.5 py-1 text-[10px] font-black text-gray-400 hover:text-red-400 uppercase transition-colors flex items-center gap-1 bg-white/5 hover:bg-red-500/10 rounded-lg border border-white/5"
+                title="Limpar filtro de função"
+              >
+                <X size={11} />
+                <span>Limpar Função</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Categorias & Busca de Métrica */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-1">
           {/* Categorias */}
           <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[10px] font-black uppercase text-gray-500 mr-1 flex items-center gap-1">
+              <Sparkles size={11} /> Tipo:
+            </span>
             {categories.map(cat => {
               const isSelected = categoryFilter === cat;
               return (
@@ -656,6 +820,32 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
         </div>
       </div>
 
+      {/* AVISO DE FILTRO ATIVO SE ESTIVER FILTRANDO POR FUNÇÃO */}
+      {roleFilter !== 'all' && (
+        <div className="bg-gradient-to-r from-red-500/10 via-black/40 to-transparent p-3.5 rounded-2xl border border-red-500/30 flex items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-red-500/20 text-red-400 border border-red-500/40">
+              <Crown size={16} />
+            </div>
+            <div>
+              <span className="text-xs font-black text-white uppercase tracking-wider block">
+                Filtro Ativo: Função <span className="text-red-400 font-black">{roleFilter}</span>
+              </span>
+              <p className="text-[11px] text-gray-400 font-medium">
+                Exibindo apenas os melhores desempenhos entre os {filteredRankingDataByRole.length} atletas que atuam como {roleFilter}.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setRoleFilter('all')}
+            className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10 text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 flex-shrink-0"
+          >
+            <X size={12} />
+            <span>Ver Todas as Funções</span>
+          </button>
+        </div>
+      )}
+
       {/* MODO 1: VISUALIZAÇÃO DETALHADA DA ESTATÍSTICA SELECIONADA */}
       {currentSelectedMetric ? (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-500">
@@ -664,6 +854,28 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
             const top10 = getTop10(currentSelectedMetric);
             const MetricIcon = currentSelectedMetric.icon;
             const leaderVal = top10[0] ? currentSelectedMetric.getValue(top10[0]) : 1;
+
+            if (top10.length === 0) {
+              return (
+                <div className="bg-[#161619] p-12 rounded-3xl border border-white/5 text-center text-gray-400 space-y-4 shadow-xl">
+                  <Search size={40} className="mx-auto text-yellow-500 opacity-40" />
+                  <div>
+                    <h3 className="text-lg font-black text-white uppercase italic">
+                      Nenhum Atleta Encontrado
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-1 max-w-md mx-auto">
+                      Não encontramos jogadores registrados com a função "{roleFilter}" para a métrica {currentSelectedMetric.label}.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setRoleFilter('all')}
+                    className="px-4 py-2 rounded-xl bg-yellow-500 hover:bg-yellow-400 text-black font-black text-xs uppercase tracking-wider transition-all"
+                  >
+                    Restaurar Todas as Funções
+                  </button>
+                </div>
+              );
+            }
 
             return (
               <div className="space-y-6">
@@ -682,7 +894,13 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
                             {currentSelectedMetric.category}
                           </span>
                           <span className="text-yellow-500 font-mono text-xs font-bold">•</span>
-                          <span className="text-xs font-bold text-gray-400">Ranking Geral de Atletas</span>
+                          {roleFilter !== 'all' ? (
+                            <span className="px-2.5 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/40 text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
+                              <Crown size={10} /> Função: {roleFilter} ({filteredRankingDataByRole.length} atletas)
+                            </span>
+                          ) : (
+                            <span className="text-xs font-bold text-gray-400">Ranking Geral ({filteredRankingDataByRole.length} atletas)</span>
+                          )}
                         </div>
                         <h3 className="text-2xl sm:text-3xl font-black text-white uppercase italic tracking-tight mt-1">
                           {currentSelectedMetric.label}
@@ -731,7 +949,7 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
                       <div>
                         <div className="flex justify-between items-center mb-4">
                           <span className="px-3 py-1 rounded-xl bg-slate-400/20 text-slate-200 border border-slate-400/40 font-black text-xs uppercase flex items-center gap-1.5 shadow-sm">
-                            <Award size={13} className="text-slate-200" /> #2 VICE-LÍDER
+                            <Award size={13} className="text-slate-200" /> {roleFilter === 'all' ? '#2 VICE-LÍDER' : `#2 VICE ${roleFilter}`}
                           </span>
                           <span className="text-[10px] font-bold text-gray-500 uppercase">{top10[1].team}</span>
                         </div>
@@ -759,7 +977,7 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
                               {top10[1].name}
                             </h4>
                             <div className="flex items-center gap-1.5 mt-0.5">
-                              <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-white/5 text-gray-400 border border-white/5">
+                              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border ${getRoleBadgeStyle(top10[1].funcao)}`}>
                                 {top10[1].funcao || 'N/A'}
                               </span>
                               <span className="text-xs font-bold text-gray-400 truncate">{top10[1].team}</span>
@@ -796,7 +1014,7 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
                       <div>
                         <div className="flex justify-between items-center mb-4">
                           <span className="px-3 py-1 rounded-xl bg-yellow-500 text-black font-black text-xs uppercase flex items-center gap-1.5 shadow-lg shadow-yellow-500/30">
-                            <Crown size={14} className="text-black" /> #1 LÍDER ABSOLUTO
+                            <Crown size={14} className="text-black" /> {roleFilter === 'all' ? '#1 LÍDER ABSOLUTO' : `#1 LÍDER ${roleFilter}`}
                           </span>
                           <span className="text-xs font-black text-yellow-500 uppercase tracking-wider">{top10[0].team}</span>
                         </div>
@@ -824,7 +1042,7 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
                               {top10[0].name}
                             </h4>
                             <div className="flex items-center gap-2 mt-1">
-                              <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-yellow-500/20 text-yellow-400 border border-yellow-500/40">
+                              <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded border ${getRoleBadgeStyle(top10[0].funcao)}`}>
                                 {top10[0].funcao || 'N/A'}
                               </span>
                               <span className="text-xs font-bold text-gray-300 truncate">{top10[0].team}</span>
@@ -858,7 +1076,7 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
                       <div>
                         <div className="flex justify-between items-center mb-4">
                           <span className="px-3 py-1 rounded-xl bg-amber-700/20 text-amber-400 border border-amber-700/40 font-black text-xs uppercase flex items-center gap-1.5 shadow-sm">
-                            <Award size={13} className="text-amber-400" /> #3 TERCEIRO LUGAR
+                            <Award size={13} className="text-amber-400" /> {roleFilter === 'all' ? '#3 TERCEIRO LUGAR' : `#3 TOP 3 ${roleFilter}`}
                           </span>
                           <span className="text-[10px] font-bold text-gray-500 uppercase">{top10[2].team}</span>
                         </div>
@@ -886,7 +1104,7 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
                               {top10[2].name}
                             </h4>
                             <div className="flex items-center gap-1.5 mt-0.5">
-                              <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-white/5 text-gray-400 border border-white/5">
+                              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border ${getRoleBadgeStyle(top10[2].funcao)}`}>
                                 {top10[2].funcao || 'N/A'}
                               </span>
                               <span className="text-xs font-bold text-gray-400 truncate">{top10[2].team}</span>
@@ -922,7 +1140,7 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
                     <div className="flex items-center gap-2">
                       <Trophy size={16} className="text-yellow-500" />
                       <span className="text-xs font-black text-white uppercase tracking-wider">
-                        Tabela Completa do Top 10 • {currentSelectedMetric.label}
+                        Tabela Completa do Top 10 • {currentSelectedMetric.label} {roleFilter !== 'all' && `(${roleFilter})`}
                       </span>
                     </div>
                     <span className="text-[11px] text-gray-500 font-bold uppercase">
@@ -1014,17 +1232,7 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
 
                               {/* Função */}
                               <td className="px-3 py-3 text-center">
-                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${
-                                  p.funcao === 'CPT'
-                                    ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/40'
-                                    : p.funcao === 'RUSH'
-                                    ? 'bg-red-500/20 text-red-400 border-red-500/40'
-                                    : p.funcao === 'SUPORTE'
-                                    ? 'bg-blue-500/20 text-blue-400 border-blue-500/40'
-                                    : p.funcao === 'GRANADEIRO'
-                                    ? 'bg-orange-500/20 text-orange-400 border-orange-500/40'
-                                    : 'bg-gray-800 text-gray-400 border-gray-700'
-                                }`}>
+                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${getRoleBadgeStyle(p.funcao)}`}>
                                   {p.funcao || 'N/A'}
                                 </span>
                               </td>
@@ -1038,14 +1246,14 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
                                   <div className="w-24 h-1 rounded-full bg-black/60 overflow-hidden mt-1">
                                     <div 
                                       className={`h-full rounded-full ${currentSelectedMetric.barColor}`} 
-                                      style={{ width: `${pctOfLeader}%` }} 
+                                      style={{ width: `${Math.min(100, Math.max(5, pctOfLeader))}%` }}
                                     />
                                   </div>
                                 </div>
                               </td>
 
                               {/* Partidas */}
-                              <td className="px-4 py-3 text-center text-xs font-mono text-gray-300">
+                              <td className="px-4 py-3 text-center font-mono text-xs text-gray-400">
                                 {p.matches}
                               </td>
 
@@ -1092,7 +1300,7 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
                       </div>
                       <div className="min-w-0">
                         <span className="text-[9px] font-black uppercase text-gray-500 tracking-wider block">
-                          {metric.category}
+                          {metric.category} {roleFilter !== 'all' ? `• Função: ${roleFilter}` : ''}
                         </span>
                         <h4 className="text-sm font-black text-white uppercase italic truncate">
                           {metric.label}
@@ -1112,54 +1320,67 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
 
                   {/* Lista Top 10 */}
                   <div className="p-3 space-y-1">
-                    {top10.map((p, idx) => {
-                      const rank = idx + 1;
-                      const formattedVal = metric.formatValue(p);
+                    {top10.length === 0 ? (
+                      <div className="py-6 text-center text-gray-500 text-xs font-bold">
+                        Nenhum atleta na função {roleFilter}
+                      </div>
+                    ) : (
+                      top10.map((p, idx) => {
+                        const rank = idx + 1;
+                        const formattedVal = metric.formatValue(p);
 
-                      return (
-                        <div
-                          key={`${metric.id}-${p.name}-${idx}`}
-                          onClick={() => onSelectPlayer(p.name)}
-                          className="flex items-center justify-between p-2 rounded-xl bg-black/20 hover:bg-white/10 transition-all cursor-pointer group/row"
-                          title={`Clique para abrir o perfil de ${p.name}`}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            {/* Rank Badge */}
-                            <span className={`w-5 text-center font-mono font-black text-xs flex-shrink-0 ${
-                              rank === 1 ? 'text-yellow-400' : rank === 2 ? 'text-slate-300' : rank === 3 ? 'text-amber-500' : 'text-gray-600'
-                            }`}>
-                              #{rank}
-                            </span>
+                        return (
+                          <div
+                            key={`${metric.id}-${p.name}-${idx}`}
+                            onClick={() => onSelectPlayer(p.name)}
+                            className="flex items-center justify-between p-2 rounded-xl bg-black/20 hover:bg-white/10 transition-all cursor-pointer group/row"
+                            title={`Clique para abrir o perfil de ${p.name}`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              {/* Rank Badge */}
+                              <span className={`w-5 text-center font-mono font-black text-xs flex-shrink-0 ${
+                                rank === 1 ? 'text-yellow-400' : rank === 2 ? 'text-slate-300' : rank === 3 ? 'text-amber-500' : 'text-gray-600'
+                              }`}>
+                                #{rank}
+                              </span>
 
-                            {/* Foto / Iniciais */}
-                            <div className="w-6 h-6 rounded-lg bg-black border border-white/10 overflow-hidden flex-shrink-0">
-                              {p.playerImg ? (
-                                <img src={p.playerImg} alt={p.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center text-[9px] font-bold text-gray-600">
-                                  {p.name.substring(0, 2).toUpperCase()}
+                              {/* Foto / Iniciais */}
+                              <div className="w-6 h-6 rounded-lg bg-black border border-white/10 overflow-hidden flex-shrink-0">
+                                {p.playerImg ? (
+                                  <img src={p.playerImg} alt={p.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-[9px] font-bold text-gray-600">
+                                    {p.name.substring(0, 2).toUpperCase()}
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="min-w-0">
+                                <span className="text-xs font-black text-white uppercase italic truncate block group-hover/row:text-yellow-400 transition-colors">
+                                  {p.name}
+                                </span>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[8px] text-gray-500 font-bold uppercase truncate">
+                                    {p.team}
+                                  </span>
+                                  {roleFilter === 'all' && p.funcao && (
+                                    <span className={`text-[7px] font-black uppercase px-1 py-0.2 rounded border ${getRoleBadgeStyle(p.funcao)}`}>
+                                      {p.funcao}
+                                    </span>
+                                  )}
                                 </div>
-                              )}
+                              </div>
                             </div>
 
-                            <div className="min-w-0">
-                              <span className="text-xs font-black text-white uppercase italic truncate block group-hover/row:text-yellow-400 transition-colors">
-                                {p.name}
-                              </span>
-                              <span className="text-[8px] text-gray-500 font-bold uppercase truncate block">
-                                {p.team}
+                            <div className="flex flex-col items-end flex-shrink-0 pl-2">
+                              <span className={`text-xs font-black italic ${metric.color}`}>
+                                {formattedVal}
                               </span>
                             </div>
                           </div>
-
-                          <div className="flex flex-col items-end flex-shrink-0 pl-2">
-                            <span className={`text-xs font-black italic ${metric.color}`}>
-                              {formattedVal}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })
+                    )}
                   </div>
                 </div>
 
