@@ -25,7 +25,8 @@ import {
   Target,
   Sparkles,
   Layers,
-  ArrowRight
+  ArrowRight,
+  EyeOff
 } from 'lucide-react';
 import { DashboardData } from '../types';
 import { findTeamLogo } from '../utils/teamUtils';
@@ -36,6 +37,7 @@ interface PlayerHsEvolutionChartProps {
   selectedPlayer?: string;
   onSelectPlayer?: (playerName: string) => void;
   onViewProfile?: (playerName: string) => void;
+  onClose?: () => void;
   className?: string;
 }
 
@@ -66,6 +68,7 @@ export const PlayerHsEvolutionChart: React.FC<PlayerHsEvolutionChartProps> = ({
   selectedPlayer: controlledPlayer,
   onSelectPlayer,
   onViewProfile,
+  onClose,
   className = ''
 }) => {
   // Lista de todos os jogadores únicos com seus times e totais
@@ -320,8 +323,9 @@ export const PlayerHsEvolutionChart: React.FC<PlayerHsEvolutionChartProps> = ({
           </p>
         </div>
 
-        {/* Player Selector Dropdown / Search */}
-        <div className="relative min-w-[240px]">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {/* Player Selector Dropdown / Search */}
+          <div className="relative min-w-[240px]">
           <div 
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
             className="flex items-center justify-between gap-2 px-3 py-2 bg-black/40 hover:bg-black/60 border border-gray-700/80 hover:border-amber-500/50 rounded-xl cursor-pointer transition-all"
@@ -398,6 +402,18 @@ export const PlayerHsEvolutionChart: React.FC<PlayerHsEvolutionChartProps> = ({
                 )}
               </div>
             </div>
+          )}
+          </div>
+
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="flex items-center gap-1.5 px-3 py-2 bg-white/5 hover:bg-red-500/10 text-gray-400 hover:text-red-400 border border-white/10 hover:border-red-500/20 rounded-xl text-xs font-bold uppercase transition-all shadow-sm flex-shrink-0"
+              title="Ocultar Gráfico de Evolução"
+            >
+              <EyeOff size={13} />
+              <span>Ocultar Gráfico</span>
+            </button>
           )}
         </div>
       </div>

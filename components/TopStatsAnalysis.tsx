@@ -3,7 +3,7 @@ import {
   Trophy, Crown, Skull, Flame, Target, Crosshair, Zap, Users, Shield, 
   ShieldAlert, Activity, Scale, BarChart2, CheckCircle2, MapPin, Search, 
   ArrowLeft, ChevronRight, ChevronLeft, LayoutGrid, Award, ArrowUpRight,
-  Sparkles, ExternalLink, Filter, X
+  Sparkles, ExternalLink, Filter, X, Globe, ListOrdered, Hash, TrendingUp
 } from 'lucide-react';
 
 export interface StatMetricDefinition {
@@ -39,6 +39,8 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [rankingScope, setRankingScope] = useState<'top10' | 'general'>('top10');
+  const [playerTableSearch, setPlayerTableSearch] = useState<string>('');
 
   // Lista completa e oficial de todas as estatísticas do Ranking Geral
   const metricsList = useMemo<StatMetricDefinition[]>(() => {
@@ -498,9 +500,9 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
     });
   }, [metricsList, categoryFilter, searchQuery]);
 
-  // Função auxiliar para calcular o Top 10 de qualquer métrica considerando a função
-  const getTop10 = (metric: StatMetricDefinition) => {
-    return [...filteredRankingDataByRole]
+  // Função auxiliar para calcular o ranking (Top 10 ou Geral) de qualquer métrica considerando a função
+  const getRankedPlayers = (metric: StatMetricDefinition, scope: 'top10' | 'general' = 'top10') => {
+    const sorted = [...filteredRankingDataByRole]
       .sort((a, b) => {
         const valA = metric.getValue(a);
         const valB = metric.getValue(b);
@@ -510,8 +512,93 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
         const dmgDiff = (b.damage || 0) - (a.damage || 0);
         if (dmgDiff !== 0) return dmgDiff;
         return (b.kills || 0) - (a.kills || 0);
-      })
-      .slice(0, 10);
+      });
+
+    if (scope === 'top10') {
+      return sorted.slice(0, 10);
+    }
+    return sorted;
+  };
+
+  const getTop10 = (metric: StatMetricDefinition) => getRankedPlayers(metric, 'top10');
+  const getGeneral = (metric: StatMetricDefinition) => getRankedPlayers(metric, 'general');
+
+  // Cálculo das estatísticas gerais da métrica (Totais, Médias, Quebras por Função e Líder da Liga)
+  const getMetricSummary = (metric: StatMetricDefinition) => {
+    let sum = 0;
+    let count = 0;
+    let leaderVal = -Infinity;
+    let leaderPlayer: any = null;
+    let positiveCount = 0;
+
+    const values: number[] = [];
+
+    filteredRankingDataByRole.forEach(p => {
+      const val = metric.getValue(p);
+      if (typeof val === 'number' && !isNaN(val)) {
+        sum += val;
+        count++;
+        values.push(val);
+        if (val > 0) positiveCount++;
+        if (val > leaderVal || leaderPlayer === null) {
+          leaderVal = val;
+          leaderPlayer = p;
+        }
+      }
+    });
+
+    const avg = count > 0 ? sum / count : 0;
+    const isRate = ['avg', 'kpm', 'avgDmg', 'avgHs', 'avgKnocks', 'killContributionPct', 'withKillsPct', 'zeroKillsPct'].includes(metric.id);
+
+    // Média por Função para esta métrica
+    const standardRoles = ['CPT', 'RUSH', 'SUPORTE', 'GRANADEIRO'];
+    const roleBreakdown = standardRoles.map(r => {
+      const target = r.toUpperCase();
+      const playersInRole = rankingData.filter(p => {
+        const r1 = (p.funcao || '').trim().toUpperCase();
+        const r2 = (p.funcao2 || '').trim().toUpperCase();
+        return r1 === target || r2 === target;
+      });
+
+      let rSum = 0;
+      let rCount = 0;
+      playersInRole.forEach(p => {
+        const v = metric.getValue(p);
+        if (typeof v === 'number' && !isNaN(v)) {
+          rSum += v;
+          rCount++;
+        }
+      });
+
+      const rAvg = rCount > 0 ? rSum / rCount : 0;
+      return {
+        role: r,
+        avg: rAvg.toFixed(2),
+        count: rCount,
+        total: rSum >= 1000 ? rSum.toLocaleString('pt-BR') : rSum.toFixed(rSum % 1 === 0 ? 0 : 2)
+      };
+    });
+
+    let formattedTotal = '';
+    if (metric.id.includes('Pct')) {
+      formattedTotal = `${avg.toFixed(1)}%`;
+    } else if (isRate) {
+      formattedTotal = avg.toFixed(2);
+    } else {
+      formattedTotal = sum >= 1000 ? sum.toLocaleString('pt-BR') : sum.toFixed(sum % 1 === 0 ? 0 : 2);
+    }
+
+    return {
+      total: formattedTotal,
+      rawSum: sum,
+      avg: avg.toFixed(2),
+      leaderVal: leaderVal === -Infinity ? 0 : leaderVal,
+      leaderPlayer,
+      count,
+      positiveCount,
+      roleBreakdown,
+      isRate
+    };
   };
 
   const currentSelectedMetric = useMemo(() => {
@@ -851,9 +938,11 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-500">
           {/* Header da Métrica Selecionada */}
           {(() => {
+            const summary = getMetricSummary(currentSelectedMetric);
             const top10 = getTop10(currentSelectedMetric);
+            const allRanked = getGeneral(currentSelectedMetric);
             const MetricIcon = currentSelectedMetric.icon;
-            const leaderVal = top10[0] ? currentSelectedMetric.getValue(top10[0]) : 1;
+            const leaderVal = allRanked[0] ? currentSelectedMetric.getValue(allRanked[0]) : 1;
 
             if (top10.length === 0) {
               return (
@@ -933,6 +1022,109 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
                         <ArrowLeft size={14} />
                         <span>Ver Mosaico Geral</span>
                       </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* PANORAMA GERAL DA ESTATÍSTICA (Estatísticas Globais & Quebra por Função) */}
+                <div className="bg-[#141417] p-5 rounded-3xl border border-white/5 shadow-xl space-y-4">
+                  <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                    <div className="flex items-center gap-2">
+                      <Globe size={16} className="text-yellow-500" />
+                      <h4 className="text-xs font-black text-white uppercase tracking-wider">
+                        Panorama Geral da Estatística • {currentSelectedMetric.label}
+                      </h4>
+                    </div>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase">
+                      {roleFilter !== 'all' ? `Filtro: ${roleFilter} (${summary.count} atletas)` : `Geral da Liga (${summary.count} atletas)`}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {/* Total Acumulado */}
+                    <div className="p-4 rounded-2xl bg-black/40 border border-white/5 flex flex-col justify-between">
+                      <span className="text-[9px] font-black uppercase text-gray-500 tracking-wider">
+                        Total Acumulado ({summary.isRate ? 'Média Geral' : 'Soma Total'})
+                      </span>
+                      <div className="flex items-baseline gap-1 my-1">
+                        <span className="text-2xl font-black italic text-white font-mono">
+                          {summary.total}
+                        </span>
+                        <span className="text-[10px] font-bold text-yellow-500 uppercase">{currentSelectedMetric.unit}</span>
+                      </div>
+                      <span className="text-[10px] text-gray-400">
+                        {summary.positiveCount} de {summary.count} atletas pontuaram
+                      </span>
+                    </div>
+
+                    {/* Média Geral por Atleta */}
+                    <div className="p-4 rounded-2xl bg-black/40 border border-white/5 flex flex-col justify-between">
+                      <span className="text-[9px] font-black uppercase text-gray-500 tracking-wider">
+                        Média Geral por Atleta
+                      </span>
+                      <div className="flex items-baseline gap-1 my-1">
+                        <span className="text-2xl font-black italic text-yellow-400 font-mono">
+                          {summary.avg}
+                        </span>
+                        <span className="text-[10px] font-bold text-gray-400 uppercase">{currentSelectedMetric.unit}/atleta</span>
+                      </div>
+                      <span className="text-[10px] text-gray-400">
+                        {roleFilter !== 'all' ? `Média da função ${roleFilter}` : 'Média da liga completa'}
+                      </span>
+                    </div>
+
+                    {/* Líder Absoluto */}
+                    <div 
+                      onClick={() => summary.leaderPlayer && onSelectPlayer(summary.leaderPlayer.name)}
+                      className="p-4 rounded-2xl bg-black/40 border border-white/5 hover:border-yellow-500/40 cursor-pointer transition-colors group flex flex-col justify-between"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[9px] font-black uppercase text-gray-500 tracking-wider">
+                          Líder da Estatística
+                        </span>
+                        <Crown size={12} className="text-yellow-500" />
+                      </div>
+                      {summary.leaderPlayer ? (
+                        <div className="flex items-center gap-2.5 my-1">
+                          <div className="w-8 h-8 rounded-xl bg-black border border-yellow-500/40 overflow-hidden flex-shrink-0">
+                            {summary.leaderPlayer.playerImg ? (
+                              <img src={summary.leaderPlayer.playerImg} alt={summary.leaderPlayer.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-xs text-gray-500 font-black">
+                                {summary.leaderPlayer.name.substring(0, 2).toUpperCase()}
+                              </div>
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-xs font-black text-white uppercase italic truncate block group-hover:text-yellow-400 transition-colors">
+                              {summary.leaderPlayer.name}
+                            </span>
+                            <span className="text-[10px] font-bold text-yellow-500 block">
+                              {currentSelectedMetric.formatValue(summary.leaderPlayer)}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-500 font-bold">-</span>
+                      )}
+                      <span className="text-[10px] text-gray-400">
+                        Clique para abrir perfil
+                      </span>
+                    </div>
+
+                    {/* Quebra por Função */}
+                    <div className="p-4 rounded-2xl bg-black/40 border border-white/5 flex flex-col justify-between">
+                      <span className="text-[9px] font-black uppercase text-gray-500 tracking-wider mb-1">
+                        Médias por Função
+                      </span>
+                      <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+                        {summary.roleBreakdown.map(rb => (
+                          <div key={rb.role} className="flex items-center justify-between bg-white/5 px-2 py-1 rounded-lg border border-white/5">
+                            <span className="font-black text-gray-400 text-[9px]">{rb.role}</span>
+                            <span className="font-mono font-bold text-yellow-400">{rb.avg}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1134,147 +1326,228 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
                   </div>
                 )}
 
-                {/* TABELA COMPLETA DO TOP 10 (#1 ao #10) */}
-                <div className="bg-[#161619] rounded-3xl border border-white/5 overflow-hidden shadow-2xl">
-                  <div className="bg-black/40 px-6 py-4 border-b border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <Trophy size={16} className="text-yellow-500" />
-                      <span className="text-xs font-black text-white uppercase tracking-wider">
-                        Tabela Completa do Top 10 • {currentSelectedMetric.label} {roleFilter !== 'all' && `(${roleFilter})`}
-                      </span>
-                    </div>
-                    <span className="text-[11px] text-gray-500 font-bold uppercase">
-                      Clique no atleta para abrir seu Perfil Individual
-                    </span>
-                  </div>
+                {/* BARRA DE ESCOPO: TOP 10 vs RANKING GERAL COMPLETO + BUSCA DE ATLETA */}
+                {(() => {
+                  const targetList = rankingScope === 'top10' ? top10 : allRanked;
+                  const displayedPlayers = targetList.filter(p => {
+                    if (!playerTableSearch.trim()) return true;
+                    const q = playerTableSearch.toLowerCase().trim();
+                    return (
+                      (p.name || '').toLowerCase().includes(q) ||
+                      (p.team || '').toLowerCase().includes(q) ||
+                      (p.funcao || '').toLowerCase().includes(q)
+                    );
+                  });
 
-                  <div className="overflow-x-auto custom-scrollbar">
-                    <table className="w-full text-left border-separate border-spacing-y-1 p-3">
-                      <thead>
-                        <tr className="text-[9px] font-black text-gray-400 uppercase tracking-widest select-none bg-black/20">
-                          <th className="px-4 py-3 text-center rounded-l-xl w-16"># Pos</th>
-                          <th className="px-4 py-3">Jogador</th>
-                          <th className="px-4 py-3">Equipe</th>
-                          <th className="px-3 py-3 text-center">Função</th>
-                          <th className="px-4 py-3 text-right">Resultado</th>
-                          <th className="px-4 py-3 text-center">Partidas</th>
-                          <th className="px-4 py-3 text-center">Média/Q</th>
-                          <th className="px-4 py-3 text-center rounded-r-xl w-24">Ação</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {top10.map((p, idx) => {
-                          const rank = idx + 1;
-                          const val = currentSelectedMetric.getValue(p);
-                          const pctOfLeader = leaderVal > 0 ? (val / leaderVal) * 100 : 0;
+                  return (
+                    <div className="space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-[#141417] rounded-3xl border border-white/5 shadow-xl">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            onClick={() => setRankingScope('top10')}
+                            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
+                              rankingScope === 'top10'
+                                ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black scale-105'
+                                : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 border border-white/5'
+                            }`}
+                          >
+                            <Trophy size={14} className={rankingScope === 'top10' ? 'text-black' : 'text-yellow-500'} />
+                            <span>Top 10 Melhores</span>
+                          </button>
 
-                          return (
-                            <tr
-                              key={`${currentSelectedMetric.id}-${p.name}-${idx}`}
-                              onClick={() => onSelectPlayer(p.name)}
-                              className="bg-black/30 hover:bg-white/10 transition-all cursor-pointer group rounded-xl border border-transparent hover:border-yellow-500/30"
+                          <button
+                            onClick={() => setRankingScope('general')}
+                            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
+                              rankingScope === 'general'
+                                ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black scale-105'
+                                : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 border border-white/5'
+                            }`}
+                          >
+                            <Globe size={14} className={rankingScope === 'general' ? 'text-black' : 'text-yellow-500'} />
+                            <span>Ranking Geral Completo ({filteredRankingDataByRole.length} Atletas)</span>
+                          </button>
+                        </div>
+
+                        <div className="relative min-w-[240px]">
+                          <Search size={13} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                          <input
+                            type="text"
+                            value={playerTableSearch}
+                            onChange={(e) => setPlayerTableSearch(e.target.value)}
+                            placeholder="Buscar atleta ou time na tabela..."
+                            className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-8 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50"
+                          />
+                          {playerTableSearch && (
+                            <button
+                              onClick={() => setPlayerTableSearch('')}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white text-xs font-bold"
                             >
-                              {/* Rank */}
-                              <td className="px-4 py-3 text-center rounded-l-xl">
-                                {rank === 1 ? (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-yellow-500/20 text-yellow-400 border border-yellow-500/50 font-black text-xs shadow-sm">
-                                    <Crown size={12} /> #1
-                                  </span>
-                                ) : rank === 2 ? (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-400/20 text-slate-200 border border-slate-400/40 font-black text-xs">
-                                    #2
-                                  </span>
-                                ) : rank === 3 ? (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-700/20 text-amber-400 border border-amber-600/40 font-black text-xs">
-                                    #3
-                                  </span>
-                                ) : (
-                                  <span className="font-mono text-gray-500 font-bold text-xs">
-                                    #{rank}
-                                  </span>
-                                )}
-                              </td>
+                              ×
+                            </button>
+                          )}
+                        </div>
+                      </div>
 
-                              {/* Jogador */}
-                              <td className="px-4 py-3">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-9 h-9 rounded-xl bg-black border border-white/10 overflow-hidden flex-shrink-0 group-hover:border-yellow-500/50 transition-colors">
-                                    {p.playerImg ? (
-                                      <img src={p.playerImg} alt={p.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                                    ) : (
-                                      <div className="w-full h-full flex items-center justify-center text-gray-600 bg-black font-black text-xs">
-                                        {p.name.substring(0, 2).toUpperCase()}
-                                      </div>
-                                    )}
-                                  </div>
-                                  <div className="min-w-0">
-                                    <span className="text-xs font-black text-white uppercase italic truncate block group-hover:text-yellow-400 transition-colors">
-                                      {p.name}
-                                    </span>
-                                    <span className="text-[9px] text-gray-500 font-bold uppercase truncate block">
-                                      {p.team}
-                                    </span>
-                                  </div>
-                                </div>
-                              </td>
+                      {/* TABELA COMPLETA (TOP 10 ou RANKING GERAL) */}
+                      <div className="bg-[#161619] rounded-3xl border border-white/5 overflow-hidden shadow-2xl">
+                        <div className="bg-black/40 px-6 py-4 border-b border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            {rankingScope === 'top10' ? (
+                              <Trophy size={16} className="text-yellow-500" />
+                            ) : (
+                              <Globe size={16} className="text-yellow-500" />
+                            )}
+                            <span className="text-xs font-black text-white uppercase tracking-wider">
+                              {rankingScope === 'top10' ? 'Tabela do Top 10' : 'Ranking Geral Completo'} • {currentSelectedMetric.label} {roleFilter !== 'all' && `(${roleFilter})`}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-mono text-gray-400">
+                              {displayedPlayers.length} atletas exibidos
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-gray-500 font-bold uppercase">
+                            Clique no atleta para abrir seu Perfil Individual
+                          </span>
+                        </div>
 
-                              {/* Equipe */}
-                              <td className="px-4 py-3">
-                                <div className="flex items-center gap-2">
-                                  {p.teamImg && (
-                                    <img src={p.teamImg} alt={p.team} className="w-4 h-4 object-contain" referrerPolicy="no-referrer" />
-                                  )}
-                                  <span className="text-[11px] font-bold text-gray-300 uppercase truncate max-w-[120px]">
-                                    {p.team}
-                                  </span>
-                                </div>
-                              </td>
+                        <div className="overflow-x-auto custom-scrollbar">
+                          <table className="w-full text-left border-separate border-spacing-y-1 p-3">
+                            <thead>
+                              <tr className="text-[9px] font-black text-gray-400 uppercase tracking-widest select-none bg-black/20">
+                                <th className="px-4 py-3 text-center rounded-l-xl w-16"># Pos</th>
+                                <th className="px-4 py-3">Jogador</th>
+                                <th className="px-4 py-3">Equipe</th>
+                                <th className="px-3 py-3 text-center">Função</th>
+                                <th className="px-4 py-3 text-right">Resultado</th>
+                                <th className="px-4 py-3 text-center">Partidas</th>
+                                <th className="px-4 py-3 text-center">Média/Q</th>
+                                <th className="px-4 py-3 text-center rounded-r-xl w-24">Ação</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {displayedPlayers.length === 0 ? (
+                                <tr>
+                                  <td colSpan={8} className="text-center py-8 text-xs text-gray-500 font-bold">
+                                    Nenhum atleta encontrado para a busca "{playerTableSearch}".
+                                  </td>
+                                </tr>
+                              ) : (
+                                displayedPlayers.map((p, idx) => {
+                                  const originalRank = allRanked.findIndex(item => item.name === p.name) + 1;
+                                  const rank = rankingScope === 'top10' ? idx + 1 : (playerTableSearch ? originalRank : idx + 1);
+                                  const val = currentSelectedMetric.getValue(p);
+                                  const pctOfLeader = leaderVal > 0 ? (val / leaderVal) * 100 : 0;
 
-                              {/* Função */}
-                              <td className="px-3 py-3 text-center">
-                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${getRoleBadgeStyle(p.funcao)}`}>
-                                  {p.funcao || 'N/A'}
-                                </span>
-                              </td>
+                                  return (
+                                    <tr
+                                      key={`${currentSelectedMetric.id}-${p.name}-${idx}`}
+                                      onClick={() => onSelectPlayer(p.name)}
+                                      className="bg-black/30 hover:bg-white/10 transition-all cursor-pointer group rounded-xl border border-transparent hover:border-yellow-500/30"
+                                    >
+                                      {/* Rank */}
+                                      <td className="px-4 py-3 text-center rounded-l-xl">
+                                        {rank === 1 ? (
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-yellow-500/20 text-yellow-400 border border-yellow-500/50 font-black text-xs shadow-sm">
+                                            <Crown size={12} /> #1
+                                          </span>
+                                        ) : rank === 2 ? (
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-400/20 text-slate-200 border border-slate-400/40 font-black text-xs">
+                                            #2
+                                          </span>
+                                        ) : rank === 3 ? (
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-700/20 text-amber-400 border border-amber-600/40 font-black text-xs">
+                                            #3
+                                          </span>
+                                        ) : (
+                                          <span className="font-mono text-gray-500 font-bold text-xs">
+                                            #{rank}
+                                          </span>
+                                        )}
+                                      </td>
 
-                              {/* Valor Formatado + Barra Proporcional */}
-                              <td className="px-4 py-3 text-right">
-                                <div className="flex flex-col items-end">
-                                  <span className={`text-sm font-black italic ${currentSelectedMetric.color}`}>
-                                    {currentSelectedMetric.formatValue(p)}
-                                  </span>
-                                  <div className="w-24 h-1 rounded-full bg-black/60 overflow-hidden mt-1">
-                                    <div 
-                                      className={`h-full rounded-full ${currentSelectedMetric.barColor}`} 
-                                      style={{ width: `${Math.min(100, Math.max(5, pctOfLeader))}%` }}
-                                    />
-                                  </div>
-                                </div>
-                              </td>
+                                      {/* Jogador */}
+                                      <td className="px-4 py-3">
+                                        <div className="flex items-center gap-3">
+                                          <div className="w-9 h-9 rounded-xl bg-black border border-white/10 overflow-hidden flex-shrink-0 group-hover:border-yellow-500/50 transition-colors">
+                                            {p.playerImg ? (
+                                              <img src={p.playerImg} alt={p.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                            ) : (
+                                              <div className="w-full h-full flex items-center justify-center text-gray-600 bg-black font-black text-xs">
+                                                {p.name.substring(0, 2).toUpperCase()}
+                                              </div>
+                                            )}
+                                          </div>
+                                          <div className="min-w-0">
+                                            <span className="text-xs font-black text-white uppercase italic truncate block group-hover:text-yellow-400 transition-colors">
+                                              {p.name}
+                                            </span>
+                                            <span className="text-[9px] text-gray-500 font-bold uppercase truncate block">
+                                              {p.team}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </td>
 
-                              {/* Partidas */}
-                              <td className="px-4 py-3 text-center font-mono text-xs text-gray-400">
-                                {p.matches}
-                              </td>
+                                      {/* Equipe */}
+                                      <td className="px-4 py-3">
+                                        <div className="flex items-center gap-2">
+                                          {p.teamImg && (
+                                            <img src={p.teamImg} alt={p.team} className="w-4 h-4 object-contain" referrerPolicy="no-referrer" />
+                                          )}
+                                          <span className="text-[11px] font-bold text-gray-300 uppercase truncate max-w-[120px]">
+                                            {p.team}
+                                          </span>
+                                        </div>
+                                      </td>
 
-                              {/* Média */}
-                              <td className="px-4 py-3 text-center text-xs font-black italic text-yellow-500">
-                                {p.avg}
-                              </td>
+                                      {/* Função */}
+                                      <td className="px-3 py-3 text-center">
+                                        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${getRoleBadgeStyle(p.funcao)}`}>
+                                          {p.funcao || 'N/A'}
+                                        </span>
+                                      </td>
 
-                              {/* Ação */}
-                              <td className="px-4 py-3 text-center rounded-r-xl">
-                                <span className="inline-flex items-center gap-1 text-[10px] font-black text-gray-400 group-hover:text-yellow-400 uppercase tracking-wider transition-colors">
-                                  Perfil <ExternalLink size={10} />
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                                      {/* Valor Formatado + Barra Proporcional */}
+                                      <td className="px-4 py-3 text-right">
+                                        <div className="flex flex-col items-end">
+                                          <span className={`text-sm font-black italic ${currentSelectedMetric.color}`}>
+                                            {currentSelectedMetric.formatValue(p)}
+                                          </span>
+                                          <div className="w-24 h-1 rounded-full bg-black/60 overflow-hidden mt-1">
+                                            <div 
+                                              className={`h-full rounded-full ${currentSelectedMetric.barColor}`} 
+                                              style={{ width: `${Math.min(100, Math.max(5, pctOfLeader))}%` }}
+                                            />
+                                          </div>
+                                        </div>
+                                      </td>
+
+                                      {/* Partidas */}
+                                      <td className="px-4 py-3 text-center font-mono text-xs text-gray-400">
+                                        {p.matches}
+                                      </td>
+
+                                      {/* Média */}
+                                      <td className="px-4 py-3 text-center text-xs font-black italic text-yellow-500">
+                                        {p.avg}
+                                      </td>
+
+                                      {/* Ação */}
+                                      <td className="px-4 py-3 text-center rounded-r-xl">
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-black text-gray-400 group-hover:text-yellow-400 uppercase tracking-wider transition-colors">
+                                          Perfil <ExternalLink size={10} />
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  );
+                                })
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })()}
@@ -1283,6 +1556,7 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
         /* MODO 2: MOSAICO GERAL DE TODAS AS ESTATÍSTICAS DO RANKING */
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 animate-in fade-in duration-500">
           {filteredMetrics.map(metric => {
+            const summary = getMetricSummary(metric);
             const top10 = getTop10(metric);
             const MetricIcon = metric.icon;
 
@@ -1309,13 +1583,29 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
                     </div>
 
                     <button
-                      onClick={() => setSelectedMetricId(metric.id)}
+                      onClick={() => {
+                        setSelectedMetricId(metric.id);
+                        setRankingScope('general');
+                      }}
                       className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-yellow-500 hover:text-black text-gray-400 text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1 flex-shrink-0"
-                      title={`Focar e ver detalhes do Top 10 em ${metric.label}`}
+                      title={`Ver Geral completo de ${metric.label}`}
                     >
-                      <span>Focar</span>
+                      <span>Ver Geral</span>
                       <ArrowUpRight size={11} />
                     </button>
+                  </div>
+
+                  {/* Resumo Geral da Métrica (Total & Média da Liga) */}
+                  <div className="px-4 py-2 bg-black/25 border-b border-white/5 flex items-center justify-between text-[10px]">
+                    <div className="flex items-center gap-1.5 text-gray-400">
+                      <Globe size={11} className="text-yellow-500" />
+                      <span className="font-bold uppercase text-[9px]">Geral:</span>
+                      <span className="text-white font-mono font-bold">{summary.total} {metric.unit}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-gray-400">
+                      <span className="font-bold uppercase text-[9px]">Média/Atleta:</span>
+                      <span className="text-yellow-400 font-mono font-bold">{summary.avg}</span>
+                    </div>
                   </div>
 
                   {/* Lista Top 10 */}
@@ -1384,14 +1674,27 @@ export const TopStatsAnalysis: React.FC<TopStatsAnalysisProps> = ({
                   </div>
                 </div>
 
-                {/* Rodapé com Ação Rápida */}
-                <div className="p-3 bg-black/40 border-t border-white/5">
+                {/* Rodapé com Ações: Top 10 e Ver Geral */}
+                <div className="p-3 bg-black/40 border-t border-white/5 grid grid-cols-2 gap-2">
                   <button
-                    onClick={() => setSelectedMetricId(metric.id)}
-                    className="w-full py-2 rounded-xl bg-white/5 hover:bg-yellow-500 hover:text-black text-gray-300 font-black text-[11px] uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 group/btn"
+                    onClick={() => {
+                      setSelectedMetricId(metric.id);
+                      setRankingScope('top10');
+                    }}
+                    className="py-2 px-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white font-black text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-1"
                   >
-                    <span>Explorar Top 10 Detalhado</span>
-                    <ChevronRight size={13} className="group-hover/btn:translate-x-0.5 transition-transform" />
+                    <Trophy size={11} className="text-yellow-500" />
+                    <span>Top 10</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSelectedMetricId(metric.id);
+                      setRankingScope('general');
+                    }}
+                    className="py-2 px-2 rounded-xl bg-yellow-500 hover:bg-yellow-400 text-black font-black text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-1 shadow-md shadow-yellow-500/20"
+                  >
+                    <Globe size={11} />
+                    <span>Ver Geral ({filteredRankingDataByRole.length})</span>
                   </button>
                 </div>
               </div>

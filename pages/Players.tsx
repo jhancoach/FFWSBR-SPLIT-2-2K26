@@ -15,6 +15,7 @@ import TopStatsAnalysis from '../components/TopStatsAnalysis';
 import PlayerHsHighlightCard from '../components/PlayerHsHighlightCard';
 import PlayerHsEvolutionChart from '../components/PlayerHsEvolutionChart';
 import PlayerRadarChart from '../components/PlayerRadarChart';
+import PerformanceEvolutionChart from '../components/PerformanceEvolutionChart';
 import { Camera } from 'lucide-react';
 import { findTeamLogo } from '../utils/teamUtils';
 import { findDimImg } from '../utils/skillImages';
@@ -2339,6 +2340,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
       <div className="flex flex-wrap gap-2 border-b border-gray-700 pb-2 no-print">
         {[
             { id: "ranking", label: "Ranking Geral", icon: <Trophy size={18} /> },
+            { id: "evolution", label: "Evolução Performance", icon: <TrendingUp size={18} /> },
             { id: "momentum", label: "Termômetro", icon: <Flame size={18} /> },
             { id: "kpmSafes", label: "KPM por Safe", icon: <Flame size={18} /> },
             { id: "mapKings", label: "Reis do Mapa", icon: <Crown size={18} /> },
@@ -2431,6 +2433,14 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
       )}
 
       <div className="min-h-[600px]">
+          {activeTab === 'evolution' && (
+            <PerformanceEvolutionChart 
+              data={data}
+              initialMode="players"
+              initialMetric="kills"
+            />
+          )}
+
           {activeTab === 'momentum' && (
             <PlayerMomentum 
               data={data} 
@@ -4499,6 +4509,8 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                         <PlayerHsHighlightCard 
                           data={data}
                           onHide={() => setShowHsHighlightCard(false)}
+                          isChartVisible={showHsEvolutionChart}
+                          onToggleChart={() => setShowHsEvolutionChart(prev => !prev)}
                           onSelectPlayerForChart={(pName) => {
                             setSelectedHsPlayer(pName);
                             setShowHsEvolutionChart(true);
@@ -4522,6 +4534,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                             data={data}
                             selectedPlayer={selectedHsPlayer}
                             onSelectPlayer={(pName) => setSelectedHsPlayer(pName)}
+                            onClose={() => setShowHsEvolutionChart(false)}
                             onViewProfile={(pName) => {
                               setFilters(prev => ({ ...prev, players: [pName] }));
                               setActiveTab('report');

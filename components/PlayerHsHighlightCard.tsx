@@ -11,7 +11,8 @@ import {
   Activity,
   ArrowUpRight,
   LineChart as LineChartIcon,
-  EyeOff
+  EyeOff,
+  Eye
 } from 'lucide-react';
 import { DashboardData } from '../types';
 import { findTeamLogo } from '../utils/teamUtils';
@@ -22,6 +23,8 @@ interface PlayerHsHighlightCardProps {
   onSelectPlayerForChart: (playerName: string) => void;
   onViewPlayerProfile: (playerName: string) => void;
   onHide?: () => void;
+  isChartVisible?: boolean;
+  onToggleChart?: () => void;
   className?: string;
 }
 
@@ -59,6 +62,8 @@ export const PlayerHsHighlightCard: React.FC<PlayerHsHighlightCardProps> = ({
   onSelectPlayerForChart,
   onViewPlayerProfile,
   onHide,
+  isChartVisible = true,
+  onToggleChart,
   className = ''
 }) => {
   // 1. Identificar todas as rodadas disponíveis em ordem cronológica
@@ -377,13 +382,25 @@ export const PlayerHsHighlightCard: React.FC<PlayerHsHighlightCardProps> = ({
 
         {/* Action CTAs (Cols 9-12) */}
         <div className="lg:col-span-3 flex flex-col justify-center gap-2.5">
-          <button
-            onClick={() => onSelectPlayerForChart(topPlayer.name)}
-            className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 text-black font-black uppercase text-xs tracking-wider shadow-lg shadow-amber-500/20 hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-          >
-            <LineChartIcon size={15} />
-            <span>Ver Gráfico de Evolução</span>
-          </button>
+          <div className="flex items-center gap-1.5 w-full">
+            <button
+              onClick={() => onSelectPlayerForChart(topPlayer.name)}
+              className="flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 text-black font-black uppercase text-xs tracking-wider shadow-lg shadow-amber-500/20 hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              title="Focar este jogador no gráfico de evolução"
+            >
+              <LineChartIcon size={15} />
+              <span>Ver Gráfico</span>
+            </button>
+            {onToggleChart && (
+              <button
+                onClick={onToggleChart}
+                className="py-2.5 px-3 rounded-xl bg-black/40 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10 text-xs font-bold uppercase transition-all flex items-center justify-center"
+                title={isChartVisible ? 'Ocultar Gráfico de Evolução' : 'Exibir Gráfico de Evolução'}
+              >
+                {isChartVisible ? <EyeOff size={15} className="text-red-400" /> : <Eye size={15} className="text-amber-400" />}
+              </button>
+            )}
+          </div>
 
           <button
             onClick={() => onViewPlayerProfile(topPlayer.name)}

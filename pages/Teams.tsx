@@ -89,6 +89,7 @@ import { TeamKpmAnalysis } from "../components/TeamKpmAnalysis";
 import { TeamVsTeamSafeKillsCompare } from "../components/TeamVsTeamSafeKillsCompare";
 import { TeamVsTeamMapCompare } from "../components/TeamVsTeamMapCompare";
 import { TeamPointsEvolutionChart } from "../components/TeamPointsEvolutionChart";
+import { PerformanceEvolutionChart } from "../components/PerformanceEvolutionChart";
 interface TeamsProps {
 data: DashboardData;
 }
@@ -293,6 +294,9 @@ positions: show,
 drops: show,
 });
 };
+const [teamEvolutionSubTab, setTeamEvolutionSubTab] = useState<
+  "performance" | "points"
+>("performance");
 const [matrixViewMode, setMatrixViewMode] = useState<
 "both" | "points" | "kills"
 >("both");
@@ -8347,7 +8351,38 @@ direction: "desc",
 ) : activeTab === "momentum" ? (
 <TeamMomentum data={data} />
 ) : activeTab === "evolution" ? (
-<TeamPointsEvolutionChart data={data} />
+<div className="space-y-6 animate-in fade-in duration-300">
+  <div className="flex items-center gap-2 p-1.5 bg-black/40 rounded-2xl border border-white/10 w-fit">
+    <button
+      onClick={() => setTeamEvolutionSubTab('performance')}
+      className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
+        teamEvolutionSubTab === 'performance'
+          ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20'
+          : 'text-gray-400 hover:text-white hover:bg-white/5'
+      }`}
+    >
+      <TrendingUp size={14} />
+      <span>Performance (Kills & Win Rate)</span>
+    </button>
+    <button
+      onClick={() => setTeamEvolutionSubTab('points')}
+      className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
+        teamEvolutionSubTab === 'points'
+          ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20'
+          : 'text-gray-400 hover:text-white hover:bg-white/5'
+      }`}
+    >
+      <Trophy size={14} className={teamEvolutionSubTab === 'points' ? 'text-black' : 'text-yellow-500'} />
+      <span>Pontos da Tabela</span>
+    </button>
+  </div>
+
+  {teamEvolutionSubTab === 'performance' ? (
+    <PerformanceEvolutionChart data={data} initialMode="teams" initialMetric="kills" />
+  ) : (
+    <TeamPointsEvolutionChart data={data} />
+  )}
+</div>
 ) : activeTab === "mapStats" ? (
 <div className="space-y-8 animate-in fade-in duration-300">
 {/* Header Banner */}
