@@ -11,6 +11,7 @@ import InstagramPostModal from '../components/InstagramPostModal';
 import { PlayerVsTeamCompare } from '../components/PlayerVsTeamCompare';
 import { PlayerVsPlayerCompare } from '../components/PlayerVsPlayerCompare';
 import PlayerKpmAnalysis from '../components/PlayerKpmAnalysis';
+import TopStatsAnalysis from '../components/TopStatsAnalysis';
 import { Camera } from 'lucide-react';
 import { findTeamLogo } from '../utils/teamUtils';
 import { findDimImg } from '../utils/skillImages';
@@ -379,6 +380,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             avg: stat.matches > 0 ? (stat.kills / stat.matches).toFixed(2) : '0.00',
             avgDmg: stat.matches > 0 ? (stat.damage / stat.matches).toFixed(0) : '0',
             avgKnocks: stat.matches > 0 ? (stat.knocks / stat.matches).toFixed(2) : '0.00',
+            avgHs: stat.matches > 0 ? (stat.hs / stat.matches).toFixed(2) : '0.00',
             killContributionPct,
             teamTotalKills,
             teamTotalDamage,
@@ -481,6 +483,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             damage: stats?.damage || 0,
             avgDmg: stats?.avgDmg || '0',
             hs: stats?.hs || 0,
+            avgHs: stats?.avgHs || '0.00',
             knocks: stats?.knocks || 0,
             avgKnocks: stats?.avgKnocks || '0.00',
             matches: stats?.matches || 0,
@@ -562,6 +565,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
         bestKPM: getTopMetric(allRolePlayers, 'kpm', true),
         bestAssists: getTopMetric(allRolePlayers, 'assists'),
         bestHS: getTopMetric(allRolePlayers, 'hs'),
+        bestAvgHS: getTopMetric(allRolePlayers, 'avgHs', true),
         bestKnocks: getTopMetric(allRolePlayers, 'knocks'),
         bestAvgKnocks: getTopMetric(allRolePlayers, 'avgKnocks', true),
         bestGelos: getTopMetric(allRolePlayers, 'gelos'),
@@ -588,6 +592,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             bestKPM: getTopMetric(rolePlayers, 'kpm', true),
             bestAssists: getTopMetric(rolePlayers, 'assists'),
             bestHS: getTopMetric(rolePlayers, 'hs'),
+            bestAvgHS: getTopMetric(rolePlayers, 'avgHs', true),
             bestKnocks: getTopMetric(rolePlayers, 'knocks'),
             bestAvgKnocks: getTopMetric(rolePlayers, 'avgKnocks', true),
             bestGelos: getTopMetric(rolePlayers, 'gelos'),
@@ -2396,6 +2401,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
               { abbrev: 'AVG D', desc: 'Média de Dano', detail: 'Média de dano causado por queda (partida) jogada.' },
               { abbrev: 'AST', desc: 'Assistências', detail: 'Quantidade de assistências em abates realizadas.' },
               { abbrev: 'HS', desc: 'Headshots', detail: 'Quantidade total de abates com tiro na cabeça.' },
+              { abbrev: 'AVG HS', desc: 'Média de Headshots', detail: 'Média de headshots por queda jogada (HS dividida por partidas jogadas).' },
               { abbrev: 'KNK', desc: 'Deitados (Knockdowns)', detail: 'Quantidade de oponentes derrubados pelo jogador.' },
               { abbrev: 'AVG KNK', desc: 'Média de Deitados', detail: 'Média de oponentes derrubados por queda jogada.' },
               { abbrev: 'PJ', desc: 'Partidas Jogadas', detail: 'Quantidade total de quedas (salas) que o jogador disputou.' },
@@ -3436,6 +3442,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                                   { label: 'MVP', field: 'mvp', icon: AwardIcon => <Crown size={12} /> },
                                   { label: 'Assistências', field: 'assists', icon: Users },
                                   { label: 'Headshots', field: 'hs', icon: Crosshair },
+                                  { label: 'Média HS', field: 'avgHs', icon: Crosshair },
                                   { label: 'Gelos', field: 'gelos', icon: Shield },
                                   { label: 'Revives', field: 'reviveu', icon: Activity },
                                   { label: 'Saldo (Diff)', field: 'diff', icon: Scale },
@@ -3557,7 +3564,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                               </div>
 
                               {/* Destaques da Função (Cards Clicáveis para Ordenar) */}
-                              <div className="bg-black/30 p-5 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-11 gap-2.5 border-b border-white/5">
+                              <div className="bg-black/30 p-5 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-12 gap-2.5 border-b border-white/5">
                                   {[
                                       { label: 'Top Kills', field: 'kills', best: group.bestKills, val: group.bestKills?.kills, color: 'text-red-500', icon: Skull },
                                       { label: 'Top Dano', field: 'damage', best: group.bestDamage, val: group.bestDamage?.damage?.toLocaleString(), color: 'text-orange-400', icon: Flame },
@@ -3566,6 +3573,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                                       { label: 'Top Knocks', field: 'knocks', best: group.bestKnocks, val: group.bestKnocks?.knocks, color: 'text-amber-500', icon: Zap },
                                       { label: 'Top Assists', field: 'assists', best: group.bestAssists, val: group.bestAssists?.assists, color: 'text-blue-400', icon: Users },
                                       { label: 'Top HS', field: 'hs', best: group.bestHS, val: group.bestHS?.hs, color: 'text-purple-400', icon: Crosshair },
+                                      { label: 'Top AVG HS', field: 'avgHs', best: group.bestAvgHS, val: group.bestAvgHS?.avgHs, color: 'text-purple-300', icon: Crosshair },
                                       { label: 'Top MVP', field: 'mvp', best: group.bestMVP, val: group.bestMVP?.mvp, color: 'text-yellow-500', icon: Crown },
                                       { label: 'Top Gelos', field: 'gelos', best: group.bestGelos, val: group.bestGelos?.gelos, color: 'text-cyan-400', icon: Shield },
                                       { label: 'Top Revives', field: 'reviveu', best: group.bestReviveu, val: group.bestReviveu?.reviveu, color: 'text-emerald-400', icon: Activity },
@@ -3790,6 +3798,20 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                                                       <div className="flex items-center justify-center gap-1">
                                                           <span>HS</span>
                                                           {roleSort.field === 'hs' && (roleSort.direction === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)}
+                                                      </div>
+                                                  </th>
+
+                                                  {/* Média Headshots (AVG HS) */}
+                                                  <th
+                                                      className={`px-2 py-3 text-center cursor-pointer transition-colors ${
+                                                          roleSort.field === 'avgHs' ? 'text-yellow-400 bg-yellow-500/10 rounded-md font-black' : 'text-purple-400/90 hover:text-purple-300'
+                                                      }`}
+                                                      onClick={() => handleRoleSort('avgHs')}
+                                                      title="Clique para ordenar por Média de Headshots (HS dividida por partidas jogadas)"
+                                                  >
+                                                      <div className="flex items-center justify-center gap-1">
+                                                          <span>AVG HS</span>
+                                                          {roleSort.field === 'avgHs' && (roleSort.direction === 'desc' ? <ChevronDown size={10} /> : <ChevronUp size={10} />)}
                                                       </div>
                                                   </th>
 
@@ -4086,6 +4108,13 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                                                               {p.hs}
                                                           </td>
 
+                                                          {/* Média Headshots (AVG HS) */}
+                                                          <td className={`px-2 py-2.5 text-center text-[10px] font-black italic ${
+                                                              roleSort.field === 'avgHs' ? 'text-yellow-300 bg-yellow-500/15 font-black' : 'text-purple-400 bg-purple-500/5'
+                                                          }`}>
+                                                              {p.avgHs}
+                                                          </td>
+
                                                           {/* Knocks (KNK) */}
                                                           <td className={`px-2 py-2.5 text-center text-[10px] font-black ${
                                                               roleSort.field === 'knocks' ? 'text-yellow-300 bg-yellow-500/10 font-black' : 'text-orange-400'
@@ -4239,83 +4268,14 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
           )}
 
           {activeTab === 'stats' && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                  {/* Top Dano */}
-                  <div className="bg-[#1a1a1a] rounded-2xl border border-gray-800 p-6 shadow-xl">
-                      <div className="flex items-center gap-3 mb-6">
-                          <div className="p-2 bg-red-500/10 rounded-lg"><Flame className="text-red-500" size={20} /></div>
-                          <h3 className="text-xs font-black text-white uppercase tracking-widest italic">Top Dano Total</h3>
-                      </div>
-                      <div className="space-y-3">
-                          {[...allRankingData].sort((a,b) => b.damage - a.damage).slice(0, 10).map((p, i) => (
-                              <div key={p.name} className="flex items-center justify-between p-3 bg-black/40 rounded-xl border border-white/5 hover:border-red-500/30 transition-all group">
-                                  <div className="flex items-center gap-3">
-                                      <span className="text-[10px] font-black text-gray-600 w-4">#{i+1}</span>
-                                      <span className="text-[11px] font-black text-white uppercase italic group-hover:text-red-500 transition-colors">{p.name}</span>
-                                  </div>
-                                  <span className="text-xs font-black text-red-500 italic">{p.damage.toLocaleString()}</span>
-                              </div>
-                          ))}
-                      </div>
-                  </div>
-
-                  {/* Top HS */}
-                  <div className="bg-[#1a1a1a] rounded-2xl border border-gray-800 p-6 shadow-xl">
-                      <div className="flex items-center gap-3 mb-6">
-                          <div className="p-2 bg-yellow-500/10 rounded-lg"><Target className="text-yellow-500" size={20} /></div>
-                          <h3 className="text-xs font-black text-white uppercase tracking-widest italic">Top Headshots</h3>
-                      </div>
-                      <div className="space-y-3">
-                          {[...allRankingData].sort((a,b) => b.hs - a.hs).slice(0, 10).map((p, i) => (
-                              <div key={p.name} className="flex items-center justify-between p-3 bg-black/40 rounded-xl border border-white/5 hover:border-yellow-500/30 transition-all group">
-                                  <div className="flex items-center gap-3">
-                                      <span className="text-[10px] font-black text-gray-600 w-4">#{i+1}</span>
-                                      <span className="text-[11px] font-black text-white uppercase italic group-hover:text-yellow-500 transition-colors">{p.name}</span>
-                                  </div>
-                                  <span className="text-xs font-black text-yellow-500 italic">{p.hs} HS</span>
-                              </div>
-                          ))}
-                      </div>
-                  </div>
-
-                  {/* Top Média Kills */}
-                  <div className="bg-[#1a1a1a] rounded-2xl border border-gray-800 p-6 shadow-xl">
-                      <div className="flex items-center gap-3 mb-6">
-                          <div className="p-2 bg-blue-500/10 rounded-lg"><Zap className="text-blue-500" size={20} /></div>
-                          <h3 className="text-xs font-black text-white uppercase tracking-widest italic">Top Média de Kills</h3>
-                      </div>
-                      <div className="space-y-3">
-                          {[...allRankingData].sort((a,b) => parseFloat(b.avg) - parseFloat(a.avg)).slice(0, 10).map((p, i) => (
-                              <div key={p.name} className="flex items-center justify-between p-3 bg-black/40 rounded-xl border border-white/5 hover:border-blue-500/30 transition-all group">
-                                  <div className="flex items-center gap-3">
-                                      <span className="text-[10px] font-black text-gray-600 w-4">#{i+1}</span>
-                                      <span className="text-[11px] font-black text-white uppercase italic group-hover:text-blue-500 transition-colors">{p.name}</span>
-                                  </div>
-                                  <span className="text-xs font-black text-blue-500 italic">{p.avg} AVG</span>
-                              </div>
-                          ))}
-                      </div>
-                  </div>
-
-                  {/* Top Safe Kills */}
-                  <div className="bg-[#1a1a1a] rounded-2xl border border-gray-800 p-6 shadow-xl">
-                      <div className="flex items-center gap-3 mb-6">
-                          <div className="p-2 bg-emerald-500/10 rounded-lg"><MapPin className="text-emerald-500" size={20} /></div>
-                          <h3 className="text-xs font-black text-white uppercase tracking-widest italic">Top Abates em Safes</h3>
-                      </div>
-                      <div className="space-y-3">
-                          {[...allRankingData].sort((a,b) => b.totalSafeKills - a.totalSafeKills).slice(0, 10).map((p, i) => (
-                              <div key={p.name} className="flex items-center justify-between p-3 bg-black/40 rounded-xl border border-white/5 hover:border-emerald-500/30 transition-all group">
-                                  <div className="flex items-center gap-3">
-                                      <span className="text-[10px] font-black text-gray-600 w-4">#{i+1}</span>
-                                      <span className="text-[11px] font-black text-white uppercase italic group-hover:text-emerald-500 transition-colors">{p.name}</span>
-                                  </div>
-                                  <span className="text-xs font-black text-emerald-500 italic">{p.totalSafeKills} SAFES</span>
-                              </div>
-                          ))}
-                      </div>
-                  </div>
-              </div>
+            <TopStatsAnalysis
+              rankingData={allRankingData}
+              onSelectPlayer={(p) => {
+                setFilters(prev => ({ ...prev, players: [p] }));
+                setActiveTab('report');
+              }}
+              allSafeNames={allSafeNames}
+            />
           )}
 
           {activeTab === 'mapKings' && (
@@ -4572,6 +4532,12 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                                                 {rankingSort.field === 'hs' && (rankingSort.direction === 'desc' ? <ChevronDown size={8} /> : <ChevronUp size={8} />)}
                                             </div>
                                         </th>
+                                        <th className="px-2 py-4 text-center text-purple-400 border-b border-gray-800 cursor-pointer hover:text-purple-300 transition-colors" onClick={() => handleRankingSort('avgHs')}>
+                                            <div className="flex items-center justify-center gap-1">
+                                                AVG HS
+                                                {rankingSort.field === 'avgHs' && (rankingSort.direction === 'desc' ? <ChevronDown size={8} /> : <ChevronUp size={8} />)}
+                                            </div>
+                                        </th>
                                         <th className="px-2 py-4 text-center border-b border-gray-800 cursor-pointer hover:text-white transition-colors" onClick={() => handleRankingSort('knocks')}>
                                             <div className="flex items-center justify-center gap-1">
                                                 KNK
@@ -4747,6 +4713,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                                             <td className="px-2 py-3 text-center text-yellow-500 font-black italic bg-yellow-500/5">{player.avgDmg}</td>
                                             <td className="px-2 py-3 text-center text-blue-400 font-black">{player.assists}</td>
                                             <td className="px-2 py-3 text-center text-yellow-500 font-mono">{player.hs}</td>
+                                            <td className="px-2 py-3 text-center text-purple-400 font-black italic bg-purple-500/5">{player.avgHs}</td>
                                             <td className="px-2 py-3 text-center text-orange-500 font-black">{player.knocks}</td>
                                             <td className="px-2 py-3 text-center text-yellow-500 font-black italic bg-yellow-500/5">{player.avgKnocks}</td>
                                             <td className="px-2 py-3 text-center text-white font-black">{player.matches}</td>
@@ -5842,6 +5809,9 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                 if (field === 'hs') {
                     return (Number(b.kills) || 0) - (Number(a.kills) || 0);
                 }
+                if (field === 'avgHs') {
+                    return (Number(b.hs) || 0) - (Number(a.hs) || 0);
+                }
                 if (field === 'knocks') {
                     return (Number(b.damage) || 0) - (Number(a.damage) || 0);
                 }
@@ -5884,6 +5854,7 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
             kills: getRanks('kills'),
             damage: getRanks('damage'),
             hs: getRanks('hs'),
+            avgHs: getRanks('avgHs'),
             knocks: getRanks('knocks'),
             assists: getRanks('assists'),
             playerRole: role && role !== 'N/A' ? role : 'Sem Função',
@@ -6756,11 +6727,12 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                         </button>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                         {[
                             { label: "Abates", data: rankings.kills, color: "text-red-400", bg: "bg-red-500/10", border: "border-red-500/20" },
                             { label: "Dano", data: rankings.damage, color: "text-orange-400", bg: "bg-orange-500/10", border: "border-orange-500/20" },
                             { label: "HS", data: rankings.hs, color: "text-yellow-400", bg: "bg-yellow-500/10", border: "border-yellow-500/20" },
+                            { label: "Média HS", data: rankings.avgHs, color: "text-purple-400", bg: "bg-purple-500/10", border: "border-purple-500/20" },
                             { label: "Deitados", data: rankings.knocks, color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/20" },
                             { label: "Assistências", data: rankings.assists, color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20" }
                         ].map(stat => (
