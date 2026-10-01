@@ -9,6 +9,7 @@ import { getRestedTeamsInRound, parseRoundNumber } from '../utils/scheduleData';
 import { RevivalStudies } from '../components/RevivalStudies';
 import { FightStudies } from '../components/FightStudies';
 import { DangerStudies } from '../components/DangerStudies';
+import { WeaponStudiesDashboard } from '../components/WeaponStudiesDashboard';
 import { MAPS_CONFIG, preloadAllMaps } from '../utils/mapPreloader';
 import { FastMapView } from '../components/FastMapView';
 
@@ -73,7 +74,7 @@ interface StudiesProps {
 }
 
 const Studies: React.FC<StudiesProps> = ({ data }) => {
-    const [activeMainTab, setActiveMainTab] = useState<'safe' | 'revives' | 'fights' | 'dangers' | 'mapstream'>('safe');
+    const [activeMainTab, setActiveMainTab] = useState<'safe' | 'revives' | 'fights' | 'dangers' | 'weapons' | 'mapstream'>('safe');
 
     // Safe Studies State
     const [selectedMap, setSelectedMap] = useState(MAPS[0]);
@@ -606,6 +607,17 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
                         Estudos de Dangers
                     </button>
                     <button
+                        onClick={() => setActiveMainTab('weapons')}
+                        className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all ${
+                            activeMainTab === 'weapons'
+                            ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 scale-[1.02]'
+                            : 'text-gray-400 hover:text-white hover:bg-white/5'
+                        }`}
+                    >
+                        <Swords size={16} />
+                        Dashboard de Armas
+                    </button>
+                    <button
                         onClick={() => setActiveMainTab('mapstream')}
                         className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all ${
                             activeMainTab === 'mapstream'
@@ -808,7 +820,12 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
                 />
             )}
 
-            {/* TAB 3: MAPSTREAM */}
+            {/* TAB 5: DASHBOARD DE ARMAS */}
+            {activeMainTab === 'weapons' && (
+                <WeaponStudiesDashboard data={data} />
+            )}
+
+            {/* TAB 6: MAPSTREAM */}
             {activeMainTab === 'mapstream' && (
                 <div className="space-y-6 animate-in fade-in duration-300">
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">

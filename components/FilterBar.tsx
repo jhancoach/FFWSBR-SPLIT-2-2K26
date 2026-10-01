@@ -5,6 +5,7 @@ export interface FilterState {
   team: string[];
   players: string[];
   weapon: string[];
+  weaponCategory?: string[];
   safe: string[];
   map: string[];
   rodada: string[];
@@ -21,6 +22,7 @@ export interface FilterBarProps {
     teams: string[];
     players: string[];
     weapons: string[];
+    weaponCategories?: string[];
     safes: string[];
     maps: string[];
     rounds: string[];
@@ -41,6 +43,7 @@ const FilterBar: React.FC<FilterBarProps> = ({ filters, setFilters, options, def
       team: [],
       players: [],
       weapon: [],
+      weaponCategory: [],
       safe: [],
       map: [],
       rodada: [],
@@ -72,6 +75,7 @@ const FilterBar: React.FC<FilterBarProps> = ({ filters, setFilters, options, def
     rodada: 'Rodada',
     queda: 'Queda',
     weapon: 'Arma',
+    weaponCategory: 'Cat. Arma',
     safe: 'Safe'
   };
 
@@ -178,6 +182,9 @@ const FilterBar: React.FC<FilterBarProps> = ({ filters, setFilters, options, def
           <MultiSelect label="Rodadas (RD)" selected={filters.rodada} options={options.rounds} onChange={(v) => setFilters(p => ({...p, rodada: v}))} />
           <MultiSelect label="Quedas (Q)" selected={filters.queda} options={options.quedas} onChange={(v) => setFilters(p => ({...p, queda: v}))} />
           {options.weapons.length > 0 && <MultiSelect label="Armas" selected={filters.weapon} options={options.weapons} onChange={(v) => setFilters(p => ({...p, weapon: v}))} />}
+          {options.weaponCategories && options.weaponCategories.length > 0 && (
+            <MultiSelect label="Categorias de Arma" selected={filters.weaponCategory || []} options={options.weaponCategories} onChange={(v) => setFilters(p => ({...p, weaponCategory: v}))} />
+          )}
           {options.safes.length > 0 && <MultiSelect label="Safes" selected={filters.safe} options={options.safes} onChange={(v) => setFilters(p => ({...p, safe: v}))} />}
         </div>
       )}

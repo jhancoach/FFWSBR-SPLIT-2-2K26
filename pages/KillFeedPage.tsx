@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { DashboardData } from '../types';
 import { 
-  Crosshair, ShieldAlert, Swords, Disc, List, User, FilterX, Shield, 
+  Crosshair, ShieldAlert, Swords, Disc, List, User, Users, FilterX, Shield, 
   History, Clock, MapPin, Target, Skull, BarChart3, TrendingUp, Zap, 
   Flame, Sparkles, Eye, EyeOff, Maximize2, Minimize2, ChevronDown, 
   ChevronUp, ChevronsUpDown, LayoutGrid
@@ -11,6 +11,7 @@ import FilterBar from '../components/FilterBar';
 import { FullListModal } from '../components/FullListModal';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 import { findTeamLogo } from '../utils/teamUtils';
+import { getWeaponInfo, getCategoryConfig, MASTER_WEAPONS } from '../utils/weaponUtils';
 
 interface KillFeedPageProps {
   data: DashboardData;
@@ -149,8 +150,11 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
 
     return {
       teams: Array.from(new Set(data.players.map(p => p.TIME))).filter(Boolean).sort(),
-      players: Array.from(new Set([...data.killFeed.map(k => k.PLAYER), ...data.killFeed.map(k => k.VITIMA)])).filter(Boolean).sort(),
+      players: Array.from(new Set([...data.killFeed.map(k => k.PLAYER), ...data.killFeed.map(k => k.VITIMA)]))
+        .filter(p => Boolean(p) && p.trim().toUpperCase() !== 'GÁS' && p.trim().toUpperCase() !== 'GAS')
+        .sort(),
       weapons: Array.from(new Set(data.killFeed.map(k => k.ARMA))).filter(Boolean).sort(),
+      weaponCategories: Array.from(new Set((data.weapons || []).map(w => w.TipoArm || w.tipo || w.categoria).filter(Boolean))).sort() as string[],
       safes: Array.from(new Set(data.killFeed.map(k => k.SAFE))).filter(Boolean).sort(),
       maps: Array.from(new Set(data.killFeed.map(k => k.MAPA))).filter(Boolean).sort(),
       rounds,
@@ -181,7 +185,24 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
         if (t.TIME && t.GRUPO) teamGroupMap.set(normalize(t.TIME), normalize(t.GRUPO));
     });
 
-    return data.killFeed.filter(k => {
+    // Normalizar eventos garantindo que mortes pelo GÁS sejam explicitamente tratadas como causas de morte válidas
+    const normalizedFeed = data.killFeed.map(k => {
+      const isGas = (k.ARMA && k.ARMA.toUpperCase().includes('GÁS')) || 
+                    (k.PLAYER && k.PLAYER.toUpperCase().includes('GÁS')) ||
+                    (!k.PLAYER && k.VITIMA);
+      if (isGas) {
+        return {
+          ...k,
+          PLAYER: 'GÁS',
+          ARMA: 'GÁS'
+        };
+      }
+      return k;
+    });
+
+    return normalizedFeed.filter(k => {
+      const isGasDeath = k.ARMA === 'GÁS' || k.PLAYER === 'GÁS';
+
       // Filtro de Fase de Jogo (Early / Mid / Late)
       if (gamePhaseFilter !== 'ALL') {
         const ph = getGamePhase(k.SAFE);
@@ -195,7 +216,29 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
       if (!isRdMatch || !isQMatch) return false;
 
       if (filters.confrontation.length > 0 && !filters.confrontation.some(c => normalize(c) === normalize(k.CONFRONTO))) return false;
-      if (filters.weapon.length > 0 && !filters.weapon.includes(k.ARMA)) return false;
+      
+      // Filtro de Arma / Causa de Morte: GÁS é causa válida
+      if (filters.weapon.length > 0) {
+        if (isGasDeath) {
+          if (!filters.weapon.some(w => w.toUpperCase().includes('GÁS'))) return false;
+        } else if (!filters.weapon.includes(k.ARMA)) {
+          return false;
+        }
+      }
+
+      // Filtro de Categoria de Arma: ABATIDO cobre o GÁS
+      if (filters.weaponCategory && filters.weaponCategory.length > 0) {
+        const wInfo = getWeaponInfo(k.ARMA, data.weapons);
+        if (isGasDeath) {
+          const matchCat = filters.weaponCategory.some(c => 
+            c.toUpperCase() === 'ABATIDO' || c.toUpperCase().includes('GÁS') || c.toUpperCase() === 'AMBIENTE'
+          );
+          if (!matchCat) return false;
+        } else if (!filters.weaponCategory.some(c => c.toLowerCase() === wInfo.tipo.toLowerCase())) {
+          return false;
+        }
+      }
+
       if (filters.safe.length > 0 && !filters.safe.includes(k.SAFE)) return false;
 
       // Filtro de Grupo
@@ -204,8 +247,14 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
           const vTeam = playerToTeamMap.get(normalize(k.VITIMA));
           
           if (tab === 'kills') {
-              const kGroup = kTeam ? teamGroupMap.get(normalize(kTeam)) : null;
-              if (!kGroup || !filters.grupo.some(g => normalize(g) === kGroup)) return false;
+              if (isGasDeath) {
+                  // Morte no gás: a equipe afetada é a vítima
+                  const vGroup = vTeam ? teamGroupMap.get(normalize(vTeam)) : null;
+                  if (!vGroup || !filters.grupo.some(g => normalize(g) === vGroup)) return false;
+              } else {
+                  const kGroup = kTeam ? teamGroupMap.get(normalize(kTeam)) : null;
+                  if (!kGroup || !filters.grupo.some(g => normalize(g) === kGroup)) return false;
+              }
           } else {
               const vGroup = vTeam ? teamGroupMap.get(normalize(vTeam)) : null;
               if (!vGroup || !filters.grupo.some(g => normalize(g) === vGroup)) return false;
@@ -214,7 +263,7 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
 
       // Filtro de Função / Role
       if (filters.funcao && filters.funcao.length > 0) {
-        const targetPlayer = tab === 'deaths' ? k.VITIMA : k.PLAYER;
+        const targetPlayer = (tab === 'deaths' || isGasDeath) ? k.VITIMA : k.PLAYER;
         const pRoles = playerRolesMap.get(normalize(targetPlayer));
         if (!pRoles) return false;
         const hasRole = filters.funcao.some(f => {
@@ -224,23 +273,33 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
         if (!hasRole) return false;
       }
 
-      // Lógica de filtragem direcionada por Aba
+      // Lógica de filtragem direcionada por Equipe
       if (filters.team.length > 0) {
         const kTeam = playerToTeamMap.get(normalize(k.PLAYER));
         const vTeam = playerToTeamMap.get(normalize(k.VITIMA));
         
-        // Se estamos na aba de Letais, o filtro de equipe foca em quem MATOU para ver quem ela matou na lista lateral
         if (tab === 'kills') {
-            if (!kTeam || !filters.team.includes(kTeam)) return false;
+            if (isGasDeath) {
+                // Se a equipe da vítima foi selecionada, a morte pelo gás é incluída nas baixas registradas
+                if (!vTeam || !filters.team.includes(vTeam)) return false;
+            } else {
+                if (!kTeam || !filters.team.includes(kTeam)) return false;
+            }
         } else {
-            // Se estamos na aba de Vítimas, o filtro foca em quem MORREU para ver quem a matou na lista lateral
+            // Se estamos na aba de Vítimas, o filtro foca em quem MORREU
             if (!vTeam || !filters.team.includes(vTeam)) return false;
         }
       }
 
+      // Filtro de Jogadores
       if (filters.players.length > 0) {
           if (tab === 'kills') {
-              if (!filters.players.some(p => normalize(p) === normalize(k.PLAYER))) return false;
+              if (isGasDeath) {
+                  // Se o atleta selecionado foi vítima do gás, manter o evento
+                  if (!filters.players.some(p => normalize(p) === normalize(k.VITIMA))) return false;
+              } else {
+                  if (!filters.players.some(p => normalize(p) === normalize(k.PLAYER))) return false;
+              }
           } else {
               if (!filters.players.some(p => normalize(p) === normalize(k.VITIMA))) return false;
           }
@@ -314,6 +373,9 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
     const victimPlayerCounts: Record<string, number> = {}; 
     const killerTeamCounts: Record<string, number> = {};
     const victimTeamCounts: Record<string, number> = {};
+    const gasVictimPlayerCounts: Record<string, number> = {};
+    const gasVictimTeamCounts: Record<string, number> = {};
+    let totalGasDeaths = 0;
 
     // Segmented by Phase
     const phaseKills: Record<'EARLY' | 'MID' | 'LATE' | 'OTHER', number> = { EARLY: 0, MID: 0, LATE: 0, OTHER: 0 };
@@ -332,8 +394,9 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
             safeCounts[row.SAFE] = (safeCounts[row.SAFE] || 0) + 1;
         }
         
-        // Jogadores
-        if (row.PLAYER && row.PLAYER.trim() !== '') {
+        // Jogadores (GÁS é uma causa ambiental / forma de morte, nunca um jogador)
+        const isGasPlayer = row.PLAYER && (row.PLAYER.trim().toUpperCase() === 'GÁS' || row.PLAYER.trim().toUpperCase() === 'GAS');
+        if (row.PLAYER && row.PLAYER.trim() !== '' && !isGasPlayer) {
             killerPlayerCounts[row.PLAYER] = (killerPlayerCounts[row.PLAYER] || 0) + 1;
             if (ph === 'EARLY' || ph === 'MID' || ph === 'LATE') {
               phaseKillerPlayers[ph][row.PLAYER] = (phaseKillerPlayers[ph][row.PLAYER] || 0) + 1;
@@ -343,12 +406,26 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
             victimPlayerCounts[row.VITIMA] = (victimPlayerCounts[row.VITIMA] || 0) + 1;
         }
 
-        // Equipes (Sempre calculamos ambas para alimentar as listas laterais)
-        const kTeam = playerToTeamMap.get(normalize(row.PLAYER));
-        if (kTeam) {
-          killerTeamCounts[kTeam] = (killerTeamCounts[kTeam] || 0) + 1;
-          if (ph === 'EARLY' || ph === 'MID' || ph === 'LATE') {
-            phaseKillerTeams[ph][kTeam] = (phaseKillerTeams[ph][kTeam] || 0) + 1;
+        // Rastrear Mortes para o Gás
+        const isGasDeath = (row.ARMA && row.ARMA.toUpperCase().includes('GÁS')) || 
+                           (row.PLAYER && row.PLAYER.toUpperCase().includes('GÁS'));
+        if (isGasDeath && row.VITIMA && row.VITIMA.trim() !== '') {
+            totalGasDeaths++;
+            gasVictimPlayerCounts[row.VITIMA] = (gasVictimPlayerCounts[row.VITIMA] || 0) + 1;
+            const vTeam = playerToTeamMap.get(normalize(row.VITIMA));
+            if (vTeam) {
+              gasVictimTeamCounts[vTeam] = (gasVictimTeamCounts[vTeam] || 0) + 1;
+            }
+        }
+
+        // Equipes (Sempre calculamos ambas para alimentar as listas laterais, desconsiderando GÁS)
+        if (!isGasPlayer && row.PLAYER) {
+          const kTeam = playerToTeamMap.get(normalize(row.PLAYER));
+          if (kTeam && kTeam.toUpperCase() !== 'GÁS' && kTeam.toUpperCase() !== 'GAS') {
+            killerTeamCounts[kTeam] = (killerTeamCounts[kTeam] || 0) + 1;
+            if (ph === 'EARLY' || ph === 'MID' || ph === 'LATE') {
+              phaseKillerTeams[ph][kTeam] = (phaseKillerTeams[ph][kTeam] || 0) + 1;
+            }
           }
         }
 
@@ -393,6 +470,9 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
       victimPlayerCounts, 
       killerTeamCounts, 
       victimTeamCounts,
+      gasVictimPlayerCounts,
+      gasVictimTeamCounts,
+      totalGasDeaths,
       phaseBreakdown 
     };
   }, [filteredFeed, playerToTeamMap]);
@@ -523,8 +603,14 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
 
   const getWeaponImg = (name: string) => {
       if (!name) return undefined;
+      const clean = name.trim().toUpperCase();
+      if (clean === 'GÁS' || clean === 'GAS' || clean.includes('GÁS') || clean.includes('GAS')) {
+        return 'https://i.ibb.co/Vgf7RPX/G-S.png';
+      }
       const w = data.weapons.find(w => w.Arma.trim().toLowerCase() === name.trim().toLowerCase());
-      return w?.IMG;
+      if (w?.IMG) return w.IMG;
+      const master = MASTER_WEAPONS.find(m => m.Arma.trim().toLowerCase() === name.trim().toLowerCase());
+      return master?.IMG;
   };
 
   const getSafeImg = (name: string) => {
@@ -562,10 +648,20 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
 
   const weaponList = Object.entries(stats.weaponCounts).map(([name, count]) => ({name, count: count as number}));
   const safeList = Object.entries(stats.safeCounts).map(([name, count]) => ({name, count: count as number}));
-  const killerPlayerList = Object.entries(stats.killerPlayerCounts).map(([name, count]) => ({name, count: count as number}));
+  const killerPlayerList = Object.entries(stats.killerPlayerCounts)
+    .filter(([name]) => name.trim().toUpperCase() !== 'GÁS' && name.trim().toUpperCase() !== 'GAS')
+    .map(([name, count]) => ({name, count: count as number}));
   const victimPlayerList = Object.entries(stats.victimPlayerCounts).map(([name, count]) => ({name, count: count as number}));
-  const killerTeamList = Object.entries(stats.killerTeamCounts).map(([name, count]) => ({name, count: count as number}));
+  const killerTeamList = Object.entries(stats.killerTeamCounts)
+    .filter(([name]) => name.trim().toUpperCase() !== 'GÁS' && name.trim().toUpperCase() !== 'GAS')
+    .map(([name, count]) => ({name, count: count as number}));
   const victimTeamList = Object.entries(stats.victimTeamCounts).map(([name, count]) => ({name, count: count as number}));
+  const gasVictimPlayerList = Object.entries(stats.gasVictimPlayerCounts || {})
+    .map(([name, count]) => ({ name, count: count as number }))
+    .sort((a, b) => b.count - a.count);
+  const gasVictimTeamList = Object.entries(stats.gasVictimTeamCounts || {})
+    .map(([name, count]) => ({ name, count: count as number }))
+    .sort((a, b) => b.count - a.count);
   const totalEvents = filteredFeed.length;
 
   const openFullListModal = (
@@ -624,6 +720,62 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
         </div>
         
         <FilterBar filters={filters} setFilters={setFilters} options={filterOptions} defaultOpen={false} />
+
+        {/* DESTAQUE: JOGADORES QUE MORREM PARA O GÁS */}
+        <div className="bg-gradient-to-r from-emerald-950/40 via-[#121217] to-black/70 rounded-2xl border border-emerald-500/30 p-4 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="w-12 h-12 rounded-xl bg-black/60 border border-emerald-500/30 flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(16,185,129,0.2)] p-1 overflow-hidden">
+              <img src="https://i.ibb.co/Vgf7RPX/G-S.png" alt="GÁS" className="w-full h-full object-contain" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  Zona Tóxica & Gás
+                </span>
+                <span className="text-xs text-gray-400 font-mono font-bold">
+                  {stats.totalGasDeaths} Mortes pelo Gás ({((stats.totalGasDeaths / Math.max(1, totalEvents)) * 100).toFixed(1)}% do total)
+                </span>
+              </div>
+              <h4 className="text-sm font-black uppercase italic tracking-wider text-white mt-0.5">
+                Jogadores que Morrem para o Gás
+              </h4>
+              <p className="text-[11px] text-gray-400 truncate">
+                {gasVictimPlayerList.length > 0 
+                  ? `Atletas mais punidos pelo fechamento da safe: ${gasVictimPlayerList.slice(0, 3).map(p => `${p.name} (${p.count}x)`).join(', ')}`
+                  : 'Nenhuma morte pelo gás registrada com os filtros atuais.'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-stretch sm:self-auto shrink-0 flex-wrap">
+            <button
+              onClick={() => handleToggleFilter('weapon', 'GÁS')}
+              className={`flex-1 sm:flex-none px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 border ${
+                filters.weapon.includes('GÁS')
+                  ? 'bg-emerald-500 text-black border-emerald-400 shadow-lg shadow-emerald-500/20 scale-[1.02]'
+                  : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+              }`}
+            >
+              <span>☣️</span>
+              {filters.weapon.includes('GÁS') ? 'Filtro de Gás Ativo' : 'Filtrar Mortes no Gás'}
+            </button>
+
+            <button
+              onClick={() => openFullListModal(
+                "Jogadores que Mais Morrem para o Gás • Vítimas da Zona Tóxica",
+                gasVictimPlayerList,
+                'player',
+                true,
+                (pName) => handleToggleFilter('players', pName),
+                filters.players
+              )}
+              className="flex-1 sm:flex-none px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white border border-white/10 hover:border-yellow-500/40 text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2"
+            >
+              <Users size={14} className="text-yellow-400" />
+              Ver Todos ({gasVictimPlayerList.length} Atletas)
+            </button>
+          </div>
+        </div>
 
         {/* BARRA DE GESTÃO DE SEÇÕES & VISUALIZAÇÃO COMPLETA */}
         <div className="bg-[#121217] p-3.5 rounded-2xl border border-white/10 shadow-lg flex flex-wrap items-center justify-between gap-3">
@@ -1611,11 +1763,11 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
                 <table className="w-full text-left border-collapse">
                     <thead className="bg-[#050505] text-[10px] text-gray-500 uppercase font-bold tracking-[0.2em]">
                         <tr>
-                            <th className="px-6 py-4">Confronto</th>
-                            <th className="px-6 py-4">Arma Utilizada</th>
+                            <th className="px-6 py-4">Evento de Eliminação / Confronto</th>
+                            <th className="px-6 py-4">Arma / Causa da Morte</th>
                             <th className="px-6 py-4">Zona / Safe</th>
                             <th className="px-6 py-4">Ambiente / Rodada</th>
-                            <th className="px-6 py-4 text-center">Tag</th>
+                            <th className="px-6 py-4 text-center">Status / Tag</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-800/50">
@@ -1626,26 +1778,36 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
                             const victimRole = getPlayerRole(k.VITIMA);
                             const isKillerSelected = killerTeam && filters.team.includes(killerTeam);
                             const isVictimSelected = victimTeam && filters.team.includes(victimTeam);
+                            const isGasDeath = (k.ARMA && k.ARMA.toUpperCase().includes('GÁS')) || 
+                                               (k.PLAYER && k.PLAYER.toUpperCase().includes('GÁS'));
 
                             return (
-                                <tr key={i} className={`hover:bg-white/5 transition-colors group ${isKillerSelected || isVictimSelected ? 'bg-yellow-500/5' : ''}`}>
+                                <tr key={i} className={`hover:bg-white/5 transition-colors group ${isGasDeath ? 'bg-emerald-950/20 border-l-2 border-emerald-500/60' : isKillerSelected || isVictimSelected ? 'bg-yellow-500/5' : ''}`}>
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-4">
                                             <div className="flex flex-col">
                                                 <div className="flex items-center gap-2">
-                                                    <div className="flex items-center gap-1.5">
-                                                        <span className={`text-sm font-black italic uppercase ${isKillerSelected ? 'text-yellow-500 underline' : tab === 'kills' ? 'text-green-500' : 'text-gray-400'}`}>
-                                                            {k.PLAYER}
-                                                        </span>
-                                                        {killerRole && (
-                                                            <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                                                {killerRole}
+                                                    {isGasDeath ? (
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="text-xs font-black uppercase px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1 shadow-sm">
+                                                                <span>☣️</span> GÁS
                                                             </span>
-                                                        )}
-                                                    </div>
-                                                    <Swords size={12} className="text-gray-700" />
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className={`text-sm font-black italic uppercase ${isKillerSelected ? 'text-yellow-500 underline' : tab === 'kills' ? 'text-green-500' : 'text-gray-400'}`}>
+                                                                {k.PLAYER}
+                                                            </span>
+                                                            {killerRole && (
+                                                                <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                                                    {killerRole}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    <Swords size={12} className={isGasDeath ? "text-emerald-500" : "text-gray-700"} />
                                                     <div className="flex items-center gap-1.5">
-                                                        <span className={`text-sm font-black italic uppercase ${isVictimSelected ? 'text-yellow-500 underline' : tab === 'deaths' ? 'text-red-500' : 'text-gray-400'}`}>
+                                                        <span className={`text-sm font-black italic uppercase ${isVictimSelected ? 'text-yellow-500 underline' : isGasDeath ? 'text-red-400' : tab === 'deaths' ? 'text-red-500' : 'text-gray-400'}`}>
                                                             {k.VITIMA}
                                                         </span>
                                                         {victimRole && (
@@ -1656,11 +1818,17 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-2 mt-1">
-                                                    <span className={`text-[9px] font-bold uppercase tracking-widest ${isKillerSelected ? 'text-yellow-500/80' : 'text-gray-600'}`}>
-                                                        {killerTeam || 'N/A'}
-                                                    </span>
+                                                    {isGasDeath ? (
+                                                        <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-400/90 flex items-center gap-1">
+                                                            <span>⚠️</span> Baixa pelo Gás da Safe
+                                                        </span>
+                                                    ) : (
+                                                        <span className={`text-[9px] font-bold uppercase tracking-widest ${isKillerSelected ? 'text-yellow-500/80' : 'text-gray-600'}`}>
+                                                            {killerTeam || 'N/A'}
+                                                        </span>
+                                                    )}
                                                     <span className="text-gray-800">•</span>
-                                                    <span className={`text-[9px] font-bold uppercase tracking-widest ${isVictimSelected ? 'text-yellow-500/80' : 'text-gray-600'}`}>
+                                                    <span className={`text-[9px] font-bold uppercase tracking-widest ${isVictimSelected ? 'text-yellow-500/80' : 'text-gray-400'}`}>
                                                         {victimTeam || 'N/A'}
                                                     </span>
                                                 </div>
@@ -1669,10 +1837,25 @@ const KillFeedPage: React.FC<KillFeedPageProps> = ({ data }) => {
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 bg-black rounded border border-gray-800 p-1 flex items-center justify-center shadow-inner">
-                                                {getWeaponImg(k.ARMA) ? <img src={getWeaponImg(k.ARMA)} alt={k.ARMA} className="w-full h-full object-contain" /> : <Swords size={14} className="opacity-20 text-gray-400" />}
+                                            <div className="w-8 h-8 bg-black rounded border border-gray-800 p-1 flex items-center justify-center shadow-inner overflow-hidden">
+                                                {getWeaponImg(k.ARMA) ? (
+                                                    <img src={getWeaponImg(k.ARMA)} alt={k.ARMA} className="w-full h-full object-contain" />
+                                                ) : isGasDeath ? (
+                                                    <span className="text-base">☣️</span>
+                                                ) : (
+                                                    <Swords size={14} className="opacity-20 text-gray-400" />
+                                                )}
                                             </div>
-                                            <span className="text-[11px] font-black text-white uppercase italic tracking-tighter">{k.ARMA}</span>
+                                            <div className="flex flex-col">
+                                                <span className={`text-[11px] font-black uppercase italic tracking-tighter ${isGasDeath ? 'text-emerald-400' : 'text-white'}`}>
+                                                    {k.ARMA}
+                                                </span>
+                                                {isGasDeath && (
+                                                    <span className="text-[8px] font-mono text-gray-500 uppercase">
+                                                        Ambiente
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">
@@ -2126,6 +2309,19 @@ const StatGrid = ({
                       }`}>
                         {item.name || "N/A"}
                       </span>
+
+                      {type === 'weapon' && (
+                        <div className="mt-1 flex items-center justify-center">
+                          {(() => {
+                            const winfo = getWeaponInfo(item.name);
+                            return (
+                              <span className={`text-[8px] font-black uppercase px-1.5 py-0.2 rounded-full border ${winfo.config.bg} ${winfo.config.border} ${winfo.config.text}`}>
+                                {winfo.tipo}
+                              </span>
+                            );
+                          })()}
+                        </div>
+                      )}
                       
                       <div className="w-full bg-black/60 h-1 mt-1.5 rounded-full overflow-hidden border border-white/5">
                         <div 

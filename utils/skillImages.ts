@@ -1,3 +1,5 @@
+import { MASTER_WEAPONS } from './weaponUtils';
+
 const MORSE_URL = "https://i.ibb.co/vxyycXym/morse.png";
 
 const cleanKey = (s: string) => 
@@ -10,6 +12,14 @@ const SKILL_FALLBACKS: Record<string, string> = {
   'homer': MORSE_URL,
   'morfeu': MORSE_URL,
 };
+
+// Pre-map master weapons for instant lookup
+const WEAPON_FALLBACKS = new Map<string, string>();
+MASTER_WEAPONS.forEach(w => {
+  if (w.IMG && w.IMG.trim() !== '') {
+    WEAPON_FALLBACKS.set(cleanKey(w.Arma), w.IMG.trim());
+  }
+});
 
 // Cache para acelerar buscas repetidas de imagens
 const imgLookupCache = new Map<string, string | undefined>();
@@ -55,6 +65,20 @@ export const findDimImg = (dims: any[] = [], name: string = ''): string | undefi
       for (const key of Object.keys(SKILL_FALLBACKS)) {
         if (target.includes(key) || key.includes(target)) {
           result = SKILL_FALLBACKS[key];
+          break;
+        }
+      }
+    }
+  }
+
+  // 4. Weapon fallback dictionary
+  if (!result) {
+    if (WEAPON_FALLBACKS.has(target)) {
+      result = WEAPON_FALLBACKS.get(target);
+    } else {
+      for (const [wKey, wUrl] of WEAPON_FALLBACKS.entries()) {
+        if (target.includes(wKey) || wKey.includes(target)) {
+          result = wUrl;
           break;
         }
       }

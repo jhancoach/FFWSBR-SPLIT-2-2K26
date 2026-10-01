@@ -3,6 +3,7 @@ import {
   X, Search, Swords, Shield, User, Disc, Skull, 
   ArrowUpDown, Check, Filter, TrendingUp, Sparkles, LayoutGrid, List as ListIcon
 } from 'lucide-react';
+import { getWeaponInfo, getCategoryConfig } from '../utils/weaponUtils';
 
 export interface FullListItem {
   name: string;
@@ -48,10 +49,38 @@ export const FullListModal: React.FC<FullListModalProps> = ({
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<SortOrder>('count-desc');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+
+  // Resumo de categorias de armas presentes na lista
+  const weaponCategoriesSummary = useMemo(() => {
+    if (type !== 'weapon') return [];
+    const catMap = new Map<string, { count: number; volume: number }>();
+    items.forEach(it => {
+      const info = getWeaponInfo(it.name);
+      const prev = catMap.get(info.tipo) || { count: 0, volume: 0 };
+      catMap.set(info.tipo, { count: prev.count + 1, volume: prev.volume + it.count });
+    });
+    return Array.from(catMap.entries())
+      .map(([cat, data]) => ({
+        cat,
+        count: data.count,
+        volume: data.volume,
+        config: getCategoryConfig(cat)
+      }))
+      .sort((a, b) => b.volume - a.volume);
+  }, [items, type]);
 
   // Filtragem e ordenação
   const processedItems = useMemo(() => {
     let result = [...items];
+
+    // Filtro por Categoria de Arma
+    if (type === 'weapon' && selectedCategory !== 'all') {
+      result = result.filter(item => {
+        const info = getWeaponInfo(item.name);
+        return info.tipo.toLowerCase() === selectedCategory.toLowerCase();
+      });
+    }
 
     if (search.trim()) {
       const q = search.trim().toLowerCase();
@@ -59,7 +88,8 @@ export const FullListModal: React.FC<FullListModalProps> = ({
         const nameMatch = item.name.toLowerCase().includes(q);
         const playerTeam = getPlayerTeam ? getPlayerTeam(item.name)?.toLowerCase() : '';
         const role = getRole ? getRole(item.name)?.toLowerCase() : '';
-        return nameMatch || (playerTeam && playerTeam.includes(q)) || (role && role.includes(q));
+        const weaponCat = type === 'weapon' ? getWeaponInfo(item.name).tipo.toLowerCase() : '';
+        return nameMatch || (playerTeam && playerTeam.includes(q)) || (role && role.includes(q)) || (weaponCat && weaponCat.includes(q));
       });
     }
 
@@ -71,7 +101,7 @@ export const FullListModal: React.FC<FullListModalProps> = ({
     });
 
     return result;
-  }, [items, search, sortBy, getPlayerTeam, getRole]);
+  }, [items, search, sortBy, getPlayerTeam, getRole, type, selectedCategory]);
 
   // Estatísticas do conjunto
   const stats = useMemo(() => {
@@ -252,6 +282,44 @@ export const FullListModal: React.FC<FullListModalProps> = ({
           </div>
         </div>
 
+        {/* FILTRO RÁPIDO DE CATEGORIAS DE ARMAS */}
+        {type === 'weapon' && weaponCategoriesSummary.length > 0 && (
+          <div className="px-4 py-2.5 bg-black/50 border-b border-white/5 flex items-center gap-1.5 overflow-x-auto custom-scrollbar">
+            <span className="text-[10px] uppercase font-bold text-gray-400 shrink-0 mr-1 flex items-center gap-1">
+              <Filter size={11} className="text-yellow-400" /> Categoria:
+            </span>
+            <button
+              onClick={() => setSelectedCategory('all')}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase whitespace-nowrap transition-all border ${
+                selectedCategory === 'all'
+                  ? 'bg-yellow-500 text-black border-yellow-400 shadow-md font-bold'
+                  : 'bg-white/5 text-gray-400 hover:text-white border-white/10 hover:bg-white/10'
+              }`}
+            >
+              Todas ({items.length})
+            </button>
+            {weaponCategoriesSummary.map(({ cat, volume, config }) => {
+              const isSelected = selectedCategory.toLowerCase() === cat.toLowerCase();
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(prev => prev.toLowerCase() === cat.toLowerCase() ? 'all' : cat)}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase whitespace-nowrap transition-all border flex items-center gap-1.5 ${
+                    isSelected
+                      ? `${config.bg} ${config.text} ${config.border} ring-1 ring-white/20 shadow-md`
+                      : 'bg-white/5 text-gray-400 hover:text-white border-white/5 hover:border-white/10'
+                  }`}
+                >
+                  <span>{cat}</span>
+                  <span className="text-[8.5px] px-1 py-0.2 rounded bg-black/40 font-mono opacity-80">
+                    {volume}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* CONTEÚDO SCROLLÁVEL: LISTA COMPLETA */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 custom-scrollbar bg-black/30">
           {processedItems.length === 0 ? (
@@ -353,6 +421,20 @@ export const FullListModal: React.FC<FullListModalProps> = ({
                         {item.name}
                       </span>
 
+                      {/* Categoria para Armas */}
+                      {type === 'weapon' && (
+                        <div className="flex items-center justify-center gap-1.5 mt-1">
+                          {(() => {
+                            const winfo = getWeaponInfo(item.name);
+                            return (
+                              <span className={`text-[8.5px] font-black uppercase px-2 py-0.5 rounded-full border ${winfo.config.bg} ${winfo.config.border} ${winfo.config.text} ${winfo.config.glow || ''}`}>
+                                {winfo.tipo}
+                              </span>
+                            );
+                          })()}
+                        </div>
+                      )}
+
                       {/* Metadados para Jogadores (Time e Função) */}
                       {type === 'player' && (
                         <div className="flex items-center justify-center gap-1.5 mt-1">
@@ -409,6 +491,7 @@ export const FullListModal: React.FC<FullListModalProps> = ({
                   <tr>
                     <th className="py-3 px-4 w-12 text-center">Pos</th>
                     <th className="py-3 px-4">Item / Entidade</th>
+                    {type === 'weapon' && <th className="py-3 px-4">Categoria</th>}
                     {type === 'player' && <th className="py-3 px-4">Time & Função</th>}
                     <th className="py-3 px-4 text-right">Volume</th>
                     <th className="py-3 px-4 w-40">% do Total</th>
@@ -457,6 +540,18 @@ export const FullListModal: React.FC<FullListModalProps> = ({
                             </span>
                           </div>
                         </td>
+                        {type === 'weapon' && (
+                          <td className="py-3 px-4">
+                            {(() => {
+                              const winfo = getWeaponInfo(item.name);
+                              return (
+                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border inline-flex items-center gap-1 ${winfo.config.bg} ${winfo.config.border} ${winfo.config.text}`}>
+                                  {winfo.tipo}
+                                </span>
+                              );
+                            })()}
+                          </td>
+                        )}
                         {type === 'player' && (
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-2">

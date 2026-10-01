@@ -4,6 +4,7 @@ import { parseCSV } from '../utils/csvParser';
 import { DashboardData, PlayerData, KillFeed, MatchDetails, CharacterData, TeamStats, TeamReference, WeaponData, SafeData, GenericDimData, AppConfig } from '../types';
 import { findTeamLogo } from '../utils/teamUtils';
 import { calculateMapDurationSec } from '../utils/kpmUtils';
+import { MASTER_WEAPONS } from '../utils/weaponUtils';
 
 export const getActiveUrls = () => {
   try {
@@ -283,17 +284,28 @@ export const fetchDashboardData = async (): Promise<DashboardData> => {
                      (row['Sala'] && String(row['Sala']).trim()) || 
                      (row['S'] && String(row['S']).trim()) || '1';
 
+        const killerRaw = getVal(row, ['PLAYER', 'Player', 'Killer', 'Matador']);
+        const vitimaRaw = getVal(row, ['VITIMA', 'Vitima', 'Victim', 'QUEM MORREU']);
+        const armaRaw = getVal(row, ['ARMA', 'Arma', 'Weapon']);
+        
+        // Tratar mortes pelo gás: quando o killer está vazio e arma é GÁS ou tem vítima
+        const isGasDeath = (armaRaw && armaRaw.toUpperCase().includes('GÁS')) || 
+                           (!killerRaw && vitimaRaw && (!armaRaw || armaRaw.toUpperCase().includes('GÁS')));
+        
+        const finalPlayer = killerRaw || (isGasDeath ? 'GÁS' : '');
+        const finalArma = armaRaw || (isGasDeath ? 'GÁS' : '');
+
         return {
-            PLAYER: getVal(row, ['PLAYER', 'Player', 'Killer', 'Matador']),
-            VITIMA: getVal(row, ['VITIMA', 'Vitima', 'Victim', 'QUEM MORREU']),
-            ARMA: getVal(row, ['ARMA', 'Arma', 'Weapon']),
+            PLAYER: finalPlayer,
+            VITIMA: vitimaRaw,
+            ARMA: finalArma,
             CONFRONTO: getVal(row, ['CONFRONTO', 'Confronto', 'CF', 'CONFRONTO ', 'CONFRONTO_', 'CONFRONTOS', 'Confrontos', 'NOME', 'NAME']),
             MAPA: getVal(row, ['MAPA', 'Mapa', 'Map']),
             RD: getVal(row, ['RD', 'Rd', 'Rodada']),
             Q: qNum,
             SAFE: getVal(row, ['SAFE', 'Safe'])
         };
-    }).filter(k => k.PLAYER && k.PLAYER.trim() !== '');
+    }).filter(k => (k.PLAYER && k.PLAYER.trim() !== '') || (k.VITIMA && k.VITIMA.trim() !== ''));
 
     // Parse Detalhes (Fonte Fato)
     const details: MatchDetails[] = parseCSV<any>(responses[2]).map(row => {
@@ -382,7 +394,69 @@ export const fetchDashboardData = async (): Promise<DashboardData> => {
         GRUPO: getVal(row, ['GRUPO', 'Grupo', 'Group', 'GROUP', 'G'])
       })),
       playersDimension: normalizeDim(parseCSV<any>(responses[5]), 'Player'),
-      weapons: parseCSV<any>(responses[6]).map(r => ({ Arma: getVal(r, ['Arma', 'ARMA']), IMG: getVal(r, ['IMG', 'Img']) })),
+      weapons: (() => {
+        const EXCLUDED_WEAPONS = new Set(['orion', 'homero', 'a124', 'aguia', 'águia']);
+        const IMAGE_OVERRIDES: Record<string, string> = {
+          'ar de escudo': 'https://i.ibb.co/svPgk5Sp/image.png',
+          'balestra': 'https://i.ibb.co/PZHW34YX/image.png',
+          'g18': 'https://i.ibb.co/WwJ9zWP/image.png',
+          'pistola de tratamento': 'https://i.ibb.co/d4q8LjF2/image.png',
+          'usp': 'https://i.ibb.co/2YpZy7HK/image.png',
+          'usp-2': 'https://i.ibb.co/2YpZy7HK/image.png',
+          'm500': 'https://i.ibb.co/gZHwwCwV/image.png',
+          'canhao de mao': 'https://i.ibb.co/6cctYHg9/image.png',
+          'canhão de mão': 'https://i.ibb.co/6cctYHg9/image.png',
+        };
+        const normalizeStr = (s: string) =>
+          s ? s.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim() : "";
+
+        const parsed = parseCSV<any>(responses[6]).map(r => {
+          const arma = getVal(r, ['Arma', 'ARMA', 'arma', 'Nome', 'NOME']);
+          const tipo = getVal(r, ['Tipo Arm', 'TipoArm', 'Tipo', 'TIPO ARM', 'TIPO', 'Categoria', 'CATEGORIA', 'Tipo de Arma']);
+          const rawImg = getVal(r, ['IMG', 'Img', 'img', 'URL', 'Url', 'Imagem']);
+          const clean = normalizeStr(arma);
+          const img = IMAGE_OVERRIDES[clean] || rawImg;
+          return {
+            Arma: arma,
+            TipoArm: tipo,
+            tipo: tipo,
+            categoria: tipo,
+            IMG: img
+          };
+        }).filter(w => w.Arma && !EXCLUDED_WEAPONS.has(normalizeStr(w.Arma)));
+
+        const weaponMap = new Map<string, WeaponData>();
+        // Initialize with MASTER_WEAPONS
+        MASTER_WEAPONS.forEach(mw => {
+          const key = normalizeStr(mw.Arma);
+          if (!EXCLUDED_WEAPONS.has(key)) {
+            weaponMap.set(key, {
+              Arma: mw.Arma,
+              TipoArm: mw.TipoArm,
+              tipo: mw.TipoArm,
+              categoria: mw.TipoArm,
+              IMG: IMAGE_OVERRIDES[key] || mw.IMG
+            });
+          }
+        });
+
+        // Overlay with parsed from CSV (if available)
+        parsed.forEach(pw => {
+          const key = normalizeStr(pw.Arma);
+          if (EXCLUDED_WEAPONS.has(key)) return;
+          const existing = weaponMap.get(key);
+          const overrideImg = IMAGE_OVERRIDES[key];
+          weaponMap.set(key, {
+            Arma: pw.Arma || existing?.Arma || '',
+            TipoArm: pw.TipoArm || existing?.TipoArm || 'OUTROS',
+            tipo: pw.TipoArm || existing?.tipo || 'OUTROS',
+            categoria: pw.categoria || existing?.categoria || 'OUTROS',
+            IMG: overrideImg || ((pw.IMG && pw.IMG.trim() !== '') ? pw.IMG : (existing?.IMG || ''))
+          });
+        });
+
+        return Array.from(weaponMap.values()).filter(w => !EXCLUDED_WEAPONS.has(normalizeStr(w.Arma)));
+      })(),
       safes: parseCSV<any>(responses[7]).map(r => ({ Safe: getVal(r, ['Safe', 'SAFE']), IMG: getVal(r, ['IMG', 'Img']) })),
       hab1: normalizeDim(parseCSV<any>(responses[8]), 'Hab1'),
       hab2: normalizeDim(parseCSV<any>(responses[9]), 'Hab2'),
@@ -399,7 +473,7 @@ export const fetchDashboardData = async (): Promise<DashboardData> => {
     };
   } catch (error) {
     console.error("Erro crítico ao buscar dados:", error);
-    return { players: [], killFeed: [], details: [], characters: [], teamsReference: [], playersDimension: [], victimsDimension: [], weapons: [], safes: [], hab1: [], hab2: [], hab3: [], hab4: [], pets: [], items: [], confrontationsDimension: [], loading: false, lastUpdated: null };
+    return { players: [], killFeed: [], details: [], characters: [], teamsReference: [], playersDimension: [], victimsDimension: [], weapons: MASTER_WEAPONS.map(m => ({ Arma: m.Arma, TipoArm: m.TipoArm, tipo: m.TipoArm, categoria: m.TipoArm, IMG: m.IMG })), safes: [], hab1: [], hab2: [], hab3: [], hab4: [], pets: [], items: [], confrontationsDimension: [], loading: false, lastUpdated: null };
   }
 };
 

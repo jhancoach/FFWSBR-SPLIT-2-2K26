@@ -80,6 +80,9 @@ export interface TeamReference {
 export interface WeaponData {
   Arma: string;
   IMG: string;
+  TipoArm?: string;
+  tipo?: string;
+  categoria?: string;
 }
 
 export interface SafeData {
