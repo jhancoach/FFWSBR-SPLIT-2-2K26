@@ -7,7 +7,7 @@ import { Trophy, Crosshair, Crown, Layers, Star, ChevronRight, Shield, CheckCirc
 import FilterBar from '../components/FilterBar';
 import RulesModal from '../components/RulesModal';
 import MundialProjectionView from '../components/MundialProjectionView';
-import { formatTeamName } from '../utils/teamUtils';
+import { formatTeamName, findTeamLogo } from '../utils/teamUtils';
 
 interface LeaderboardProps {
   data: DashboardData;
@@ -17,7 +17,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
   const navigate = useNavigate();
   const [stats, setStats] = useState<TeamStats[]>([]);
   const [generalTop12, setGeneralTop12] = useState<Set<string>>(new Set());
-  const [phase, setPhase] = useState<'ALL' | 'QUALIFIERS' | 'RUMO_AO_MUNDIAL' | 'FINALS'>('RUMO_AO_MUNDIAL');
+  const [phase, setPhase] = useState<'ALL' | 'QUALIFIERS' | 'RUMO_AO_MUNDIAL' | 'FINALS'>('FINALS');
   const [showColumnMenu, setShowColumnMenu] = useState(false);
   const [showSectionMenu, setShowSectionMenu] = useState(false);
   const [showRulesModal, setShowRulesModal] = useState(false);
@@ -237,6 +237,106 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
       }
 
       // 3. Demais Fases (Classificatórias, Grande Final, Todas)
+      if (phase === 'FINALS') {
+        const finalsDetails = data.details.filter(d => {
+          if (filters.team.length > 0 && !filters.team.some(t => normalize(t) === normalize(d.TIME))) return false;
+          if (filters.map.length > 0 && !filters.map.some(m => normalize(m) === normalize(d.MAPA))) return false;
+          if (filters.rodada.length > 0 && !filters.rodada.some(r => matchRd(r, d.RD))) return false;
+          if (filters.queda.length > 0 && !filters.queda.some(q => matchQ(q, d.Q))) return false;
+          if (filters.confrontation.length > 0 && !filters.confrontation.some(c => normalize(c) === normalize(d.CONFRONTO))) return false;
+
+          const confrontoNorm = normalize(d.CONFRONTO);
+          const rdNorm = normalize(d.RD);
+          const roundNum = parseInt(d.RD.replace(/\D/g, '')) || 0;
+
+          // Grande Final: Baseado estritamente nas Rodadas 21 e 22 da fDetalhes
+          const isFinalText = confrontoNorm.includes('FINAL') || confrontoNorm.includes('CHAMPION') || confrontoNorm.includes('FASE 3') || confrontoNorm.includes('3A FASE') || confrontoNorm.includes('3ª FASE') || rdNorm.includes('FINAL');
+          const isFinalRound = (roundNum === 21 || roundNum === 22);
+          return isFinalText || isFinalRound;
+        });
+
+        // Agregação dos pontos oficiais da Grande Final a partir da fDetalhes
+        const playedStats = calculateTeamStats({ ...data, details: finalsDetails });
+        const playedMap = new Map<string, TeamStats>();
+        playedStats.forEach(s => playedMap.set(normalize(s.name), s));
+
+        // 12 Equipes Oficiais da Grande Final presentes na planilha fDetalhes (RD 21 e 22)
+        const finalTeams = [
+          'LOUD SNICKERS', 'FLUXO W7M', 'INTZ ESPORTS', 'TEAM SOLID',
+          'RISE GAMING', 'ALPHA7', 'RUSH GAMING', 'INFLUENCE RAGE',
+          'CPT VOX', 'LOS', 'AFROGAMES', 'SX TET'
+        ];
+
+        // Adicionar também quaisquer equipes adicionais presentes na fDetalhes nas RD 21/22 se houver
+        data.details.forEach(d => {
+          const r = parseInt(d.RD.replace(/\D/g, '')) || 0;
+          if (r === 21 || r === 22 || normalize(d.CONFRONTO).includes('FINAL')) {
+            if (d.TIME && !finalTeams.some(t => normalize(t) === normalize(d.TIME))) {
+              finalTeams.push(d.TIME.trim());
+            }
+          }
+        });
+
+        let finalsStatsList: TeamStats[] = finalTeams.map((teamName, idx) => {
+          const played = playedMap.get(normalize(teamName));
+          const s = played?.s || 0;
+          const b = played?.b || 0;
+          const abts = played?.abts || 0;
+          const ptsc = played?.ptsc || 0;
+          const pts = played?.pts || (ptsc + abts);
+          const rawPts = pts;
+          const avgPts = s > 0 ? parseFloat((pts / s).toFixed(2)) : 0;
+          const avgPtsc = s > 0 ? parseFloat((ptsc / s).toFixed(2)) : 0;
+          const avgAbts = s > 0 ? parseFloat((abts / s).toFixed(2)) : 0;
+          const percentPos = pts > 0 ? parseFloat(((ptsc / pts) * 100).toFixed(1)) : 0;
+          const percentAbts = pts > 0 ? parseFloat(((abts / pts) * 100).toFixed(1)) : 0;
+          const lastPos = played?.lastPos && played.lastPos < 99 ? played.lastPos : (idx + 1);
+
+          return {
+            name: teamName,
+            image: played?.image || findTeamLogo(teamName, data.teamsReference),
+            grupo: played?.grupo,
+            s,
+            b,
+            ptsc,
+            abts,
+            pts,
+            rawPts,
+            avgAbts,
+            avgPts,
+            avgPtsc,
+            percentPos,
+            percentAbts,
+            lastPos
+          };
+        });
+
+        // Filtro por equipe
+        if (filters.team.length > 0) {
+          finalsStatsList = finalsStatsList.filter(t => filters.team.some(ft => normalize(ft) === normalize(t.name)));
+        }
+
+        // Filtro por grupo
+        if (filters.grupo.length > 0) {
+          finalsStatsList = finalsStatsList.filter(s => s.grupo && filters.grupo.some(g => normalize(g) === normalize(s.grupo)));
+        }
+
+        // Ordenação oficial da Grande Final:
+        // 1º Pontos Totais
+        // 2º Booyahs
+        // 3º Abates
+        // 4º Última posição
+        finalsStatsList.sort((a, b) => {
+          if (b.pts !== a.pts) return b.pts - a.pts;
+          if (b.b !== a.b) return b.b - a.b;
+          if (b.abts !== a.abts) return b.abts - a.abts;
+          return a.lastPos - b.lastPos;
+        });
+
+        setStats(finalsStatsList);
+        return;
+      }
+
       let filteredDetails = data.details.filter(d => {
         if (filters.team.length > 0 && !filters.team.some(t => normalize(t) === normalize(d.TIME))) return false;
         if (filters.map.length > 0 && !filters.map.some(m => normalize(m) === normalize(d.MAPA))) return false;
@@ -689,6 +789,24 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
                       </span>
                     )}
                   </div>
+                ) : phase === 'FINALS' ? (
+                  index === 0 ? (
+                    <span className="text-[7.5px] font-black text-yellow-300 bg-yellow-500/20 border border-yellow-500/50 px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1 w-fit whitespace-nowrap shadow-[0_0_8px_rgba(234,179,8,0.3)]">
+                      <Trophy size={8} className="shrink-0 fill-yellow-400 text-yellow-400" /> CAMPEÃO
+                    </span>
+                  ) : index === 1 ? (
+                    <span className="text-[7.5px] font-black text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1 w-fit whitespace-nowrap">
+                      <Globe size={8} className="shrink-0 text-emerald-400" /> VICE-CAMPEÃO
+                    </span>
+                  ) : index === 2 ? (
+                    <span className="text-[7.5px] font-black text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1 w-fit whitespace-nowrap">
+                      <Medal size={8} className="shrink-0 text-amber-300" /> 3º LUGAR
+                    </span>
+                  ) : (
+                    <span className="text-[7.5px] font-black text-yellow-500/80 bg-yellow-500/10 border border-yellow-500/20 px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1 w-fit whitespace-nowrap">
+                      <CheckCircle2 size={8} className="shrink-0 text-yellow-500" /> FINALISTA
+                    </span>
+                  )
                 ) : phase === 'RUMO_AO_MUNDIAL' ? (
                   isTop2Rumo ? (
                     <span className="text-[7.5px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1 w-fit whitespace-nowrap">
@@ -837,7 +955,25 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
                       {team.grupo}
                     </span>
                   )}
-                  {phase === 'RUMO_AO_MUNDIAL' ? (
+                  {phase === 'FINALS' ? (
+                    index === 0 ? (
+                      <span className="text-[8px] font-black text-yellow-300 bg-yellow-500/20 border border-yellow-500/50 px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                        <Trophy size={10} className="fill-yellow-400 text-yellow-400" /> CAMPEÃO
+                      </span>
+                    ) : index === 1 ? (
+                      <span className="text-[8px] font-black text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1">
+                        <Globe size={10} /> VICE-CAMPEÃO
+                      </span>
+                    ) : index === 2 ? (
+                      <span className="text-[8px] font-black text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1">
+                        <Medal size={10} /> 3º LUGAR
+                      </span>
+                    ) : (
+                      <span className="text-[8px] font-black text-yellow-500/80 bg-yellow-500/10 border border-yellow-500/20 px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1">
+                        <CheckCircle2 size={10} /> FINALISTA
+                      </span>
+                    )
+                  ) : phase === 'RUMO_AO_MUNDIAL' ? (
                     isTop2Rumo ? (
                       <span className="text-[8px] font-black text-emerald-400 bg-emerald-500/15 border border-emerald-500/40 px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1">
                         <Globe size={10} /> VAGA MUNDIAL
@@ -926,6 +1062,12 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div className="flex flex-wrap bg-[#1a1a1a] p-1.5 rounded-xl border border-gray-800 gap-1">
             <button 
+              onClick={() => setPhase('FINALS')} 
+              className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${phase === 'FINALS' ? 'bg-gradient-to-r from-yellow-500 via-amber-400 to-yellow-500 text-black shadow-lg shadow-yellow-500/25 ring-2 ring-yellow-400/60 font-bold scale-[1.02]' : 'text-gray-400 hover:text-white'}`}
+            >
+              <Trophy size={14} className={phase === 'FINALS' ? 'fill-black' : ''}/> Grande Final
+            </button>
+            <button 
               onClick={() => setPhase('RUMO_AO_MUNDIAL')} 
               className={`px-3.5 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${phase === 'RUMO_AO_MUNDIAL' ? 'bg-purple-600 text-white shadow-lg ring-2 ring-purple-400/50' : 'text-gray-400 hover:text-white'}`}
             >
@@ -936,12 +1078,6 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
               className={`px-3.5 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${phase === 'QUALIFIERS' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
             >
               <Crosshair size={14}/> Classificatórias
-            </button>
-            <button 
-              onClick={() => setPhase('FINALS')} 
-              className={`px-3.5 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${phase === 'FINALS' ? 'bg-yellow-500 text-black shadow font-bold' : 'text-gray-400 hover:text-white'}`}
-            >
-              <Trophy size={14}/> Grande Final
             </button>
             <button 
               onClick={() => setPhase('ALL')} 
@@ -1174,10 +1310,34 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ data }) => {
       )}
 
       {phase === 'FINALS' && (
-        <div className="bg-yellow-500/10 border border-yellow-500/20 px-4 py-3 rounded-xl text-xs text-yellow-300 flex items-center justify-between font-medium">
-          <div className="flex items-center gap-2">
-            <span className="font-black px-2 py-0.5 bg-yellow-500/20 rounded text-yellow-400 uppercase text-[10px] tracking-wider">3ª Fase</span>
-            <span><strong>Grande Final (Champions Rush):</strong> Equipes iniciam zeradas. A primeira equipe a iniciar uma queda com 160+ pts e dar o Booyah é a Campeã!</span>
+        <div className="space-y-4">
+          <div className="bg-gradient-to-r from-yellow-950/60 via-[#1c1809] to-black/80 border border-yellow-500/40 px-5 py-4 rounded-2xl text-xs text-yellow-100 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-[0_0_30px_rgba(234,179,8,0.15)]">
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-xl bg-yellow-500/20 border border-yellow-500/50 flex items-center justify-center text-yellow-400 shrink-0 shadow-[0_0_15px_rgba(234,179,8,0.3)]">
+                <Trophy size={24} className="fill-yellow-400 text-yellow-400" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-black px-2.5 py-0.5 bg-yellow-500 text-black rounded-full uppercase text-[10px] tracking-widest shadow-sm font-display">
+                    👑 FASE DECISIVA • 3ª FASE
+                  </span>
+                  <span className="text-xs font-black text-yellow-300 uppercase tracking-wider font-display">
+                    GRANDE FINAL • CHAMPIONS RUSH
+                  </span>
+                </div>
+                <p className="text-xs text-gray-300 mt-1 leading-relaxed">
+                  As <strong>12 melhores equipes</strong> disputam o título de <strong>Campeã do FFWS BR 2026 Split 2</strong>! Todos os dados e pontuações da Grande Final são computados diretamente da planilha <strong className="text-yellow-400 font-mono">fDetalhes (Rodadas 21 e 22)</strong>. A primeira equipe a atingir <strong>160+ pontos</strong> e cravar o <strong>Booyah</strong> sagra-se Campeã!
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              <span className="px-3 py-1.5 rounded-xl bg-yellow-500/20 text-yellow-300 border border-yellow-500/40 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm">
+                <Crown size={12} className="text-yellow-400 fill-yellow-400" /> Top 1: Campeão
+              </span>
+              <span className="px-3 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm">
+                <Globe size={12} className="text-emerald-400" /> Vagas Mundiais
+              </span>
+            </div>
           </div>
         </div>
       )}

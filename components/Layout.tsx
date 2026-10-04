@@ -44,7 +44,7 @@ const Layout: React.FC<LayoutProps> = ({ children, onRefresh, loading, lastUpdat
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">
           <div className="flex items-center gap-2 text-yellow-400 min-w-0">
             <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse shrink-0"></span>
-            <span className="text-gray-200 truncate font-display">FFWSBR 2026 SPLIT 2 • PAINEL COMPETITIVO</span>
+            <span className="text-gray-200 truncate font-display">FFWSBR 2026 SPLIT 2 • 👑 GRANDE FINAL (CHAMPIONS RUSH)</span>
           </div>
           <div className="flex items-center gap-1.5 bg-black/70 px-3 py-0.5 rounded-full border border-yellow-500/40 text-yellow-300 shadow-[0_0_12px_rgba(234,179,8,0.2)] shrink-0 whitespace-nowrap">
             <span>Dashboard desenvolvido por <strong className="text-white font-black">Jhan Medeiros Analista</strong></span>

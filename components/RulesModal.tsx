@@ -163,8 +163,11 @@ const RulesModal: React.FC<RulesModalProps> = ({ isOpen, onClose }) => {
 
             <div className="flex items-center justify-between border-b border-gray-800 pb-3">
               <div className="flex items-center gap-3">
-                <span className="px-3 py-1 bg-yellow-500 text-black font-black text-xs uppercase tracking-widest rounded-lg">
+                <span className="px-3 py-1 bg-yellow-500 text-black font-black text-xs uppercase tracking-widest rounded-lg shadow-[0_0_10px_rgba(234,179,8,0.4)]">
                   3ª Fase
+                </span>
+                <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-black text-[10px] uppercase tracking-wider rounded-md animate-pulse">
+                  ● FASE ATUAL
                 </span>
                 <h3 className="text-lg font-black uppercase italic text-yellow-400 font-display flex items-center gap-2">
                   Grande Final <span className="text-white">• Champions Rush</span>

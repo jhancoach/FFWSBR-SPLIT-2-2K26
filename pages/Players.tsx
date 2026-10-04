@@ -20,6 +20,7 @@ import { Camera } from 'lucide-react';
 import { findTeamLogo } from '../utils/teamUtils';
 import { findDimImg } from '../utils/skillImages';
 import { getPlayerCharacterHistory } from '../utils/characterUtils';
+import CharacterSkillsFrequency from '../components/CharacterSkillsFrequency';
 
 interface PlayersProps {
   data: DashboardData;
@@ -74,6 +75,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
   const [comparePvt, setComparePvt] = useState<{ player: string; playerHab: string; team: string; teamMetric: 'total' | 'average' }>({ player: '', playerHab: 'All', team: '', teamMetric: 'total' });
   const [activeHabFilter, setActiveHabFilter] = useState<string>('All');
   const [activeHabSort, setActiveHabSort] = useState<{field: string, direction: 'asc'|'desc'}>({ field: 'kills', direction: 'desc' });
+  const [charSubTab, setCharSubTab] = useState<'frequency' | 'performance' | 'loadouts'>('frequency');
 
   const [playerRoundsSearch, setPlayerRoundsSearch] = useState('');
   const [playerRoundsSort, setPlayerRoundsSort] = useState<{ field: string; direction: 'asc' | 'desc' }>({ field: 'totalKills', direction: 'desc' });
@@ -2348,7 +2350,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             { id: 'playerDrops', label: 'Kills por Queda', icon: <Target size={18} /> },
             { id: 'stats', label: 'Estatísticas', icon: <BarChart2 size={18} /> },
             { id: 'roles', label: 'Funções', icon: <LayoutGrid size={18} /> },
-            { id: 'chars', label: 'Loadouts', icon: <User size={18} /> },
+            { id: 'chars', label: 'Personagens (Hab1 a Hab4)', icon: <Flame size={18} /> },
             { id: 'auditoria', label: 'Auditoria Kills', icon: <Shield size={18} /> },
             { id: 'compare', label: 'Duelo', icon: <Swords size={18} /> },
             { id: 'report', label: 'Perfil Individual', icon: <Activity size={18} /> },
@@ -4466,6 +4468,39 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                 <div className="space-y-6">
                   {rankingSubTab === 'general' && (
                     <div className="space-y-4">
+                      {/* Banner de Acesso Rápido ao Meta de Personagens (Hab1 a Hab4) */}
+                      <div className="bg-gradient-to-r from-yellow-950/40 via-[#141419] to-black border border-yellow-500/30 p-4 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl">
+                        <div className="flex items-center gap-3.5">
+                          <div className="w-10 h-10 rounded-xl bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center text-yellow-500 shrink-0 shadow-[0_0_15px_rgba(234,179,8,0.2)]">
+                            <Layers size={20} />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-yellow-500 text-black font-display">
+                                Análise Meta
+                              </span>
+                              <span className="text-xs font-black uppercase text-white tracking-wider font-display">
+                                Frequência de Personagens (Hab1 a Hab4)
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-gray-400 mt-0.5">
+                              Monitore a frequência de uso de cada personagem (Hab 1 a Hab 4) e quais competidores mais utilizam cada habilidade no campeonato.
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            setCharSubTab('frequency');
+                            setActiveTab('chars');
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                          className="px-4 py-2 rounded-xl bg-yellow-500 hover:bg-yellow-400 text-black text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md shadow-yellow-500/20 transition-all cursor-pointer shrink-0 font-display"
+                        >
+                          <Flame size={14} className="fill-black" /> Ver Frequência de Personagens
+                        </button>
+                      </div>
+
                       {/* Barra de Controles Rápidos de Visualização: Card de Destaque & Gráfico de Evolução */}
                       <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-black/40 rounded-xl border border-white/5 text-xs">
                         <div className="flex items-center gap-2">
@@ -4960,158 +4995,204 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
 
           {activeTab === 'chars' && (
               <div className="space-y-6 animate-in fade-in duration-300">
-                    <div className="flex flex-col lg:flex-row lg:items-center gap-4 bg-black/40 p-5 rounded-2xl border border-gray-800 shadow-xl">
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-4 flex-1">
-                            <div className="text-yellow-500 font-black uppercase text-xs tracking-widest flex items-center gap-2"><Flame size={16} /> Habilidade Ativa:</div>
-                            <select 
-                                value={activeHabFilter} 
-                                onChange={(e) => setActiveHabFilter(e.target.value)}
-                                className="bg-black text-white p-2.5 rounded-xl border border-gray-800 text-xs font-bold uppercase outline-none focus:border-yellow-500 min-w-[200px] transition-colors"
-                            >
-                                <option value="All">Todas as Ativas</option>
-                                {filterOptions.activeHabs.map(h => <option key={h} value={h}>{h}</option>)}
-                            </select>
-                        </div>
-
-                        <div className="flex items-center gap-4 bg-black/60 px-6 py-3 rounded-2xl border border-white/5">
-                            {usageStats ? (
-                                <>
-                                    <div className="flex flex-col items-center border-r border-white/10 pr-4">
-                                        <span className="text-yellow-500 font-black text-xl leading-none">{usageStats.count}</span>
-                                        <span className="text-[9px] text-gray-500 font-bold uppercase tracking-widest mt-1">Jogadores</span>
-                                    </div>
-                                    <div className="flex flex-col items-center">
-                                        <span className="text-white font-black text-xl leading-none italic">{usageStats.percent}%</span>
-                                        <span className="text-[9px] text-gray-500 font-bold uppercase tracking-widest mt-1">Popularidade Meta</span>
-                                    </div>
-                                    <div className="ml-2">
-                                        <Activity size={24} className="text-yellow-500 animate-pulse opacity-50" />
-                                    </div>
-                                </>
-                            ) : (
-                                <div className="flex flex-col items-end">
-                                    <span className="text-gray-500 text-[10px] font-mono uppercase tracking-widest">Meta de Jogo Geral</span>
-                                    <span className="text-white font-black text-sm uppercase italic">Total: {data.characters.length} Loadouts</span>
-                                </div>
-                            )}
-                        </div>
+                    {/* Sub-tabs: Frequência Meta Hab1 a Hab4 | Desempenho por Ativa | Loadouts por Queda */}
+                    <div className="flex flex-wrap items-center gap-2 bg-[#121217] p-1.5 rounded-2xl border border-gray-800 shadow-xl">
+                      <button
+                        onClick={() => setCharSubTab('frequency')}
+                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer ${
+                          charSubTab === 'frequency'
+                            ? 'bg-gradient-to-r from-yellow-500 to-amber-500 text-black shadow-lg shadow-yellow-500/20 font-bold scale-[1.02]'
+                            : 'text-gray-400 hover:text-white hover:bg-white/5'
+                        }`}
+                      >
+                        <Layers size={15} /> Frequência de Uso (Hab1 a Hab4)
+                      </button>
+                      <button
+                        onClick={() => setCharSubTab('performance')}
+                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer ${
+                          charSubTab === 'performance'
+                            ? 'bg-gradient-to-r from-yellow-500 to-amber-500 text-black shadow-lg shadow-yellow-500/20 font-bold scale-[1.02]'
+                            : 'text-gray-400 hover:text-white hover:bg-white/5'
+                        }`}
+                      >
+                        <Activity size={15} /> Desempenho por Ativa
+                      </button>
+                      <button
+                        onClick={() => setCharSubTab('loadouts')}
+                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer ${
+                          charSubTab === 'loadouts'
+                            ? 'bg-gradient-to-r from-yellow-500 to-amber-500 text-black shadow-lg shadow-yellow-500/20 font-bold scale-[1.02]'
+                            : 'text-gray-400 hover:text-white hover:bg-white/5'
+                        }`}
+                      >
+                        <Users size={15} /> Loadouts por Queda
+                      </button>
                     </div>
 
-                    
-                    {activeHabFilter !== 'All' && activeHabStats.length > 0 && (
-                        <div className="bg-black/40 rounded-3xl p-6 border border-white/5 mb-8 overflow-hidden">
-                             <h3 className="text-white font-black text-xl uppercase tracking-widest italic mb-6 flex items-center gap-3">
-                                 <Activity size={24} className="text-yellow-500" />
-                                 Desempenho com {activeHabFilter}
-                             </h3>
-                             <div className="overflow-x-auto">
-                                 <table className="w-full text-left border-collapse min-w-[600px]">
-                                     <thead>
-                                         <tr className="border-b border-white/10">
-                                             <th className="pb-3 text-xs font-bold text-gray-500 uppercase tracking-widest pl-4 cursor-pointer hover:text-white transition-colors" onClick={() => handleHabSort('name')}>
-                                                 <div className="flex items-center gap-1">Jogador {activeHabSort.field === 'name' && (activeHabSort.direction === 'desc' ? <ChevronDown size={12} /> : <ChevronUp size={12} />)}</div>
-                                             </th>
-                                             <th className="pb-3 text-xs font-bold text-gray-500 uppercase tracking-widest text-center cursor-pointer hover:text-white transition-colors" onClick={() => handleHabSort('matches')}>
-                                                 <div className="flex items-center justify-center gap-1">Quedas {activeHabSort.field === 'matches' && (activeHabSort.direction === 'desc' ? <ChevronDown size={12} /> : <ChevronUp size={12} />)}</div>
-                                             </th>
-                                             <th className="pb-3 text-xs font-bold text-gray-500 uppercase tracking-widest text-center text-yellow-500 cursor-pointer hover:text-yellow-400 transition-colors" onClick={() => handleHabSort('kills')}>
-                                                 <div className="flex items-center justify-center gap-1">Abates {activeHabSort.field === 'kills' && (activeHabSort.direction === 'desc' ? <ChevronDown size={12} /> : <ChevronUp size={12} />)}</div>
-                                             </th>
-                                             <th className="pb-3 text-xs font-bold text-gray-500 uppercase tracking-widest text-center text-red-500 cursor-pointer hover:text-red-400 transition-colors" onClick={() => handleHabSort('dmg')}>
-                                                 <div className="flex items-center justify-center gap-1">Dano {activeHabSort.field === 'dmg' && (activeHabSort.direction === 'desc' ? <ChevronDown size={12} /> : <ChevronUp size={12} />)}</div>
-                                             </th>
-                                             <th className="pb-3 text-xs font-bold text-gray-500 uppercase tracking-widest text-center text-blue-500 cursor-pointer hover:text-blue-400 transition-colors" onClick={() => handleHabSort('knocks')}>
-                                                 <div className="flex items-center justify-center gap-1">Deitados {activeHabSort.field === 'knocks' && (activeHabSort.direction === 'desc' ? <ChevronDown size={12} /> : <ChevronUp size={12} />)}</div>
-                                             </th>
-                                             {allSafeNames.map(safeName => (
-                                                 <th key={safeName} className="pb-3 text-xs font-bold text-gray-500 uppercase tracking-widest text-center cursor-pointer hover:text-white transition-colors" onClick={() => handleHabSort(`safe_${safeName}`)}>
-                                                     <div className="flex items-center justify-center gap-1">{safeName === 'OUT' ? 'OUT' : `S${safeName}`} {activeHabSort.field === `safe_${safeName}` && (activeHabSort.direction === 'desc' ? <ChevronDown size={12} /> : <ChevronUp size={12} />)}</div>
-                                                 </th>
-                                             ))}
-                                         </tr>
-                                     </thead>
-                                     <tbody>
-                                         {activeHabStats.map((stat, idx) => (
-                                             <tr key={stat.name} className="border-b border-white/5 hover:bg-white/5 transition-colors">
-                                                 <td className="py-4 pl-4">
-                                                     <div className="flex items-center gap-3">
-                                                         <span className="text-gray-500 font-black text-sm w-6 text-right">#{idx+1}</span>
-                                                         <div className="w-10 h-10 rounded-full bg-gray-800 overflow-hidden flex items-center justify-center border border-yellow-500/30 shrink-0">
-                                                             {stat.img ? <img src={stat.img} className="w-full h-full object-cover"/> : <User size={20} className="text-gray-500"/>}
-                                                         </div>
-                                                         <div>
-                                                             <div className="text-white font-black text-sm uppercase">{stat.name}</div>
-                                                             <div className="text-gray-500 text-[10px] font-bold uppercase">{stat.team}</div>
-                                                         </div>
-                                                     </div>
-                                                 </td>
-                                                 <td className="py-4 text-center text-gray-400 font-bold">{stat.matches}</td>
-                                                 <td className="py-4 text-center">
-                                                     <div className="text-white font-black text-xl">{stat.kills}</div>
-                                                     <div className="text-[10px] text-gray-500 font-mono mt-1">Média: {(stat.kills / (stat.matches || 1)).toFixed(2)}</div>
-                                                     <div className="text-[9px] text-blue-400 font-black uppercase tracking-widest mt-0.5" title="Contribuição para os abates do time nestas quedas">
-                                                         {stat.teamTotalKills > 0 ? ((stat.kills / stat.teamTotalKills) * 100).toFixed(1) : '0.0'}% TIME
-                                                     </div>
-                                                 </td>
-                                                 <td className="py-4 text-center">
-                                                     <div className="text-white font-black text-xl">{stat.dmg}</div>
-                                                     <div className="text-[10px] text-gray-500 font-mono mt-1">Média: {(stat.dmg / (stat.matches || 1)).toFixed(0)}</div>
-                                                 </td>
-                                                 <td className="py-4 text-center">
-                                                     <div className="text-white font-black text-xl">{stat.knocks}</div>
-                                                     <div className="text-[10px] text-gray-500 font-mono mt-1">Média: {(stat.knocks / (stat.matches || 1)).toFixed(2)}</div>
-                                                 </td>
-                                                 {allSafeNames.map(safeName => (
-                                                     <td key={safeName} className="py-4 text-center">
-                                                         <div className={`text-sm font-black ${stat.safeKills?.[safeName] ? 'text-yellow-500' : 'text-gray-700'}`}>{stat.safeKills?.[safeName] || '-'}</div>
-                                                     </td>
-                                                 ))}
-                                             </tr>
-                                         ))}
-                                     </tbody>
-                                 </table>
-                             </div>
-                        </div>
+                    {/* SUB-TAB 1: FREQUÊNCIA DE USO DOS PERSONAGENS (HAB1 A HAB4) */}
+                    {charSubTab === 'frequency' && (
+                      <CharacterSkillsFrequency data={data} filters={filters} />
                     )}
 
-                    <div className="space-y-4">
-                        {charactersData.length > 0 ? charactersData.map((char, idx) => (
-                            <div key={idx} className="bg-[#0e0e11] rounded-2xl p-6 border border-gray-800/60 flex flex-col md:flex-row gap-8 items-center hover:border-yellow-500/20 transition-all shadow-2xl group">
-                                <div className="w-full md:w-64 flex items-center gap-5 border-b md:border-b-0 md:border-r border-gray-800/60 pb-5 md:pb-0 pr-0 md:pr-8">
-                                    <div className="h-20 w-20 rounded-full bg-gradient-to-br from-[#1a1a1a] to-black flex items-center justify-center overflow-hidden border-2 border-yellow-500/30 shadow-[0_0_20px_rgba(234,179,8,0.1)] p-1 flex-shrink-0 group-hover:scale-105 transition-transform">
-                                        {char.playerImg ? (
-                                            <img src={char.playerImg} className="w-full h-full object-cover rounded-full" alt={char.Player}/>
-                                        ) : char.teamImg ? (
-                                            <img src={char.teamImg} className="w-full h-full object-contain" alt={char.Time}/>
-                                        ) : (
-                                            <div className="bg-gray-800 w-full h-full rounded-full flex items-center justify-center">
-                                                <User className="text-gray-500" size={32}/>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="overflow-hidden">
-                                        <h3 className="font-black text-white text-2xl truncate uppercase italic leading-none tracking-tighter group-hover:text-yellow-500 transition-colors">{char.Player}</h3>
-                                        <div className="flex items-center gap-2 mt-2">
-                                            <span className="text-sm text-yellow-500 font-black uppercase tracking-widest opacity-80">{char.Time}</span>
-                                            <span className="text-[10px] text-gray-600 font-mono font-bold px-2 py-0.5 bg-white/5 rounded">Q{char.Q}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="flex-1 w-full flex items-center gap-3 overflow-x-auto pb-4 md:pb-0 custom-scrollbar justify-between">
-                                    <PremiumLoadoutCard title="ATIVA" name={char.Hab1} img={char.hab1Img} highlight />
-                                    <PremiumLoadoutCard title="HAB 2" name={char.Hab2} img={char.hab2Img} />
-                                    <PremiumLoadoutCard title="HAB 3" name={char.Hab3} img={char.hab3Img} />
-                                    <PremiumLoadoutCard title="HAB 4" name={char.Hab4} img={char.hab4Img} />
-                                    <PremiumLoadoutCard title="PET" name={char.Pet} img={char.petImg} />
-                                    <PremiumLoadoutCard title="ITEM" name={char.Item} img={char.itemImg} />
-                                </div>
+                    {/* SUB-TAB 2: DESEMPENHO POR HABILIDADE ATIVA */}
+                    {charSubTab === 'performance' && (
+                      <div className="space-y-6">
+                        <div className="flex flex-col lg:flex-row lg:items-center gap-4 bg-black/40 p-5 rounded-2xl border border-gray-800 shadow-xl">
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-4 flex-1">
+                                <div className="text-yellow-500 font-black uppercase text-xs tracking-widest flex items-center gap-2"><Flame size={16} /> Habilidade Ativa:</div>
+                                <select 
+                                    value={activeHabFilter} 
+                                    onChange={(e) => setActiveHabFilter(e.target.value)}
+                                    className="bg-black text-white p-2.5 rounded-xl border border-gray-800 text-xs font-bold uppercase outline-none focus:border-yellow-500 min-w-[200px] transition-colors"
+                                >
+                                    <option value="All">Todas as Ativas</option>
+                                    {filterOptions.activeHabs.map(h => <option key={h} value={h}>{h}</option>)}
+                                </select>
                             </div>
-                        )) : (
-                            <div className="py-24 text-center text-gray-700 font-black italic uppercase tracking-widest border border-dashed border-gray-800 rounded-3xl">
-                                {data.characters.length === 0 ? "Buscando dados em fPersonagens..." : "Nenhum Loadout filtrado para esta seleção."}
+
+                            <div className="flex items-center gap-4 bg-black/60 px-6 py-3 rounded-2xl border border-white/5">
+                                {usageStats ? (
+                                    <>
+                                        <div className="flex flex-col items-center border-r border-white/10 pr-4">
+                                            <span className="text-yellow-500 font-black text-xl leading-none">{usageStats.count}</span>
+                                            <span className="text-[9px] text-gray-500 font-bold uppercase tracking-widest mt-1">Jogadores</span>
+                                        </div>
+                                        <div className="flex flex-col items-center">
+                                            <span className="text-white font-black text-xl leading-none italic">{usageStats.percent}%</span>
+                                            <span className="text-[9px] text-gray-500 font-bold uppercase tracking-widest mt-1">Popularidade Meta</span>
+                                        </div>
+                                        <div className="ml-2">
+                                            <Activity size={24} className="text-yellow-500 animate-pulse opacity-50" />
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="flex flex-col items-end">
+                                        <span className="text-gray-500 text-[10px] font-mono uppercase tracking-widest">Meta de Jogo Geral</span>
+                                        <span className="text-white font-black text-sm uppercase italic">Total: {data.characters.length} Loadouts</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {activeHabFilter !== 'All' && activeHabStats.length > 0 && (
+                            <div className="bg-black/40 rounded-3xl p-6 border border-white/5 mb-8 overflow-hidden">
+                                 <h3 className="text-white font-black text-xl uppercase tracking-widest italic mb-6 flex items-center gap-3">
+                                     <Activity size={24} className="text-yellow-500" />
+                                     Desempenho com {activeHabFilter}
+                                 </h3>
+                                 <div className="overflow-x-auto">
+                                     <table className="w-full text-left border-collapse min-w-[600px]">
+                                         <thead>
+                                             <tr className="border-b border-white/10">
+                                                 <th className="pb-3 text-xs font-bold text-gray-500 uppercase tracking-widest pl-4 cursor-pointer hover:text-white transition-colors" onClick={() => handleHabSort('name')}>
+                                                     <div className="flex items-center gap-1">Jogador {activeHabSort.field === 'name' && (activeHabSort.direction === 'desc' ? <ChevronDown size={12} /> : <ChevronUp size={12} />)}</div>
+                                                 </th>
+                                                 <th className="pb-3 text-xs font-bold text-gray-500 uppercase tracking-widest text-center cursor-pointer hover:text-white transition-colors" onClick={() => handleHabSort('matches')}>
+                                                     <div className="flex items-center justify-center gap-1">Quedas {activeHabSort.field === 'matches' && (activeHabSort.direction === 'desc' ? <ChevronDown size={12} /> : <ChevronUp size={12} />)}</div>
+                                                 </th>
+                                                 <th className="pb-3 text-xs font-bold text-gray-500 uppercase tracking-widest text-center text-yellow-500 cursor-pointer hover:text-yellow-400 transition-colors" onClick={() => handleHabSort('kills')}>
+                                                     <div className="flex items-center justify-center gap-1">Abates {activeHabSort.field === 'kills' && (activeHabSort.direction === 'desc' ? <ChevronDown size={12} /> : <ChevronUp size={12} />)}</div>
+                                                 </th>
+                                                 <th className="pb-3 text-xs font-bold text-gray-500 uppercase tracking-widest text-center text-red-500 cursor-pointer hover:text-red-400 transition-colors" onClick={() => handleHabSort('dmg')}>
+                                                     <div className="flex items-center justify-center gap-1">Dano {activeHabSort.field === 'dmg' && (activeHabSort.direction === 'desc' ? <ChevronDown size={12} /> : <ChevronUp size={12} />)}</div>
+                                                 </th>
+                                                 <th className="pb-3 text-xs font-bold text-gray-500 uppercase tracking-widest text-center text-blue-500 cursor-pointer hover:text-blue-400 transition-colors" onClick={() => handleHabSort('knocks')}>
+                                                     <div className="flex items-center justify-center gap-1">Deitados {activeHabSort.field === 'knocks' && (activeHabSort.direction === 'desc' ? <ChevronDown size={12} /> : <ChevronUp size={12} />)}</div>
+                                                 </th>
+                                                 {allSafeNames.map(safeName => (
+                                                     <th key={safeName} className="pb-3 text-xs font-bold text-gray-500 uppercase tracking-widest text-center cursor-pointer hover:text-white transition-colors" onClick={() => handleHabSort(`safe_${safeName}`)}>
+                                                         <div className="flex items-center justify-center gap-1">{safeName === 'OUT' ? 'OUT' : `S${safeName}`} {activeHabSort.field === `safe_${safeName}` && (activeHabSort.direction === 'desc' ? <ChevronDown size={12} /> : <ChevronUp size={12} />)}</div>
+                                                     </th>
+                                                 ))}
+                                             </tr>
+                                         </thead>
+                                         <tbody>
+                                             {activeHabStats.map((stat, idx) => (
+                                                 <tr key={stat.name} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                                                     <td className="py-4 pl-4">
+                                                         <div className="flex items-center gap-3">
+                                                             <span className="text-gray-500 font-black text-sm w-6 text-right">#{idx+1}</span>
+                                                             <div className="w-10 h-10 rounded-full bg-gray-800 overflow-hidden flex items-center justify-center border border-yellow-500/30 shrink-0">
+                                                                 {stat.img ? <img src={stat.img} className="w-full h-full object-cover"/> : <User size={20} className="text-gray-500"/>}
+                                                             </div>
+                                                             <div>
+                                                                 <div className="text-white font-black text-sm uppercase">{stat.name}</div>
+                                                                 <div className="text-gray-500 text-[10px] font-bold uppercase">{stat.team}</div>
+                                                             </div>
+                                                         </div>
+                                                     </td>
+                                                     <td className="py-4 text-center text-gray-400 font-bold">{stat.matches}</td>
+                                                     <td className="py-4 text-center">
+                                                         <div className="text-white font-black text-xl">{stat.kills}</div>
+                                                         <div className="text-[10px] text-gray-500 font-mono mt-1">Média: {(stat.kills / (stat.matches || 1)).toFixed(2)}</div>
+                                                         <div className="text-[9px] text-blue-400 font-black uppercase tracking-widest mt-0.5" title="Contribuição para os abates do time nestas quedas">
+                                                             {stat.teamTotalKills > 0 ? ((stat.kills / stat.teamTotalKills) * 100).toFixed(1) : '0.0'}% TIME
+                                                         </div>
+                                                     </td>
+                                                     <td className="py-4 text-center">
+                                                         <div className="text-white font-black text-xl">{stat.dmg}</div>
+                                                         <div className="text-[10px] text-gray-500 font-mono mt-1">Média: {(stat.dmg / (stat.matches || 1)).toFixed(0)}</div>
+                                                     </td>
+                                                     <td className="py-4 text-center">
+                                                         <div className="text-white font-black text-xl">{stat.knocks}</div>
+                                                         <div className="text-[10px] text-gray-500 font-mono mt-1">Média: {(stat.knocks / (stat.matches || 1)).toFixed(2)}</div>
+                                                     </td>
+                                                     {allSafeNames.map(safeName => (
+                                                         <td key={safeName} className="py-4 text-center">
+                                                             <div className={`text-sm font-black ${stat.safeKills?.[safeName] ? 'text-yellow-500' : 'text-gray-700'}`}>{stat.safeKills?.[safeName] || '-'}</div>
+                                                         </td>
+                                                     ))}
+                                                 </tr>
+                                             ))}
+                                         </tbody>
+                                     </table>
+                                 </div>
                             </div>
                         )}
-                    </div>
+                      </div>
+                    )}
+
+                    {/* SUB-TAB 3: LOADOUTS POR QUEDA */}
+                    {charSubTab === 'loadouts' && (
+                      <div className="space-y-4">
+                          {charactersData.length > 0 ? charactersData.map((char, idx) => (
+                              <div key={idx} className="bg-[#0e0e11] rounded-2xl p-6 border border-gray-800/60 flex flex-col md:flex-row gap-8 items-center hover:border-yellow-500/20 transition-all shadow-2xl group">
+                                  <div className="w-full md:w-64 flex items-center gap-5 border-b md:border-b-0 md:border-r border-gray-800/60 pb-5 md:pb-0 pr-0 md:pr-8">
+                                      <div className="h-20 w-20 rounded-full bg-gradient-to-br from-[#1a1a1a] to-black flex items-center justify-center overflow-hidden border-2 border-yellow-500/30 shadow-[0_0_20px_rgba(234,179,8,0.1)] p-1 flex-shrink-0 group-hover:scale-105 transition-transform">
+                                          {char.playerImg ? (
+                                              <img src={char.playerImg} className="w-full h-full object-cover rounded-full" alt={char.Player}/>
+                                          ) : char.teamImg ? (
+                                              <img src={char.teamImg} className="w-full h-full object-contain" alt={char.Time}/>
+                                          ) : (
+                                              <div className="bg-gray-800 w-full h-full rounded-full flex items-center justify-center">
+                                                  <User className="text-gray-500" size={32}/>
+                                              </div>
+                                          )}
+                                      </div>
+                                      <div className="overflow-hidden">
+                                          <h3 className="font-black text-white text-2xl truncate uppercase italic leading-none tracking-tighter group-hover:text-yellow-500 transition-colors">{char.Player}</h3>
+                                          <div className="flex items-center gap-2 mt-2">
+                                              <span className="text-sm text-yellow-500 font-black uppercase tracking-widest opacity-80">{char.Time}</span>
+                                              <span className="text-[10px] text-gray-600 font-mono font-bold px-2 py-0.5 bg-white/5 rounded">Q{char.Q}</span>
+                                          </div>
+                                      </div>
+                                  </div>
+                                  <div className="flex-1 w-full flex items-center gap-3 overflow-x-auto pb-4 md:pb-0 custom-scrollbar justify-between">
+                                      <PremiumLoadoutCard title="ATIVA" name={char.Hab1} img={char.hab1Img} highlight />
+                                      <PremiumLoadoutCard title="HAB 2" name={char.Hab2} img={char.hab2Img} />
+                                      <PremiumLoadoutCard title="HAB 3" name={char.Hab3} img={char.hab3Img} />
+                                      <PremiumLoadoutCard title="HAB 4" name={char.Hab4} img={char.hab4Img} />
+                                      <PremiumLoadoutCard title="PET" name={char.Pet} img={char.petImg} />
+                                      <PremiumLoadoutCard title="ITEM" name={char.Item} img={char.itemImg} />
+                                  </div>
+                              </div>
+                          )) : (
+                              <div className="py-24 text-center text-gray-700 font-black italic uppercase tracking-widest border border-dashed border-gray-800 rounded-3xl">
+                                  {data.characters.length === 0 ? "Buscando dados em fPersonagens..." : "Nenhum Loadout filtrado para esta seleção."}
+                              </div>
+                          )}
+                      </div>
+                    )}
               </div>
           )}
 
