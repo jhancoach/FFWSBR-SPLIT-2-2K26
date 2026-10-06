@@ -1,6 +1,8 @@
 // FORCE_UPDATE_TO_FIX_VERCEL_DEPLOY_CORRUPTION
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import html2canvas from "html2canvas";
+import { LOGO_URL } from "../constants";
 import {
 DashboardData,
 TeamStats,
@@ -31,6 +33,7 @@ Zap,
 ListOrdered,
 Trophy,
 ChevronDown,
+ChevronUp,
 Medal,
 CheckCircle2,
 Flame,
@@ -56,6 +59,12 @@ Skull,
 Sparkles,
 Filter,
 ShieldAlert,
+Camera,
+Printer,
+Download,
+FileText,
+Copy,
+Check,
 } from "lucide-react";
 import {
 BarChart,
@@ -114,6 +123,33 @@ url: "https://i.ibb.co/q34yct8f/BERMUDA-MAPA.png",
 { id: "NT", name: "Nova Terra", url: "https://i.ibb.co/vC4pT91L/image.png" },
 { id: "SOL", name: "Solara", url: "https://i.ibb.co/sdQ8hqbM/image.png" },
 ];
+
+const formatMapName = (rawMap: string | undefined | null): string => {
+  if (!rawMap) return 'N/A';
+  const trimmed = rawMap.trim();
+  const upper = trimmed.toUpperCase();
+  const MAP_NAMES: Record<string, string> = {
+    'BER': 'BERMUDA',
+    'BERMUDA': 'BERMUDA',
+    'KAL': 'KALAHARI',
+    'KALAHARI': 'KALAHARI',
+    'NT': 'NOVA TERRA',
+    'NOV': 'NOVA TERRA',
+    'NOVATERRA': 'NOVA TERRA',
+    'NOVA TERRA': 'NOVA TERRA',
+    'PUR': 'PURGATÓRIO',
+    'PURG': 'PURGATÓRIO',
+    'PURGATORIO': 'PURGATÓRIO',
+    'PURGATÓRIO': 'PURGATÓRIO',
+    'SOL': 'SOLARA',
+    'SOLARA': 'SOLARA',
+    'ALP': 'ALPINE',
+    'ALPINE': 'ALPINE',
+    'NEX': 'NOVA TERRA',
+    'NEXTERRA': 'NOVA TERRA'
+  };
+  return MAP_NAMES[upper] || upper;
+};
 const getTeamCharacteristic = (percentAbts: number, percentPos: number) => {
 const diff = Math.abs(percentAbts - percentPos);
 if (diff <= 5)
@@ -201,6 +237,15 @@ const [selectedSafeLocation, setSelectedSafeLocation] = useState<{
 mapName: string;
 local: string;
 } | null>(null);
+const [safeAnalysisViewMode, setSafeAnalysisViewMode] = useState<"maps" | "printList" | "matchesLog">("maps");
+const [safePrintMapFilter, setSafePrintMapFilter] = useState<string>("ALL");
+const [safePrintLayout, setSafePrintLayout] = useState<"byLocal" | "chronological">("byLocal");
+const [isCapturingSafePrint, setIsCapturingSafePrint] = useState<boolean>(false);
+const [safeCopySuccess, setSafeCopySuccess] = useState<boolean>(false);
+const safePrintRef = useRef<HTMLDivElement>(null);
+const selectedLocalPrintRef = useRef<HTMLDivElement>(null);
+const [safeSearchTerm, setSafeSearchTerm] = useState<string>("");
+const [safeExpandedMatchKey, setSafeExpandedMatchKey] = useState<string | null>(null);
 const [safeSortConfig, setSafeSortConfig] = useState<{
 key: string;
 direction: "asc" | "desc";
@@ -3673,6 +3718,185 @@ return b.b - a.b; // Se pontos iguais, desempatar por booyahs
 return safeSortConfig.direction === "desc" ? valB - valA : valA - valB;
 });
 }, [data, selectedSafeLocation, safeSortConfig]);
+
+// Lista detalhada de partidas que fecharam no local selecionado com identificação do Booyah, Rodada e Queda
+const selectedSafeMatchesList = useMemo(() => {
+  if (!selectedSafeLocation) return [];
+  const matchesMap = new Map<string, {
+    key: string;
+    rd: string;
+    q: string;
+    mapa: string;
+    ondeFechou: string;
+    confronto: string;
+    booyahTeam: string;
+    booyahTeamLogo?: string;
+    booyahAbts: number;
+    booyahPts: number;
+    standings: { time: string; pos: number; pts: number; abts: number; b: number; image?: string }[];
+  }>();
+
+  data.details.forEach(d => {
+    if (!d.RD || !d.Q) return;
+    const cleanMap = formatMapName(d.MAPA);
+    if (normalize(cleanMap) !== normalize(selectedSafeLocation.mapName) && normalize(d.MAPA) !== normalize(selectedSafeLocation.mapName)) return;
+    if (normalize(d.ONDE_FECHOU) !== normalize(selectedSafeLocation.local)) return;
+
+    const matchKey = `${d.CONFRONTO || 'OFICIAL'}-${d.RD}-${d.Q}-${cleanMap}`;
+    if (!matchesMap.has(matchKey)) {
+      matchesMap.set(matchKey, {
+        key: matchKey,
+        rd: d.RD,
+        q: d.Q,
+        mapa: cleanMap || selectedSafeLocation.mapName,
+        ondeFechou: d.ONDE_FECHOU ? d.ONDE_FECHOU.trim() : selectedSafeLocation.local,
+        confronto: d.CONFRONTO || 'Oficial',
+        booyahTeam: '',
+        booyahAbts: 0,
+        booyahPts: 0,
+        standings: []
+      });
+    }
+
+    const m = matchesMap.get(matchKey)!;
+    const pts = parseInt(d.PTS || '0') || 0;
+    const abts = parseInt(d.ABTS || '0') || 0;
+    const pos = parseInt(d.POS || '99') || 99;
+    const b = parseInt(d.B || '0') || 0;
+    const isBooyah = b === 1 || pos === 1;
+
+    if (d.TIME) {
+      m.standings.push({
+        time: d.TIME,
+        pos,
+        pts,
+        abts,
+        b,
+        image: findTeamLogo(d.TIME, data.teamsReference)
+      });
+
+      if (isBooyah && !m.booyahTeam) {
+        m.booyahTeam = d.TIME;
+        m.booyahTeamLogo = findTeamLogo(d.TIME, data.teamsReference);
+        m.booyahAbts = abts;
+        m.booyahPts = pts;
+      }
+    }
+  });
+
+  return Array.from(matchesMap.values()).map(m => {
+    if (!m.booyahTeam && m.standings.length > 0) {
+      const top1 = m.standings.reduce((prev, curr) => curr.pos < prev.pos ? curr : prev, m.standings[0]);
+      if (top1.pos === 1) {
+        m.booyahTeam = top1.time;
+        m.booyahTeamLogo = top1.image;
+        m.booyahAbts = top1.abts;
+        m.booyahPts = top1.pts;
+      }
+    }
+    m.standings.sort((a, b) => a.pos - b.pos);
+    return m;
+  }).sort((a, b) => {
+    const rdA = parseInt(a.rd.replace(/\D/g, '')) || 0;
+    const rdB = parseInt(b.rd.replace(/\D/g, '')) || 0;
+    if (rdA !== rdB) return rdA - rdB;
+    const qA = parseInt(a.q.replace(/\D/g, '')) || 0;
+    const qB = parseInt(b.q.replace(/\D/g, '')) || 0;
+    return qA - qB;
+  });
+}, [data.details, data.teamsReference, selectedSafeLocation]);
+
+// Todas as partidas do campeonato com registro de fechamento da safe + time do Booyah
+const allSafeMatchesLog = useMemo(() => {
+  const matchesMap = new Map<string, {
+    key: string;
+    rd: string;
+    q: string;
+    mapa: string;
+    ondeFechou: string;
+    confronto: string;
+    booyahTeam: string;
+    booyahTeamLogo?: string;
+    booyahAbts: number;
+    booyahPts: number;
+    standings: { time: string; pos: number; pts: number; abts: number; b: number; image?: string }[];
+  }>();
+
+  data.details.forEach(d => {
+    if (!d.RD || !d.Q) return;
+    const cleanMap = formatMapName(d.MAPA);
+    const matchKey = `${d.CONFRONTO || 'OFICIAL'}-${d.RD}-${d.Q}-${cleanMap}`;
+
+    if (!matchesMap.has(matchKey)) {
+      matchesMap.set(matchKey, {
+        key: matchKey,
+        rd: d.RD,
+        q: d.Q,
+        mapa: cleanMap || 'N/A',
+        ondeFechou: d.ONDE_FECHOU ? d.ONDE_FECHOU.trim() : '',
+        confronto: d.CONFRONTO || 'Oficial',
+        booyahTeam: '',
+        booyahAbts: 0,
+        booyahPts: 0,
+        standings: []
+      });
+    }
+
+    const m = matchesMap.get(matchKey)!;
+    if (d.ONDE_FECHOU && !m.ondeFechou) {
+      m.ondeFechou = d.ONDE_FECHOU.trim();
+    }
+    if (cleanMap && (m.mapa === 'N/A' || !m.mapa)) {
+      m.mapa = cleanMap;
+    }
+
+    const pts = parseInt(d.PTS || '0') || 0;
+    const abts = parseInt(d.ABTS || '0') || 0;
+    const pos = parseInt(d.POS || '99') || 99;
+    const b = parseInt(d.B || '0') || 0;
+    const isBooyah = b === 1 || pos === 1;
+
+    if (d.TIME) {
+      m.standings.push({
+        time: d.TIME,
+        pos,
+        pts,
+        abts,
+        b,
+        image: findTeamLogo(d.TIME, data.teamsReference)
+      });
+
+      if (isBooyah && !m.booyahTeam) {
+        m.booyahTeam = d.TIME;
+        m.booyahTeamLogo = findTeamLogo(d.TIME, data.teamsReference);
+        m.booyahAbts = abts;
+        m.booyahPts = pts;
+      }
+    }
+  });
+
+  return Array.from(matchesMap.values()).map(m => {
+    if (!m.booyahTeam && m.standings.length > 0) {
+      const top1 = m.standings.reduce((prev, curr) => curr.pos < prev.pos ? curr : prev, m.standings[0]);
+      if (top1.pos === 1) {
+        m.booyahTeam = top1.time;
+        m.booyahTeamLogo = top1.image;
+        m.booyahAbts = top1.abts;
+        m.booyahPts = top1.pts;
+      }
+    }
+    m.standings.sort((a, b) => a.pos - b.pos);
+    return m;
+  }).filter(m => m.ondeFechou && m.ondeFechou !== 'N/A')
+    .sort((a, b) => {
+      const rdA = parseInt(a.rd.replace(/\D/g, '')) || 0;
+      const rdB = parseInt(b.rd.replace(/\D/g, '')) || 0;
+      if (rdA !== rdB) return rdA - rdB;
+      const qA = parseInt(a.q.replace(/\D/g, '')) || 0;
+      const qB = parseInt(b.q.replace(/\D/g, '')) || 0;
+      return qA - qB;
+    });
+}, [data.details, data.teamsReference]);
 // Estatísticas de Posições (1º ao 12º Lugar) para Todas as Equipes
 const allTeamsPositionStats = useMemo(() => {
 const teamsMap = new Map<
@@ -3861,26 +4085,37 @@ return positionSortConfig.direction === "desc"
 : valA - valB;
 });
 }, [allTeamsPositionStats, positionSortConfig]);
-// Análise de Fechamento de Safe (Onde Fechou)
+// Análise de Fechamento de Safe (Onde Fechou) com Registro de Booyahs
 const safeAnalysisData = useMemo(() => {
-const analysis: Record<
-string,
-{ totals: number; locals: Record<string, number> }
-> = {};
-const seenMatches = new Set<string>();
-data.details.forEach((d) => {
-const matchKey = `${d.CONFRONTO}-${d.RD}-${d.Q}`;
-if (seenMatches.has(matchKey)) return;
-seenMatches.add(matchKey);
-const map = d.MAPA;
-const local = d.ONDE_FECHOU;
-if (!map || !local) return;
-if (!analysis[map]) analysis[map] = { totals: 0, locals: {} };
-analysis[map].locals[local] = (analysis[map].locals[local] || 0) + 1;
-analysis[map].totals++;
-});
-return analysis;
-}, [data.details]);
+  const analysis: Record<
+    string,
+    { 
+      totals: number; 
+      locals: Record<string, { 
+        count: number; 
+        booyahMap: Record<string, number>;
+        matches: typeof allSafeMatchesLog;
+      }> 
+    }
+  > = {};
+
+  allSafeMatchesLog.forEach((m) => {
+    if (!m.mapa || !m.ondeFechou || m.ondeFechou === 'N/A') return;
+    if (!analysis[m.mapa]) analysis[m.mapa] = { totals: 0, locals: {} };
+    if (!analysis[m.mapa].locals[m.ondeFechou]) {
+      analysis[m.mapa].locals[m.ondeFechou] = { count: 0, booyahMap: {}, matches: [] };
+    }
+    analysis[m.mapa].locals[m.ondeFechou].count++;
+    analysis[m.mapa].locals[m.ondeFechou].matches.push(m);
+    analysis[m.mapa].totals++;
+    if (m.booyahTeam) {
+      analysis[m.mapa].locals[m.ondeFechou].booyahMap[m.booyahTeam] = 
+        (analysis[m.mapa].locals[m.ondeFechou].booyahMap[m.booyahTeam] || 0) + 1;
+    }
+  });
+
+  return analysis;
+}, [allSafeMatchesLog]);
 const getGamePhase = (
 safe: string | undefined,
 ): "EARLY" | "MID" | "LATE" | "OTHER" => {
@@ -3963,6 +4198,86 @@ t.totalPhaseKills > 0
 }, [filteredData.killFeed, filteredData.players, filteredTeamStats]);
 const handlePlayerClick = (playerName: string) => {
 navigate("/players", { state: { player: playerName } });
+};
+
+const handlePrintSafeList = () => {
+  window.print();
+};
+
+const handleCaptureSafeScreenshot = async () => {
+  if (!safePrintRef.current) return;
+  setIsCapturingSafePrint(true);
+  try {
+    const canvas = await html2canvas(safePrintRef.current, {
+      backgroundColor: '#0f0f13',
+      scale: 2,
+      useCORS: true,
+      logging: false,
+    });
+    const image = canvas.toDataURL('image/png');
+    const link = document.createElement('a');
+    link.href = image;
+    link.download = `FFWS_Fechamento_Safe_${safePrintMapFilter === 'ALL' ? 'Todos_Mapas' : safePrintMapFilter}_${new Date().toISOString().slice(0, 10)}.png`;
+    link.click();
+  } catch (err) {
+    console.error('Erro ao capturar print da lista:', err);
+  } finally {
+    setIsCapturingSafePrint(false);
+  }
+};
+
+const handleCaptureSelectedLocal = async () => {
+  if (!selectedLocalPrintRef.current || !selectedSafeLocation) return;
+  setIsCapturingSafePrint(true);
+  try {
+    const canvas = await html2canvas(selectedLocalPrintRef.current, {
+      backgroundColor: '#0f0f13',
+      scale: 2,
+      useCORS: true,
+      logging: false,
+    });
+    const image = canvas.toDataURL('image/png');
+    const link = document.createElement('a');
+    link.href = image;
+    link.download = `FFWS_Safe_${selectedSafeLocation.mapName}_${selectedSafeLocation.local.replace(/\s+/g, '_')}.png`;
+    link.click();
+  } catch (err) {
+    console.error('Erro ao capturar print do local:', err);
+  } finally {
+    setIsCapturingSafePrint(false);
+  }
+};
+
+const handleCopySafeText = () => {
+  let text = `👑 FFWS BR 2026 SPLIT 2 • RELATÓRIO DE FECHAMENTO DE SAFE & BOOYAHS\n`;
+  text += `Total de Quedas Mapeadas: ${allSafeMatchesLog.length}\n\n`;
+
+  const targetMaps = safePrintMapFilter === 'ALL' 
+    ? Object.keys(safeAnalysisData) 
+    : [safePrintMapFilter];
+
+  targetMaps.forEach(mapName => {
+    const mapData = safeAnalysisData[mapName] as {
+      totals: number;
+      locals: Record<string, { count: number; booyahMap: Record<string, number>; matches: typeof allSafeMatchesLog }>;
+    } | undefined;
+    if (!mapData) return;
+    text += `🗺️ MAPA: ${mapName} (${mapData.totals} Fechamentos)\n`;
+    text += `----------------------------------------\n`;
+    const sorted = Object.entries(mapData.locals).sort((a, b) => b[1].count - a[1].count);
+    sorted.forEach(([local, val]) => {
+      const pct = mapData.totals > 0 ? ((val.count / mapData.totals) * 100).toFixed(1) : '0';
+      text += `📍 ${local}: ${val.count}x (${pct}%)\n`;
+      val.matches.forEach(m => {
+        text += `   • RD ${m.rd} (Q${m.q}): Booyah ${m.booyahTeam || 'N/A'} [${m.booyahAbts} abts, ${m.booyahPts} pts]\n`;
+      });
+    });
+    text += `\n`;
+  });
+
+  navigator.clipboard.writeText(text);
+  setSafeCopySuccess(true);
+  setTimeout(() => setSafeCopySuccess(false), 2500);
 };
 if (data.loading)
 return (
@@ -9746,30 +10061,193 @@ Chance para próxima:
 ) : activeTab === "safeAnalysis" ? (
 <div className="space-y-8 animate-in fade-in duration-500">
 {selectedSafeLocation ? (
-<div className="space-y-6">
-<div className="flex items-center justify-between bg-black/40 p-4 rounded-2xl border border-white/5">
-<div className="flex items-center gap-3">
+<div className="space-y-6" ref={selectedLocalPrintRef} id="selected-local-printable-area">
+{/* Header com botão de voltar e identificação do local */}
+<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-black/40 p-5 rounded-3xl border border-white/5 shadow-xl">
+<div className="flex items-center gap-4">
 <button
 onClick={() => setSelectedSafeLocation(null)}
-className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-all"
+className="p-2.5 bg-white/5 hover:bg-yellow-500 hover:text-black rounded-xl text-gray-400 transition-all cursor-pointer flex items-center gap-1.5 text-xs font-black uppercase tracking-wider no-print"
+title="Voltar para todos os locais"
 >
-<ArrowLeft size={16} />
+<ArrowLeft size={16} /> Voltar
 </button>
 <div>
-<h3 className="text-white font-black text-lg uppercase italic tracking-widest flex items-center gap-2">
-<MapPin size={20} className="text-yellow-500" />{" "}
+<div className="flex items-center gap-2">
+<span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 font-display">
+Local de Fechamento da Safe
+</span>
+<span className="text-xs text-gray-400 font-mono font-bold">
+Mapa: {selectedSafeLocation.mapName}
+</span>
+</div>
+<h3 className="text-white font-black text-2xl uppercase italic tracking-wider flex items-center gap-2 mt-1">
+<MapPin size={24} className="text-yellow-500" />{" "}
 {selectedSafeLocation.local}
 </h3>
-<p className="text-[10px] text-gray-500 font-bold uppercase">
-Mapa: {selectedSafeLocation.mapName}
-</p>
 </div>
 </div>
-<div className="text-[10px] text-yellow-500 font-black uppercase tracking-widest px-3 py-1 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
-Classificação neste fechamento
+<div className="flex items-center gap-3 flex-wrap">
+<div className="flex items-center gap-2 no-print">
+<button
+onClick={() => window.print()}
+className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10 flex items-center gap-1.5 text-xs font-black uppercase tracking-wider transition-colors cursor-pointer"
+title="Imprimir ou salvar PDF deste local"
+>
+<Printer size={14} className="text-yellow-500" /> Print / PDF
+</button>
+<button
+onClick={handleCaptureSelectedLocal}
+disabled={isCapturingSafePrint}
+className="px-3 py-2 rounded-xl bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 flex items-center gap-1.5 text-xs font-black uppercase tracking-wider transition-colors cursor-pointer"
+title="Baixar imagem PNG deste local"
+>
+<Camera size={14} /> {isCapturingSafePrint ? "..." : "Print PNG"}
+</button>
+</div>
+<div className="text-right">
+<span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest block">
+Total de Quedas
+</span>
+<span className="text-xl font-black text-yellow-500 font-mono">
+{selectedSafeMatchesList.length} Partida{selectedSafeMatchesList.length !== 1 ? 's' : ''}
+</span>
+</div>
+<div className="w-12 h-12 rounded-2xl bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center text-yellow-400 shadow-[0_0_15px_rgba(234,179,8,0.2)]">
+<Target size={24} />
 </div>
 </div>
+</div>
+
+{/* SEÇÃO 1: BOOYAHS CONQUISTADOS EM {selectedSafeLocation.local} */}
+<div className="space-y-3">
+<div className="flex items-center gap-2">
+<Trophy size={18} className="text-yellow-500" />
+<h4 className="text-xs font-black uppercase tracking-wider text-white font-display">
+Booyahs Conquistados Quando a Safe Fechou em {selectedSafeLocation.local}
+</h4>
+</div>
+
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+{selectedSafeMatchesList.map((m) => (
+<div
+key={m.key}
+className="bg-[#141419] border border-yellow-500/30 hover:border-yellow-500 rounded-2xl p-4 shadow-xl transition-all group relative overflow-hidden"
+>
+<div className="flex items-center justify-between mb-3 border-b border-white/5 pb-2.5">
+<div className="flex items-center gap-1.5">
+<span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-yellow-500 text-black font-mono">
+RD {m.rd}
+</span>
+<span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-white/10 text-gray-300 font-mono">
+Queda {m.q}
+</span>
+</div>
+<span className="text-[9px] text-gray-400 font-black uppercase tracking-widest">
+{m.mapa}
+</span>
+</div>
+
+<div className="flex items-center gap-3.5">
+<div className="w-12 h-12 rounded-xl bg-black/60 border border-yellow-500/40 p-1 flex items-center justify-center shrink-0 shadow-[0_0_12px_rgba(234,179,8,0.2)] overflow-hidden">
+{m.booyahTeamLogo ? (
+<img
+src={m.booyahTeamLogo}
+alt={m.booyahTeam}
+className="w-full h-full object-contain"
+/>
+) : (
+<Trophy size={20} className="text-yellow-500" />
+)}
+</div>
+<div className="min-w-0 flex-1">
+<div className="flex items-center gap-1 text-[9px] text-yellow-400 font-black uppercase tracking-wider">
+<Crown size={11} className="fill-yellow-400" /> Campeão do Booyah
+</div>
+<h5 className="text-base font-black uppercase text-white truncate italic font-display group-hover:text-yellow-400 transition-colors">
+{m.booyahTeam || "Booyah Registrado"}
+</h5>
+<div className="flex items-center gap-3 text-xs font-mono font-bold text-gray-300 mt-0.5">
+<span className="text-red-400 font-black">{m.booyahAbts} Abates</span>
+<span className="text-gray-600">•</span>
+<span className="text-yellow-400 font-black">{m.booyahPts} Pts</span>
+</div>
+</div>
+</div>
+
+<button
+onClick={() =>
+setSafeExpandedMatchKey(
+safeExpandedMatchKey === m.key ? null : m.key,
+)
+}
+className="mt-3 w-full py-1.5 bg-white/5 hover:bg-white/10 text-[10px] font-black uppercase tracking-wider text-gray-300 hover:text-white rounded-lg transition-colors flex items-center justify-center gap-1 cursor-pointer"
+>
+{safeExpandedMatchKey === m.key ? (
+<>
+<ChevronUp size={12} /> Ocultar Placar da Queda
+</>
+) : (
+<>
+<ChevronDown size={12} /> Ver Placar Completo da Queda
+</>
+)}
+</button>
+
+{/* Placar Completo Expandido da Queda */}
+{safeExpandedMatchKey === m.key && (
+<div className="mt-3 pt-3 border-t border-white/10 space-y-1.5 animate-in fade-in duration-200">
+<div className="text-[9px] font-black uppercase tracking-wider text-gray-400 mb-2 flex items-center justify-between">
+<span>Posição / Time</span>
+<span>Abates / Pts</span>
+</div>
+{m.standings.slice(0, 12).map((s, idx) => (
+<div
+key={s.time}
+className={`flex items-center justify-between text-xs px-2 py-1 rounded ${
+idx === 0
+? "bg-yellow-500/15 border border-yellow-500/30 text-yellow-300 font-black"
+: "text-gray-300 bg-black/40"
+}`}
+>
+<div className="flex items-center gap-2 truncate">
+<span className="font-mono text-[10px] text-gray-500 w-4">
+#{s.pos}
+</span>
+{s.image && (
+<img
+src={s.image}
+alt={s.time}
+className="w-4 h-4 object-contain shrink-0"
+/>
+)}
+<span className="truncate uppercase font-bold text-[11px]">
+{s.time}
+</span>
+</div>
+<div className="font-mono font-bold text-[11px] shrink-0 text-right">
+<span className="text-red-400">{s.abts} K</span>
+<span className="text-gray-500 mx-1">/</span>
+<span className="text-yellow-400 font-black">{s.pts} P</span>
+</div>
+</div>
+))}
+</div>
+)}
+</div>
+))}
+</div>
+</div>
+
+{/* SEÇÃO 2: TOP STATS ACUMULADOS NESTE FECHAMENTO */}
 {safeRankingStats.length > 0 && (
+<div className="space-y-3">
+<div className="flex items-center gap-2">
+<BarChart2 size={18} className="text-yellow-500" />
+<h4 className="text-xs font-black uppercase tracking-wider text-white font-display">
+Líderes Acumulados em Partidas que Fecharam em {selectedSafeLocation.local}
+</h4>
+</div>
 <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
 {[
 {
@@ -9837,7 +10315,23 @@ className="flex justify-between items-center text-xs"
 </div>
 ))}
 </div>
+</div>
 )}
+
+{/* SEÇÃO 3: TABELA COMPLETA DE CLASSIFICAÇÃO DAS EQUIPES NESTE FECHAMENTO */}
+<div className="space-y-3">
+<div className="flex items-center justify-between">
+<div className="flex items-center gap-2">
+<ListOrdered size={18} className="text-yellow-500" />
+<h4 className="text-xs font-black uppercase tracking-wider text-white font-display">
+Classificação Geral das Equipes Neste Fechamento
+</h4>
+</div>
+<span className="text-[10px] text-gray-500 font-bold uppercase">
+Clique nas colunas para ordenar
+</span>
+</div>
+
 <div className="bg-[#1a1a1a] rounded-3xl overflow-hidden border border-gray-800 shadow-xl overflow-x-auto">
 <table className="w-full text-left min-w-[1000px]">
 <thead className="bg-black/60 text-[10px] text-gray-500 uppercase tracking-widest font-black italic select-none">
@@ -9976,73 +10470,218 @@ Nenhum time pontuou nesta safe.
 </table>
 </div>
 </div>
+</div>
 ) : (
-<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+/* VISÃO PRINCIPAL DE FECHAMENTO DE SAFE */
+<div className="space-y-6">
+{/* Barra Superior: Modo de Visualização + Busca em Tempo Real */}
+<div className="bg-[#121217] p-4 rounded-3xl border border-gray-800 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+<div className="flex items-center gap-2 flex-wrap">
+<button
+onClick={() => setSafeAnalysisViewMode("maps")}
+className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer ${
+safeAnalysisViewMode === "maps"
+? "bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black scale-[1.02]"
+: "text-gray-400 hover:text-white hover:bg-white/5"
+}`}
+>
+<LayoutGrid size={15} /> Locais por Mapa
+</button>
+<button
+onClick={() => setSafeAnalysisViewMode("printList")}
+className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer ${
+safeAnalysisViewMode === "printList"
+? "bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black scale-[1.02]"
+: "text-gray-400 hover:text-white hover:bg-white/5"
+}`}
+>
+<Printer size={15} /> Lista para Printar (Locais & Booyahs)
+</button>
+<button
+onClick={() => setSafeAnalysisViewMode("matchesLog")}
+className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer ${
+safeAnalysisViewMode === "matchesLog"
+? "bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black scale-[1.02]"
+: "text-gray-400 hover:text-white hover:bg-white/5"
+}`}
+>
+<Trophy size={15} /> Histórico Geral ({allSafeMatchesLog.length})
+</button>
+</div>
+
+{/* Campo de Busca Rápida */}
+<div className="relative w-full md:w-80">
+<Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+<input
+type="text"
+value={safeSearchTerm}
+onChange={(e) => setSafeSearchTerm(e.target.value)}
+placeholder="Buscar local, time do booyah, mapa..."
+className="w-full bg-black/70 border border-gray-800 rounded-xl pl-9 pr-3.5 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500/50 uppercase"
+/>
+{safeSearchTerm && (
+<button
+onClick={() => setSafeSearchTerm("")}
+className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white text-xs px-1"
+>
+✕
+</button>
+)}
+</div>
+</div>
+
+{/* MODO 1: CARDS DE MAPAS COM BOOYAHS PREVIEW */}
+{safeAnalysisViewMode === "maps" && (
+<div className="space-y-4">
+  {/* Barra de Ações Rápidas & Alternância para Lista para Printar */}
+  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-black/40 p-4 rounded-2xl border border-white/5 no-print">
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Modo de Visualização:</span>
+      <button
+        onClick={() => setSafeAnalysisViewMode("maps")}
+        className="px-3 py-1.5 rounded-xl bg-yellow-500/20 text-yellow-300 border border-yellow-500/40 text-xs font-black uppercase flex items-center gap-1.5 cursor-pointer shadow-sm"
+      >
+        <LayoutGrid size={13} /> Cards por Mapa
+      </button>
+      <button
+        onClick={() => setSafeAnalysisViewMode("printList")}
+        className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10 text-xs font-black uppercase flex items-center gap-1.5 transition-colors cursor-pointer"
+        title="Alternar para a visualização em lista formatada para printar / screenshot"
+      >
+        <Printer size={13} className="text-yellow-500" /> Lista para Printar
+      </button>
+    </div>
+    <div className="flex items-center gap-2">
+      <button
+        onClick={handlePrintSafeList}
+        className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10 text-xs font-black uppercase flex items-center gap-1.5 transition-colors cursor-pointer"
+        title="Imprimir ou salvar em PDF"
+      >
+        <Printer size={13} className="text-yellow-500" /> Imprimir / PDF
+      </button>
+      <button
+        onClick={handleCopySafeText}
+        className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10 text-xs font-black uppercase flex items-center gap-1.5 transition-colors cursor-pointer"
+        title="Copiar resumo de locais e booyahs em texto"
+      >
+        <Copy size={13} /> {safeCopySuccess ? "Copiado!" : "Copiar Texto"}
+      </button>
+    </div>
+  </div>
+
+  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 {Object.entries(safeAnalysisData).map(([mapName, entry]) => {
-const data = entry as {
+const mapData = entry as {
 totals: number;
-locals: Record<string, number>;
+locals: Record<string, { count: number; booyahMap: Record<string, number> }>;
 };
-const sortedLocals = Object.entries(data.locals).sort(
-(a, b) => (b[1] as number) - (a[1] as number),
+
+let sortedLocals = Object.entries(mapData.locals).sort(
+(a, b) => b[1].count - a[1].count,
 );
+
+if (safeSearchTerm.trim()) {
+const cleanTerm = safeSearchTerm.trim().toUpperCase();
+sortedLocals = sortedLocals.filter(([localName, val]) => {
+const matchLocal = localName.toUpperCase().includes(cleanTerm);
+const matchBooyah = Object.keys(val.booyahMap).some((team) =>
+team.toUpperCase().includes(cleanTerm),
+);
+return matchLocal || matchBooyah;
+});
+}
+
 return (
 <div
 key={mapName}
 className="bg-[#1a1a1a] rounded-3xl border border-gray-800 overflow-hidden shadow-xl flex flex-col"
 >
-<div className="bg-gradient-to-r from-red-500/10 to-transparent p-5 border-b border-gray-800 flex items-center justify-between">
+<div className="bg-gradient-to-r from-red-500/10 via-amber-500/5 to-transparent p-5 border-b border-gray-800 flex items-center justify-between">
 <div className="flex items-center gap-3">
 <div className="w-8 h-8 bg-red-500 text-white rounded-lg flex items-center justify-center">
 <Target size={18} />
 </div>
-<h3 className="text-sm font-black text-white uppercase tracking-widest">
+<h3 className="text-sm font-black text-white uppercase tracking-widest font-display">
 {mapName}
 </h3>
 </div>
-<span className="text-[10px] text-gray-500 font-bold uppercase">
-{data.totals} FECHAMENTOS
+<span className="text-[10px] text-gray-500 font-bold uppercase font-mono">
+{mapData.totals} FECHAMENTOS
 </span>
 </div>
+
 <div className="p-6 space-y-4 flex-grow">
-{sortedLocals.map(([local, count]) => {
+{sortedLocals.map(([local, val]) => {
 const percentage =
-data.totals > 0
-? (((count as number) / data.totals) * 100).toFixed(
-1,
-)
+mapData.totals > 0
+? ((val.count / mapData.totals) * 100).toFixed(1)
 : "0.0";
+const booyahEntries = Object.entries(val.booyahMap).sort(
+(a, b) => b[1] - a[1],
+);
+
 return (
 <div
 key={local}
-onClick={() =>
-setSelectedSafeLocation({ mapName, local })
-}
-className="space-y-2 cursor-pointer group p-2 -mx-2 rounded-xl hover:bg-white/5 transition-all"
+onClick={() => setSelectedSafeLocation({ mapName, local })}
+className="space-y-2 cursor-pointer group p-3 -mx-2 rounded-2xl hover:bg-white/5 border border-transparent hover:border-yellow-500/30 transition-all"
+title={`Clique para ver todas as partidas, rodadas e booyahs que fecharam em ${local}`}
 >
 <div className="flex justify-between items-end">
-<span className="text-xs font-black text-white uppercase italic group-hover:text-yellow-500 transition-colors">
+<span className="text-xs font-black text-white uppercase italic group-hover:text-yellow-500 transition-colors flex items-center gap-1.5">
+<MapPin size={13} className="text-red-400 group-hover:text-yellow-400" />
 {local}
 </span>
 <div className="text-right flex items-center gap-2">
-<span className="text-[10px] text-red-500 font-black">
+<span className="text-[10px] text-red-400 font-black font-mono">
 {percentage}%
 </span>
 <span className="text-[9px] text-gray-500 font-bold uppercase">
-({count}x)
+({val.count}x)
 </span>
 </div>
 </div>
+
 <div className="h-1.5 bg-black rounded-full overflow-hidden border border-white/5">
 <div
-className="h-full bg-gradient-to-r from-red-600 to-red-400 rounded-full group-hover:from-yellow-600 group-hover:to-yellow-400 transition-colors"
+className="h-full bg-gradient-to-r from-red-600 via-amber-500 to-yellow-400 rounded-full group-hover:from-yellow-500 group-hover:to-amber-300 transition-colors"
 style={{ width: `${percentage}%` }}
 />
 </div>
+
+{/* Prévia dos Booyahs Conquistados neste Local */}
+{booyahEntries.length > 0 && (
+<div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+<span className="text-[8.5px] text-yellow-400 font-black flex items-center gap-0.5 uppercase tracking-wider">
+<Trophy size={10} className="fill-yellow-400 text-yellow-400" /> Booyahs:
+</span>
+{booyahEntries.slice(0, 3).map(([team, bCount]) => (
+<span
+key={team}
+className="text-[8px] bg-yellow-500/10 text-yellow-300 border border-yellow-500/25 px-1.5 py-0.5 rounded font-bold uppercase"
+>
+{team} {bCount > 1 ? `(${bCount}x)` : ""}
+</span>
+))}
+{booyahEntries.length > 3 && (
+<span className="text-[8px] text-gray-500">
++{booyahEntries.length - 3}
+</span>
+)}
+</div>
+)}
 </div>
 );
 })}
+
+{sortedLocals.length === 0 && (
+<div className="py-8 text-center text-gray-600 text-[10px] font-bold uppercase tracking-wider">
+Nenhum local encontrado para a busca.
 </div>
+)}
+</div>
+
+{sortedLocals.length > 0 && (
 <div className="p-4 bg-black/40 border-t border-gray-800/50">
 <div className="flex items-center gap-2 text-[9px] font-black text-gray-400 uppercase tracking-widest">
 <MapPin size={12} className="text-red-500" />
@@ -10052,14 +10691,649 @@ Hot Zone:
 </span>
 </div>
 </div>
+)}
 </div>
 );
 })}
+
 {Object.keys(safeAnalysisData).length === 0 && (
 <div className="col-span-full py-20 text-center">
 <p className="text-gray-500 font-black uppercase tracking-widest italic animate-pulse">
 Nenhum dado de fechamento de safe encontrado...
 </p>
+</div>
+)}
+</div>
+</div>
+)}
+
+{/* MODO 2: LISTA PARA PRINTAR (LOCAIS POR MAPA, QUEDAS E BOOYAHS) */}
+{safeAnalysisViewMode === "printList" && (() => {
+  // Filtro de partidas
+  const filteredMatches = allSafeMatchesLog.filter((m) => {
+    if (safePrintMapFilter !== "ALL" && m.mapa !== safePrintMapFilter) return false;
+    if (safeSearchTerm.trim()) {
+      const term = safeSearchTerm.trim().toUpperCase();
+      return (
+        m.ondeFechou.toUpperCase().includes(term) ||
+        m.booyahTeam.toUpperCase().includes(term) ||
+        m.mapa.toUpperCase().includes(term) ||
+        `RD ${m.rd}`.toUpperCase().includes(term) ||
+        `R${m.rd}`.toUpperCase().includes(term)
+      );
+    }
+    return true;
+  });
+
+  // Mapas disponíveis
+  const availableMaps = Object.keys(safeAnalysisData);
+  const totalUniqueLocals = (Object.values(safeAnalysisData) as { totals: number; locals: Record<string, any> }[]).reduce(
+    (acc, m) => acc + Object.keys(m.locals || {}).length,
+    0
+  );
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-300">
+      {/* Barra de Controles e Filtros para Impressão */}
+      <div className="bg-[#121217] p-5 rounded-3xl border border-gray-800 shadow-xl space-y-4 no-print">
+        {/* Filtro por Mapa */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/5 pb-4">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 mr-2 flex items-center gap-1">
+              <Filter size={12} /> Mapa:
+            </span>
+            <button
+              onClick={() => setSafePrintMapFilter("ALL")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                safePrintMapFilter === "ALL"
+                  ? "bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black scale-[1.02]"
+                  : "bg-white/5 text-gray-400 hover:text-white hover:bg-white/10"
+              }`}
+            >
+              Todos os Mapas ({allSafeMatchesLog.length})
+            </button>
+            {availableMaps.map((mName) => {
+              const count = safeAnalysisData[mName]?.totals || 0;
+              return (
+                <button
+                  key={mName}
+                  onClick={() => setSafePrintMapFilter(mName)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                    safePrintMapFilter === mName
+                      ? "bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black scale-[1.02]"
+                      : "bg-white/5 text-gray-400 hover:text-white hover:bg-white/10"
+                  }`}
+                >
+                  {mName} ({count})
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Formato de Visualização da Lista */}
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 mr-1">
+              Formato:
+            </span>
+            <button
+              onClick={() => setSafePrintLayout("byLocal")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${
+                safePrintLayout === "byLocal"
+                  ? "bg-red-500/20 text-red-300 border border-red-500/40"
+                  : "bg-white/5 text-gray-400 hover:text-white"
+              }`}
+            >
+              <MapPin size={13} /> Agrupado por Local
+            </button>
+            <button
+              onClick={() => setSafePrintLayout("chronological")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${
+                safePrintLayout === "chronological"
+                  ? "bg-red-500/20 text-red-300 border border-red-500/40"
+                  : "bg-white/5 text-gray-400 hover:text-white"
+              }`}
+            >
+              <ListOrdered size={13} /> Tabela de Quedas
+            </button>
+          </div>
+        </div>
+
+        {/* Botões de Ação para Print e Exportação */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="text-xs text-gray-400 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+            <span>
+              Mostrando <strong className="text-white">{filteredMatches.length}</strong> quedas em{" "}
+              <strong className="text-white">
+                {safePrintMapFilter === "ALL" ? "Todos os Mapas" : safePrintMapFilter}
+              </strong>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={handlePrintSafeList}
+              className="px-4 py-2 rounded-xl bg-yellow-500 text-black hover:bg-yellow-400 text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-yellow-500/20"
+              title="Abrir diálogo de impressão do navegador ou salvar como PDF"
+            >
+              <Printer size={15} /> Imprimir / PDF
+            </button>
+            <button
+              onClick={handleCaptureSafeScreenshot}
+              disabled={isCapturingSafePrint}
+              className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white border border-white/10 text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer"
+              title="Capturar imagem PNG em alta resolução desta lista para printar"
+            >
+              <Camera size={15} />
+              {isCapturingSafePrint ? "Gerando Imagem..." : "Baixar Print PNG (HD)"}
+            </button>
+            <button
+              onClick={handleCopySafeText}
+              className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10 text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer"
+              title="Copiar lista dos locais e booyahs em texto para área de transferência"
+            >
+              {safeCopySuccess ? (
+                <>
+                  <Check size={15} className="text-green-400" /> Copiado!
+                </>
+              ) : (
+                <>
+                  <Copy size={15} /> Copiar Resumo
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ÁREA IMPRIMÍVEL (FORMATADA PARA SCREENSHOT / PRINT) */}
+      <div
+        ref={safePrintRef}
+        id="safe-printable-area"
+        className="bg-[#0f0f14] rounded-3xl p-6 sm:p-8 border border-gray-800 shadow-2xl space-y-6 text-white"
+      >
+        {/* Cabeçalho Oficial do Relatório */}
+        <div className="border-b border-gray-800 pb-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 text-[10px] font-black uppercase tracking-widest font-mono">
+                FFWS BR 2026 SPLIT 2 • RELATÓRIO OFICIAL
+              </span>
+              <span className="text-[10px] font-mono text-gray-500">
+                {new Date().toLocaleDateString("pt-BR")}
+              </span>
+            </div>
+            <h2 className="text-xl sm:text-2xl font-black uppercase italic tracking-wider font-display text-white flex items-center gap-2.5">
+              <Trophy size={22} className="text-yellow-500" />
+              Onde a Safe Fechou, Rodada, Queda e Booyahs
+            </h2>
+            <p className="text-xs text-gray-400 font-medium">
+              Mapeamento competitivo detalhado de todos os fechamentos de safe por mapa e histórico de vencedores.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3 bg-black/60 p-3 rounded-2xl border border-white/5">
+            <div className="text-center px-3 border-r border-white/10">
+              <span className="text-[9px] text-gray-500 font-bold uppercase tracking-widest block font-mono">
+                Quedas
+              </span>
+              <span className="text-base font-black text-yellow-400 font-mono">
+                {filteredMatches.length}
+              </span>
+            </div>
+            <div className="text-center px-3 border-r border-white/10">
+              <span className="text-[9px] text-gray-500 font-bold uppercase tracking-widest block font-mono">
+                Mapas
+              </span>
+              <span className="text-base font-black text-white font-mono">
+                {safePrintMapFilter === "ALL" ? availableMaps.length : 1}
+              </span>
+            </div>
+            <div className="text-center px-3">
+              <span className="text-[9px] text-gray-500 font-bold uppercase tracking-widest block font-mono">
+                Locais Únicos
+              </span>
+              <span className="text-base font-black text-red-400 font-mono">
+                {totalUniqueLocals}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* LAYOUT 1: AGRUPADO POR LOCAL (COM QUEDAS E BOOYAHS) */}
+        {safePrintLayout === "byLocal" && (
+          <div className="space-y-6">
+            {availableMaps
+              .filter((mName) => safePrintMapFilter === "ALL" || safePrintMapFilter === mName)
+              .map((mapName) => {
+                const mapData = safeAnalysisData[mapName] as {
+                  totals: number;
+                  locals: Record<string, { count: number; booyahMap: Record<string, number>; matches: typeof allSafeMatchesLog }>;
+                } | undefined;
+                if (!mapData) return null;
+
+                let sortedLocals = Object.entries(mapData.locals).sort(
+                  (a, b) => b[1].count - a[1].count
+                );
+
+                if (safeSearchTerm.trim()) {
+                  const cleanTerm = safeSearchTerm.trim().toUpperCase();
+                  sortedLocals = sortedLocals.filter(([localName, val]) => {
+                    const matchLocal = localName.toUpperCase().includes(cleanTerm);
+                    const matchBooyah = Object.keys(val.booyahMap).some((team) =>
+                      team.toUpperCase().includes(cleanTerm)
+                    );
+                    return matchLocal || matchBooyah;
+                  });
+                }
+
+                if (sortedLocals.length === 0) return null;
+
+                return (
+                  <div
+                    key={mapName}
+                    className="bg-[#141419] rounded-2xl border border-gray-800 overflow-hidden shadow-lg"
+                  >
+                    {/* Cabeçalho do Mapa */}
+                    <div className="bg-gradient-to-r from-red-500/15 via-yellow-500/10 to-transparent p-4 border-b border-gray-800 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-red-500 text-white flex items-center justify-center font-black">
+                          <Target size={16} />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-black uppercase tracking-wider text-white font-display">
+                            Mapa: {mapName}
+                          </h3>
+                          <span className="text-[10px] text-gray-400 font-mono">
+                            {mapData.totals} Quedas Registradas • {sortedLocals.length} Locais Mapeados
+                          </span>
+                        </div>
+                      </div>
+                      <span className="px-2.5 py-1 rounded-lg bg-yellow-500/15 border border-yellow-500/30 text-yellow-300 text-[10px] font-black uppercase font-mono">
+                        Hot Zone: {sortedLocals[0]?.[0]} ({sortedLocals[0]?.[1]?.count}x)
+                      </span>
+                    </div>
+
+                    {/* Tabela Formatada para Print do Mapa */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs min-w-[750px]">
+                        <thead className="bg-black/60 text-[10px] text-gray-400 uppercase tracking-widest font-black border-b border-gray-800">
+                          <tr>
+                            <th className="p-3 w-56">Local de Fechamento</th>
+                            <th className="p-3 text-center w-32">Frequência</th>
+                            <th className="p-3 w-52">Quedas Onde Fechou</th>
+                            <th className="p-3">Equipes do Booyah & Desempenho</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-800/60 font-medium">
+                          {sortedLocals.map(([local, val], idx) => {
+                            const pct =
+                              mapData.totals > 0
+                                ? ((val.count / mapData.totals) * 100).toFixed(1)
+                                : "0.0";
+
+                            return (
+                              <tr
+                                key={local}
+                                className={`hover:bg-white/5 transition-colors ${
+                                  idx % 2 === 0 ? "bg-black/20" : "bg-transparent"
+                                }`}
+                              >
+                                <td className="p-3">
+                                  <div className="flex items-center gap-2">
+                                    <MapPin size={13} className="text-red-400 shrink-0" />
+                                    <span className="font-black uppercase tracking-wide text-white">
+                                      {local}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="p-3 text-center">
+                                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-500/10 border border-red-500/25">
+                                    <span className="font-mono font-black text-red-400 text-xs">
+                                      {val.count}x
+                                    </span>
+                                    <span className="text-[10px] text-gray-400 font-bold">
+                                      ({pct}%)
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="p-3">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    {val.matches.map((m) => (
+                                      <span
+                                        key={m.key}
+                                        className="text-[9.5px] font-mono px-2 py-0.5 rounded bg-black/60 border border-white/10 text-gray-300 font-bold"
+                                        title={`Rodada ${m.rd}, Queda ${m.q} - Booyah: ${m.booyahTeam}`}
+                                      >
+                                        RD {m.rd} (Q{m.q})
+                                      </span>
+                                    ))}
+                                  </div>
+                                </td>
+                                <td className="p-3">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    {val.matches.map((m) => (
+                                      <div
+                                        key={m.key}
+                                        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-yellow-500/10 border border-yellow-500/25 text-yellow-300 text-[10.5px]"
+                                      >
+                                        {m.booyahTeamLogo ? (
+                                          <img
+                                            src={m.booyahTeamLogo}
+                                            alt={m.booyahTeam}
+                                            className="w-4 h-4 object-contain rounded"
+                                          />
+                                        ) : (
+                                          <Crown size={12} className="text-yellow-400 fill-yellow-400" />
+                                        )}
+                                        <span className="font-black uppercase truncate max-w-[130px]">
+                                          {m.booyahTeam || "N/A"}
+                                        </span>
+                                        <span className="text-[9.5px] font-mono text-gray-400">
+                                          ({m.booyahAbts}K / {m.booyahPts}P)
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        )}
+
+        {/* LAYOUT 2: TABELA CORRIDA DE TODAS AS QUEDAS (CRONOLÓGICA) */}
+        {safePrintLayout === "chronological" && (
+          <div className="bg-[#141419] rounded-2xl border border-gray-800 overflow-hidden shadow-lg">
+            <div className="p-4 bg-black/40 border-b border-gray-800 flex items-center justify-between">
+              <span className="text-xs font-black uppercase tracking-wider text-white flex items-center gap-2">
+                <ListOrdered size={15} className="text-yellow-500" /> Tabela Corrida de Quedas &
+                Booyahs
+              </span>
+              <span className="text-[10px] text-gray-400 font-mono">
+                Total: {filteredMatches.length} Partidas
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs min-w-[850px]">
+                <thead className="bg-black/60 text-[10px] text-gray-400 uppercase tracking-widest font-black border-b border-gray-800">
+                  <tr>
+                    <th className="p-3 text-center w-20">Rodada</th>
+                    <th className="p-3 text-center w-20">Queda</th>
+                    <th className="p-3 w-32">Mapa</th>
+                    <th className="p-3 w-48">Onde a Safe Fechou</th>
+                    <th className="p-3">Equipe do Booyah</th>
+                    <th className="p-3 text-center w-24">Abates</th>
+                    <th className="p-3 text-center w-24">Pontos Totais</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800/60 font-medium">
+                  {filteredMatches.map((m, idx) => (
+                    <tr
+                      key={m.key}
+                      className={`hover:bg-white/5 transition-colors ${
+                        idx % 2 === 0 ? "bg-black/20" : "bg-transparent"
+                      }`}
+                    >
+                      <td className="p-3 text-center font-mono font-bold text-yellow-400">
+                        RD {m.rd}
+                      </td>
+                      <td className="p-3 text-center font-mono font-bold text-gray-300">
+                        Q{m.q}
+                      </td>
+                      <td className="p-3 font-black uppercase text-gray-300">{m.mapa}</td>
+                      <td className="p-3">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-500/10 text-red-300 border border-red-500/25 font-black uppercase text-xs">
+                          <MapPin size={11} className="text-red-400" />
+                          {m.ondeFechou}
+                        </span>
+                      </td>
+                      <td className="p-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded bg-black border border-yellow-500/30 p-0.5 flex items-center justify-center shrink-0">
+                            {m.booyahTeamLogo ? (
+                              <img
+                                src={m.booyahTeamLogo}
+                                alt={m.booyahTeam}
+                                className="w-full h-full object-contain"
+                              />
+                            ) : (
+                              <Crown size={12} className="text-yellow-400" />
+                            )}
+                          </div>
+                          <span className="font-black uppercase text-yellow-400 italic">
+                            {m.booyahTeam || "N/A"}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="p-3 text-center font-mono font-bold text-red-400 text-sm">
+                        {m.booyahAbts}
+                      </td>
+                      <td className="p-3 text-center font-mono font-black text-yellow-400 text-sm">
+                        {m.booyahPts}
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredMatches.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        className="p-8 text-center text-gray-500 font-bold uppercase tracking-widest italic"
+                      >
+                        Nenhuma queda encontrada com os filtros selecionados.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Rodapé do Relatório Impresso */}
+        <div className="border-t border-gray-800 pt-4 flex flex-col sm:flex-row items-center justify-between text-[10px] text-gray-500 font-mono gap-2">
+          <span>Relatório gerado via Dashboard FFWS BR 2026 Split 2 • Desenvolvido por Jhan Medeiros Analista</span>
+          <span>© Free Fire Esports • Todos os dados calculados do fDetalhes</span>
+        </div>
+      </div>
+    </div>
+  );
+})()}
+
+{/* MODO 3: HISTÓRICO GERAL DE TODAS AS QUEDAS & BOOYAHS */}
+{safeAnalysisViewMode === "matchesLog" && (
+<div className="space-y-4">
+<div className="flex items-center justify-between bg-black/40 p-4 rounded-2xl border border-white/5">
+<div className="flex items-center gap-2">
+<Trophy size={16} className="text-yellow-500" />
+<h4 className="text-xs font-black uppercase tracking-wider text-white font-display">
+Histórico Completo de Partidas: Onde Fechou, Rodada, Queda e Quem Deu Booyah
+</h4>
+</div>
+<span className="text-[10px] text-gray-400 font-mono font-bold">
+Total: {allSafeMatchesLog.length} Quedas Registradas
+</span>
+</div>
+
+<div className="bg-[#1a1a1a] rounded-3xl overflow-hidden border border-gray-800 shadow-xl overflow-x-auto">
+<table className="w-full text-left min-w-[900px]">
+<thead className="bg-black/60 text-[10px] text-gray-500 uppercase tracking-widest font-black italic select-none">
+<tr>
+<th className="p-4 text-center w-24">Rodada</th>
+<th className="p-4 text-center w-24">Queda</th>
+<th className="p-4">Mapa</th>
+<th className="p-4">Onde Fechou</th>
+<th className="p-4">Quem Deu Booyah</th>
+<th className="p-4 text-center">Abates</th>
+<th className="p-4 text-center">Pontos</th>
+<th className="p-4 text-center w-36">Ação</th>
+</tr>
+</thead>
+<tbody className="divide-y divide-white/5 text-xs">
+{allSafeMatchesLog
+.filter((m) => {
+if (!safeSearchTerm.trim()) return true;
+const term = safeSearchTerm.trim().toUpperCase();
+return (
+m.ondeFechou.toUpperCase().includes(term) ||
+m.booyahTeam.toUpperCase().includes(term) ||
+m.mapa.toUpperCase().includes(term) ||
+`RD ${m.rd}`.toUpperCase().includes(term) ||
+`R${m.rd}`.toUpperCase().includes(term)
+);
+})
+.map((m) => (
+<React.Fragment key={m.key}>
+<tr className="hover:bg-white/5 transition-colors group">
+<td className="p-4 text-center">
+<span className="px-2 py-0.5 rounded bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 font-mono font-bold text-[11px]">
+RD {m.rd}
+</span>
+</td>
+<td className="p-4 text-center">
+<span className="px-2 py-0.5 rounded bg-white/5 text-gray-300 font-mono font-bold text-[11px]">
+Queda {m.q}
+</span>
+</td>
+<td className="p-4 font-bold text-gray-300 uppercase">
+{m.mapa}
+</td>
+<td className="p-4">
+<button
+onClick={() =>
+setSelectedSafeLocation({
+mapName: m.mapa,
+local: m.ondeFechou,
+})
+}
+className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-500/10 text-red-300 border border-red-500/25 font-black uppercase text-xs hover:bg-yellow-500/20 hover:text-yellow-300 hover:border-yellow-500/40 transition-colors cursor-pointer"
+title={`Clique para ver todas as estatísticas do fechamento em ${m.ondeFechou}`}
+>
+<MapPin size={12} className="text-red-400" />
+{m.ondeFechou}
+</button>
+</td>
+<td className="p-4">
+<div className="flex items-center gap-2.5">
+<div className="w-7 h-7 rounded-lg bg-black border border-yellow-500/30 p-0.5 flex items-center justify-center shrink-0">
+{m.booyahTeamLogo ? (
+<img
+src={m.booyahTeamLogo}
+alt={m.booyahTeam}
+className="w-full h-full object-contain"
+/>
+) : (
+<Trophy size={14} className="text-yellow-500" />
+)}
+</div>
+<span className="font-black uppercase text-yellow-400 italic tracking-wide text-xs">
+{m.booyahTeam || "N/A"}
+</span>
+</div>
+</td>
+<td className="p-4 text-center font-mono font-bold text-red-400 text-sm">
+{m.booyahAbts}
+</td>
+<td className="p-4 text-center font-mono font-black text-yellow-400 text-sm">
+{m.booyahPts}
+</td>
+<td className="p-4 text-center">
+<button
+onClick={() =>
+setSafeExpandedMatchKey(
+safeExpandedMatchKey === m.key ? null : m.key,
+)
+}
+className="px-2.5 py-1 rounded bg-white/5 hover:bg-white/10 text-[10px] font-black uppercase tracking-wider text-gray-300 hover:text-white transition-colors cursor-pointer"
+>
+{safeExpandedMatchKey === m.key
+? "Fechar"
+: "Ver Queda"}
+</button>
+</td>
+</tr>
+
+{/* Linha Expandida com o Placar dos 12 times da partida */}
+{safeExpandedMatchKey === m.key && (
+<tr className="bg-black/60">
+<td colSpan={8} className="p-4">
+<div className="bg-[#121217] border border-gray-800 rounded-2xl p-4 space-y-3">
+<div className="flex items-center justify-between border-b border-white/5 pb-2">
+<span className="text-xs font-black uppercase tracking-wider text-white font-display flex items-center gap-2">
+<Trophy size={14} className="text-yellow-500" /> Placar
+Completo da Queda {m.q} (Rodada {m.rd}) • Safe
+fechou em <strong className="text-yellow-400">{m.ondeFechou}</strong>
+</span>
+<span className="text-[10px] font-mono text-gray-500">
+{m.standings.length} Equipes
+</span>
+</div>
+
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+{m.standings.map((s) => (
+<div
+key={s.time}
+className={`p-2 rounded-xl flex items-center justify-between text-xs ${
+s.pos === 1
+? "bg-yellow-500/15 border border-yellow-500/40 text-yellow-300 font-black"
+: "bg-black/40 border border-white/5 text-gray-300"
+}`}
+>
+<div className="flex items-center gap-2 truncate">
+<span
+className={`font-mono font-black text-[10px] w-5 text-center rounded ${
+s.pos === 1
+? "bg-yellow-500 text-black"
+: s.pos === 2
+? "bg-gray-400 text-black"
+: s.pos === 3
+? "bg-amber-600 text-white"
+: "text-gray-500"
+}`}
+>
+#{s.pos}
+</span>
+{s.image && (
+<img
+src={s.image}
+alt={s.time}
+className="w-5 h-5 object-contain shrink-0"
+/>
+)}
+<span className="truncate uppercase font-bold text-[11px]">
+{s.time}
+</span>
+</div>
+<div className="font-mono text-[10px] shrink-0 text-right">
+<span className="text-red-400 font-bold">
+{s.abts} K
+</span>
+<span className="text-gray-500 mx-1">
+/
+</span>
+<span className="text-yellow-400 font-black">
+{s.pts} P
+</span>
+</div>
+</div>
+))}
+</div>
+</div>
+</td>
+</tr>
+)}
+</React.Fragment>
+))}
+</tbody>
+</table>
+</div>
 </div>
 )}
 </div>
