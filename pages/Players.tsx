@@ -21,6 +21,7 @@ import { findTeamLogo } from '../utils/teamUtils';
 import { findDimImg } from '../utils/skillImages';
 import { getPlayerCharacterHistory } from '../utils/characterUtils';
 import CharacterSkillsFrequency from '../components/CharacterSkillsFrequency';
+import { getWeaponInfo } from '../utils/weaponUtils';
 
 interface PlayersProps {
   data: DashboardData;
@@ -5917,8 +5918,12 @@ const PlayerRatingGauge: React.FC<{
 
 
 const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: any) => {
-    const [profileSubTab, setProfileSubTab] = useState<'all' | 'zeradas' | 'rounds' | 'history' | 'kpm'>('all');
+    const [profileSubTab, setProfileSubTab] = useState<'all' | 'zeradas' | 'rounds' | 'history' | 'weapons' | 'kpm'>('all');
     const [showDetails, setShowDetails] = useState<boolean>(true);
+    const [weaponCategoryFilter, setWeaponCategoryFilter] = useState<string>('ALL');
+    const [weaponSearchTerm, setWeaponSearchTerm] = useState<string>('');
+    const [weaponViewMode, setWeaponViewMode] = useState<'grid' | 'table'>('grid');
+    const [weaponSortBy, setWeaponSortBy] = useState<'kills' | 'percentage' | 'name'>('kills');
     const [playerVisibleSections, setPlayerVisibleSections] = useState({
         header: true,
         ratingGauge: true,
@@ -5931,6 +5936,7 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
         dropKills: true,
         safeKills: true,
         victimsKillers: true,
+        weapons: true,
         loadout: true,
         characterHistory: true,
         zeradas: true,
@@ -5956,6 +5962,7 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
             dropKills: val,
             safeKills: val,
             victimsKillers: val,
+            weapons: val,
             loadout: val,
             characterHistory: val,
             zeradas: val,
@@ -6374,6 +6381,119 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
             }
         });
 
+        // Kills por Arma do Jogador (com cálculo de porcentagem e categoria)
+        const playerKillRecords = data.killFeed.filter((k: any) => {
+            if (normalize(k.PLAYER) !== normalize(playerName)) return false;
+            if (filters.rodada.length > 0 && !filters.rodada.some((r: string) => matchRd(r, k.RD))) return false;
+            if (filters.map.length > 0 && !filters.map.some((m: string) => normalize(m) === normalize(k.MAPA))) return false;
+            if (filters.queda.length > 0 && !filters.queda.some((q: string) => matchQ(q, k.Q))) return false;
+            if (filters.confrontation.length > 0 && !filters.confrontation.some((c: string) => normalize(c) === normalize(k.CONFRONTO))) return false;
+            return true;
+        });
+
+        const weaponKillsMap = new Map<string, {
+            name: string;
+            rawName: string;
+            tipo: string;
+            img?: string;
+            config: any;
+            kills: number;
+            safes: Record<string, number>;
+            maps: Record<string, number>;
+            rounds: Record<string, number>;
+        }>();
+
+        let totalWeaponKills = 0;
+
+        playerKillRecords.forEach((k: any) => {
+            const rawArma = k.ARMA ? String(k.ARMA).trim() : 'OUTROS';
+            const info = getWeaponInfo(rawArma, data.weapons);
+            const weaponKey = info.name || rawArma.toUpperCase();
+
+            if (!weaponKillsMap.has(weaponKey)) {
+                weaponKillsMap.set(weaponKey, {
+                    name: info.name || rawArma,
+                    rawName: rawArma,
+                    tipo: info.tipo || 'OUTROS',
+                    img: info.img,
+                    config: info.config,
+                    kills: 0,
+                    safes: {},
+                    maps: {},
+                    rounds: {}
+                });
+            }
+
+            const wObj = weaponKillsMap.get(weaponKey)!;
+            wObj.kills += 1;
+            totalWeaponKills += 1;
+
+            if (k.SAFE) {
+                const sKey = `Safe ${k.SAFE}`;
+                wObj.safes[sKey] = (wObj.safes[sKey] || 0) + 1;
+            }
+            if (k.MAPA) {
+                wObj.maps[k.MAPA] = (wObj.maps[k.MAPA] || 0) + 1;
+            }
+            if (k.RD) {
+                wObj.rounds[k.RD] = (wObj.rounds[k.RD] || 0) + 1;
+            }
+        });
+
+        const weaponKillsList = Array.from(weaponKillsMap.values())
+            .map(w => {
+                const percentage = totalWeaponKills > 0 ? ((w.kills / totalWeaponKills) * 100).toFixed(1) : '0.0';
+                const topSafeEntry = Object.entries(w.safes).sort((a, b) => b[1] - a[1])[0];
+                const topMapEntry = Object.entries(w.maps).sort((a, b) => b[1] - a[1])[0];
+
+                return {
+                    ...w,
+                    percentage: parseFloat(percentage),
+                    percentageStr: `${percentage}%`,
+                    topSafe: topSafeEntry ? `${topSafeEntry[0]} (${topSafeEntry[1]}x)` : null,
+                    topMap: topMapEntry ? `${topMapEntry[0]} (${topMapEntry[1]}x)` : null,
+                };
+            })
+            .sort((a, b) => b.kills - a.kills);
+
+        // Agrupamento por Categoria de Arma (Ex: AR, SMG, ESPINGARDA, 1 TIRO, SNIPER, PISTOLA)
+        const categoryKillsMap = new Map<string, {
+            category: string;
+            config: any;
+            kills: number;
+            weaponsCount: number;
+            topWeapon: string;
+        }>();
+
+        weaponKillsList.forEach(w => {
+            const cat = w.tipo || 'OUTROS';
+            if (!categoryKillsMap.has(cat)) {
+                categoryKillsMap.set(cat, {
+                    category: cat,
+                    config: w.config,
+                    kills: 0,
+                    weaponsCount: 0,
+                    topWeapon: w.name
+                });
+            }
+            const cObj = categoryKillsMap.get(cat)!;
+            cObj.kills += w.kills;
+            cObj.weaponsCount += 1;
+        });
+
+        const categoryKillsList = Array.from(categoryKillsMap.values())
+            .map(c => {
+                const percentage = totalWeaponKills > 0 ? ((c.kills / totalWeaponKills) * 100).toFixed(1) : '0.0';
+                return {
+                    ...c,
+                    percentage: parseFloat(percentage),
+                    percentageStr: `${percentage}%`
+                };
+            })
+            .sort((a, b) => b.kills - a.kills);
+
+        const topWeapon = weaponKillsList[0] || null;
+
         return { 
             team, 
             playerImg,
@@ -6421,9 +6541,34 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
             topZeroDrop,
             sortedRoundsMatrix,
             maxMatchRecord,
-            maxRoundRecord
+            maxRoundRecord,
+            weaponKillsList,
+            categoryKillsList,
+            totalWeaponKills,
+            topWeapon
         };
     }, [data, playerName, filters, characters]);
+
+    const filteredWeapons = useMemo(() => {
+        return (stats.weaponKillsList || [])
+            .filter((w: any) => {
+                if (weaponCategoryFilter !== "ALL" && normalize(w.tipo) !== normalize(weaponCategoryFilter)) {
+                    return false;
+                }
+                if (weaponSearchTerm.trim() !== "") {
+                    const search = normalize(weaponSearchTerm);
+                    const nameMatches = normalize(w.name).includes(search) || normalize(w.rawName).includes(search);
+                    const typeMatches = normalize(w.tipo).includes(search);
+                    return nameMatches || typeMatches;
+                }
+                return true;
+            })
+            .sort((a: any, b: any) => {
+                if (weaponSortBy === "name") return a.name.localeCompare(b.name);
+                if (weaponSortBy === "percentage") return b.percentage - a.percentage;
+                return b.kills - a.kills;
+            });
+    }, [stats.weaponKillsList, weaponCategoryFilter, weaponSearchTerm, weaponSortBy]);
 
     return (
         <div className="space-y-6">
@@ -6439,6 +6584,20 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                         }`}
                     >
                         <Activity size={15} /> Visão Geral Completa
+                    </button>
+
+                    <button
+                        onClick={() => setProfileSubTab('weapons')}
+                        className={`px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 ${
+                            profileSubTab === 'weapons'
+                                ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/20'
+                                : 'bg-black/40 text-gray-400 hover:text-white hover:bg-white/5'
+                        }`}
+                    >
+                        <Crosshair size={15} className={profileSubTab === 'weapons' ? 'text-white' : 'text-purple-400'} /> Arsenal & Armas
+                        <span className="ml-1 px-2 py-0.5 rounded-full bg-purple-950/80 text-purple-300 border border-purple-500/30 text-[10px]">
+                            {stats.weaponKillsList?.length || 0} Armas
+                        </span>
                     </button>
 
                     <button
@@ -6501,7 +6660,7 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                             title="Personalizar seções visíveis do jogador"
                         >
                             <Layers size={14} className="text-yellow-400" />
-                            <span>Seções ({Object.values(playerVisibleSections).filter(Boolean).length}/16)</span>
+                            <span>Seções ({Object.values(playerVisibleSections).filter(Boolean).length}/17)</span>
                             <ChevronDown size={14} className={`text-gray-400 transition-transform ${showPlayerSectionMenu ? 'rotate-180' : ''}`} />
                         </button>
 
@@ -6541,6 +6700,7 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                                         { key: 'dropKills', label: 'Abates por Queda' },
                                         { key: 'safeKills', label: 'Abates por Safe' },
                                         { key: 'victimsKillers', label: 'Vítimas & Algozes' },
+                                        { key: 'weapons', label: 'Arsenal & Kills por Arma' },
                                         { key: 'loadout', label: 'Configuração Atual de Loadout' },
                                         { key: 'characterHistory', label: 'Histórico de Personagens Utilizados' },
                                         { key: 'zeradas', label: 'Detalhes Quedas Zeradas' },
@@ -7215,6 +7375,406 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                     </div>
                     )}
                 </>
+            )}
+
+            {/* ARSENAL & ABATES POR ARMA */}
+            {playerVisibleSections.weapons && (profileSubTab === 'all' || profileSubTab === 'overview' || profileSubTab === 'weapons') && (
+                <div className="bg-[#0e0e11] p-6 lg:p-8 rounded-3xl border border-gray-800 shadow-2xl space-y-6 mt-6 relative group">
+                    {/* Header da Seção */}
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-white/5 pb-6">
+                        <div>
+                            <h3 className="text-lg font-black text-white uppercase italic tracking-tight flex items-center gap-3 font-display">
+                                <Crosshair size={22} className="text-yellow-500 animate-pulse" />
+                                ARSENAL & ABATES POR ARMA
+                            </h3>
+                            <p className="text-xs text-gray-400 font-medium mt-1">
+                                Lista completa de armas utilizadas nas eliminações com contagem de abates e porcentagem de letalidade no total de kills
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-3 flex-wrap">
+                            <div className="bg-yellow-500/10 border border-yellow-500/30 px-3.5 py-1.5 rounded-xl flex items-center gap-2">
+                                <span className="text-[10px] font-black text-yellow-500 uppercase tracking-widest">TOTAL DE KILLS:</span>
+                                <span className="text-sm font-black text-white italic font-mono">{stats.totalWeaponKills} Abates</span>
+                            </div>
+                            <button
+                                onClick={() => togglePlayerSection('weapons')}
+                                className="p-1.5 px-2.5 rounded-xl bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-white/10 text-[10px] font-bold uppercase flex items-center gap-1.5 transition-all cursor-pointer"
+                                title="Ocultar Arsenal & Abates por Arma"
+                            >
+                                <EyeOff size={12} />
+                                <span>Ocultar</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Cards Resumo do Arsenal */}
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="bg-black/40 p-4 rounded-2xl border border-white/5 space-y-1.5">
+                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest block">
+                                ARMA FAVORITA / META
+                            </span>
+                            <div className="flex items-center gap-3">
+                                {stats.topWeapon?.img ? (
+                                    <img src={stats.topWeapon.img} alt={stats.topWeapon.name} className="w-10 h-7 object-contain drop-shadow" />
+                                ) : (
+                                    <Crosshair size={20} className="text-yellow-500" />
+                                )}
+                                <div className="min-w-0">
+                                    <span className="text-sm font-black text-yellow-400 uppercase italic block truncate">
+                                        {stats.topWeapon?.name || 'N/A'}
+                                    </span>
+                                    <span className="text-[10px] text-gray-400 font-mono font-bold block">
+                                        {stats.topWeapon?.kills || 0} Kills ({stats.topWeapon?.percentageStr || '0%'})
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-black/40 p-4 rounded-2xl border border-white/5 space-y-1.5">
+                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest block">
+                                CATEGORIA PRINCIPAL
+                            </span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm font-black text-purple-400 uppercase italic truncate">
+                                    {stats.categoryKillsList[0]?.category || 'N/A'}
+                                </span>
+                            </div>
+                            <span className="text-[10px] text-gray-400 font-mono font-bold block">
+                                {stats.categoryKillsList[0]?.kills || 0} Kills ({stats.categoryKillsList[0]?.percentageStr || '0%'} do total)
+                            </span>
+                        </div>
+
+                        <div className="bg-black/40 p-4 rounded-2xl border border-white/5 space-y-1.5">
+                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest block">
+                                DIVERSIDADE DE ARMAS
+                            </span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-xl font-black text-emerald-400 font-mono italic">
+                                    {stats.weaponKillsList.length}
+                                </span>
+                                <span className="text-xs text-gray-300 font-bold uppercase">Armas Distintas</span>
+                            </div>
+                            <span className="text-[10px] text-gray-500 font-medium block">
+                                Com pelo menos 1 abate registrado
+                            </span>
+                        </div>
+
+                        <div className="bg-black/40 p-4 rounded-2xl border border-white/5 space-y-1.5">
+                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest block">
+                                LETALIDADE DO TOP 3
+                            </span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-xl font-black text-yellow-500 font-mono italic">
+                                    {(stats.weaponKillsList.slice(0, 3).reduce((acc: number, w: any) => acc + w.percentage, 0)).toFixed(1)}%
+                                </span>
+                            </div>
+                            <span className="text-[10px] text-gray-400 font-medium block">
+                                Concentração das 3 principais armas
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Distribuição por Categorias de Arma */}
+                    {stats.categoryKillsList.length > 0 && (
+                        <div className="bg-black/40 p-4 rounded-2xl border border-white/5 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                                    <Layers size={13} className="text-yellow-500" /> Distribuição por Categoria de Arma:
+                                </span>
+                                <span className="text-[10px] text-gray-500 font-medium">
+                                    Clique para filtrar a lista abaixo
+                                </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+                                {stats.categoryKillsList.map((cat: any) => {
+                                    const isSelected = weaponCategoryFilter === cat.category;
+                                    return (
+                                        <button
+                                            key={cat.category}
+                                            onClick={() => setWeaponCategoryFilter(isSelected ? "ALL" : cat.category)}
+                                            className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                                                isSelected
+                                                    ? 'bg-yellow-500/20 border-yellow-500 shadow-lg shadow-yellow-500/10'
+                                                    : 'bg-black/60 border-white/5 hover:border-white/20 hover:bg-white/5'
+                                            }`}
+                                        >
+                                            <div className="flex items-center justify-between mb-1.5">
+                                                <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${cat.config?.bg || 'bg-gray-500/10'} ${cat.config?.text || 'text-gray-300'} border ${cat.config?.border || 'border-gray-500/20'}`}>
+                                                    {cat.category}
+                                                </span>
+                                                <span className="text-xs font-black text-yellow-400 font-mono">
+                                                    {cat.percentageStr}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between items-end">
+                                                <span className="text-xs font-bold text-gray-300 font-mono">
+                                                    {cat.kills} Kills
+                                                </span>
+                                                <span className="text-[9px] text-gray-500">
+                                                    {cat.weaponsCount} {cat.weaponsCount === 1 ? 'arma' : 'armas'}
+                                                </span>
+                                            </div>
+                                            <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden mt-2">
+                                                <div 
+                                                    className="h-full bg-gradient-to-r from-yellow-600 to-yellow-400 rounded-full" 
+                                                    style={{ width: `${cat.percentage}%` }}
+                                                />
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Barra de Filtros, Busca & Modos de Visualização */}
+                    <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-black/50 p-3 rounded-2xl border border-white/5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                            {/* Busca por Nome da Arma */}
+                            <div className="relative min-w-[200px] flex-1 sm:flex-initial">
+                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                                <input
+                                    type="text"
+                                    value={weaponSearchTerm}
+                                    onChange={(e) => setWeaponSearchTerm(e.target.value)}
+                                    placeholder="Buscar arma (ex: AWM, MAG-7)..."
+                                    className="w-full bg-[#16161a] border border-white/10 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500 transition-colors"
+                                />
+                                {weaponSearchTerm && (
+                                    <button
+                                        onClick={() => setWeaponSearchTerm('')}
+                                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white text-xs cursor-pointer"
+                                    >
+                                        ✕
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Filtro de Categoria */}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                                <button
+                                    onClick={() => setWeaponCategoryFilter("ALL")}
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase transition-all cursor-pointer ${
+                                        weaponCategoryFilter === "ALL"
+                                            ? "bg-yellow-500 text-black shadow-md shadow-yellow-500/20"
+                                            : "bg-white/5 hover:bg-white/10 text-gray-400"
+                                    }`}
+                                >
+                                    Todas ({stats.weaponKillsList.length})
+                                </button>
+                                {stats.categoryKillsList.map((cat: any) => (
+                                    <button
+                                        key={cat.category}
+                                        onClick={() => setWeaponCategoryFilter(cat.category)}
+                                        className={`px-2.5 py-1.5 rounded-xl text-xs font-black uppercase transition-all cursor-pointer ${
+                                            weaponCategoryFilter === cat.category
+                                                ? "bg-yellow-500 text-black shadow-md shadow-yellow-500/20"
+                                                : "bg-white/5 hover:bg-white/10 text-gray-400"
+                                        }`}
+                                    >
+                                        {cat.category} ({cat.weaponsCount})
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Modos de Exibição & Ordenação */}
+                        <div className="flex items-center gap-2 justify-end">
+                            <select
+                                value={weaponSortBy}
+                                onChange={(e) => setWeaponSortBy(e.target.value as any)}
+                                className="bg-[#16161a] border border-white/10 rounded-xl px-3 py-1.5 text-xs text-gray-300 font-bold uppercase focus:outline-none focus:border-yellow-500 cursor-pointer"
+                            >
+                                <option value="kills">Mais Kills</option>
+                                <option value="percentage">Maior %</option>
+                                <option value="name">Nome (A-Z)</option>
+                            </select>
+
+                            <div className="flex items-center bg-[#16161a] border border-white/10 rounded-xl p-0.5">
+                                <button
+                                    onClick={() => setWeaponViewMode('grid')}
+                                    className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                        weaponViewMode === 'grid' ? 'bg-yellow-500 text-black font-black' : 'text-gray-400 hover:text-white'
+                                    }`}
+                                    title="Visualização em Cards / Grid"
+                                >
+                                    <LayoutGrid size={15} />
+                                </button>
+                                <button
+                                    onClick={() => setWeaponViewMode('table')}
+                                    className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                        weaponViewMode === 'table' ? 'bg-yellow-500 text-black font-black' : 'text-gray-400 hover:text-white'
+                                    }`}
+                                    title="Visualização em Tabela"
+                                >
+                                    <LayoutList size={15} />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Grid de Cards de Armas */}
+                    {weaponViewMode === 'grid' ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            {filteredWeapons.map((w: any, idx: number) => {
+                                const isTop1 = idx === 0 && weaponSortBy === 'kills';
+
+                                return (
+                                    <div
+                                        key={w.name}
+                                        className={`bg-[#141418] rounded-2xl border transition-all hover:scale-[1.02] p-4 flex flex-col justify-between shadow-xl relative overflow-hidden group ${
+                                            isTop1
+                                                ? 'border-yellow-500/50 bg-gradient-to-b from-yellow-500/10 to-[#141418]'
+                                                : 'border-white/5 hover:border-yellow-500/30'
+                                        }`}
+                                    >
+                                        {/* Rank Badge */}
+                                        <div className="flex items-center justify-between mb-3">
+                                            <div className="flex items-center gap-2">
+                                                <span className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black font-mono italic ${
+                                                    idx === 0 ? 'bg-yellow-500 text-black shadow-md shadow-yellow-500/30' :
+                                                    idx === 1 ? 'bg-gray-300 text-black' :
+                                                    idx === 2 ? 'bg-amber-600 text-white' :
+                                                    'bg-black/60 text-gray-500 border border-white/10'
+                                                }`}>
+                                                    #{idx + 1}
+                                                </span>
+                                                <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${w.config?.bg || 'bg-gray-500/10'} ${w.config?.text || 'text-gray-300'} border ${w.config?.border || 'border-gray-500/20'}`}>
+                                                    {w.tipo}
+                                                </span>
+                                            </div>
+
+                                            <span className="text-xs font-black text-yellow-400 font-mono bg-yellow-500/15 border border-yellow-500/30 px-2 py-0.5 rounded-lg">
+                                                {w.percentageStr}
+                                            </span>
+                                        </div>
+
+                                        {/* Imagem e Nome da Arma */}
+                                        <div className="flex items-center gap-3 my-2">
+                                            <div className="w-16 h-12 rounded-xl bg-black/60 border border-white/10 p-1 flex items-center justify-center shrink-0 shadow-inner group-hover:border-yellow-500/40 transition-colors">
+                                                {w.img ? (
+                                                    <img src={w.img} alt={w.name} className="max-w-full max-h-full object-contain drop-shadow" />
+                                                ) : (
+                                                    <Crosshair size={22} className="text-gray-600" />
+                                                )}
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <h4 className="text-base font-black text-white uppercase italic tracking-wide truncate group-hover:text-yellow-400 transition-colors font-display">
+                                                    {w.name}
+                                                </h4>
+                                                <div className="flex items-baseline gap-1 mt-0.5">
+                                                    <span className="text-xl font-black text-yellow-500 font-mono italic">
+                                                        {w.kills}
+                                                    </span>
+                                                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                                                        {w.kills === 1 ? 'Abate' : 'Abates'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Barra Visual de Porcentagem */}
+                                        <div className="space-y-1 mt-3 pt-3 border-t border-white/5">
+                                            <div className="flex justify-between items-center text-[10px] text-gray-400 font-medium">
+                                                <span>Fatia no Total</span>
+                                                <span className="font-mono font-bold text-gray-300">{w.percentageStr} ({w.kills}/{stats.totalWeaponKills})</span>
+                                            </div>
+                                            <div className="w-full h-1.5 bg-black/80 rounded-full overflow-hidden border border-white/5">
+                                                <div
+                                                    className="h-full bg-gradient-to-r from-yellow-600 via-yellow-500 to-amber-400 rounded-full transition-all duration-500"
+                                                    style={{ width: `${w.percentage}%` }}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Mini Metadados de Safe / Mapa */}
+                                        {(w.topSafe || w.topMap) && (
+                                            <div className="flex items-center justify-between text-[9px] text-gray-500 font-mono font-medium mt-2 pt-2 border-t border-white/5">
+                                                {w.topSafe && <span>🎯 {w.topSafe}</span>}
+                                                {w.topMap && <span>🗺️ {w.topMap}</span>}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        /* Visualização em Tabela Detalhada */
+                        <div className="bg-[#141418] rounded-2xl overflow-hidden border border-white/10 shadow-xl overflow-x-auto">
+                            <table className="w-full text-left min-w-[700px]">
+                                <thead className="bg-black/60 text-[10px] text-gray-400 uppercase tracking-widest font-black italic select-none">
+                                    <tr>
+                                        <th className="p-3.5 w-14 text-center">#</th>
+                                        <th className="p-3.5">Arma</th>
+                                        <th className="p-3.5 text-center">Categoria</th>
+                                        <th className="p-3.5 text-center">Abates (Kills)</th>
+                                        <th className="p-3.5 text-center">% do Total</th>
+                                        <th className="p-3.5">Distribuição Visual</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5 text-xs">
+                                    {filteredWeapons.map((w: any, idx: number) => (
+                                        <tr key={w.name} className="hover:bg-white/5 transition-colors group">
+                                            <td className="p-3.5 text-center font-mono font-bold text-gray-500">
+                                                #{idx + 1}
+                                            </td>
+                                            <td className="p-3.5">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-8 rounded-lg bg-black/60 border border-white/5 p-1 flex items-center justify-center shrink-0">
+                                                        {w.img ? (
+                                                            <img src={w.img} alt={w.name} className="max-w-full max-h-full object-contain" />
+                                                        ) : (
+                                                            <Crosshair size={14} className="text-gray-600" />
+                                                        )}
+                                                    </div>
+                                                    <span className="font-black text-white uppercase italic tracking-wider group-hover:text-yellow-400 transition-colors">
+                                                        {w.name}
+                                                    </span>
+                                                </div>
+                                            </td>
+                                            <td className="p-3.5 text-center">
+                                                <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-md ${w.config?.bg || 'bg-gray-500/10'} ${w.config?.text || 'text-gray-300'} border ${w.config?.border || 'border-gray-500/20'}`}>
+                                                    {w.tipo}
+                                                </span>
+                                            </td>
+                                            <td className="p-3.5 text-center">
+                                                <span className="text-sm font-black text-yellow-400 font-mono italic">
+                                                    {w.kills}
+                                                </span>
+                                            </td>
+                                            <td className="p-3.5 text-center">
+                                                <span className="text-xs font-black text-emerald-400 font-mono bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-md">
+                                                    {w.percentageStr}
+                                                </span>
+                                            </td>
+                                            <td className="p-3.5 w-48">
+                                                <div className="w-full h-2 bg-black rounded-full overflow-hidden border border-white/5">
+                                                    <div
+                                                        className="h-full bg-gradient-to-r from-yellow-600 to-yellow-400 rounded-full"
+                                                        style={{ width: `${w.percentage}%` }}
+                                                    />
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+
+                    {filteredWeapons.length === 0 && (
+                        <div className="bg-black/30 p-8 rounded-2xl border border-white/5 text-center space-y-2">
+                            <Crosshair size={32} className="mx-auto text-gray-600" />
+                            <p className="text-sm font-bold text-gray-400 uppercase">
+                                Nenhuma arma encontrada para o filtro selecionado
+                            </p>
+                            <p className="text-xs text-gray-600">
+                                Tente limpar a busca ou selecionar outra categoria
+                            </p>
+                        </div>
+                    )}
+                </div>
             )}
 
             {/* Loadout Competitivo: Configuração Atual */}
