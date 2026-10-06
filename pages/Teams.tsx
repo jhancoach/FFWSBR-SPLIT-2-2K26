@@ -59,6 +59,7 @@ Skull,
 Sparkles,
 Filter,
 ShieldAlert,
+ShieldCheck,
 Camera,
 Printer,
 Download,
@@ -250,6 +251,13 @@ const [safeSortConfig, setSafeSortConfig] = useState<{
 key: string;
 direction: "asc" | "desc";
 }>({ key: "pts", direction: "desc" });
+const [safeRankingMatchFilter, setSafeRankingMatchFilter] = useState<string>("ALL");
+const [safeRankingStatusFilter, setSafeRankingStatusFilter] = useState<"ALL" | "SURVIVED" | "ELIMINATED">("ALL");
+
+useEffect(() => {
+  setSafeRankingMatchFilter("ALL");
+  setSafeRankingStatusFilter("ALL");
+}, [selectedSafeLocation?.mapName, selectedSafeLocation?.local]);
 const [mapStatsSearch, setMapStatsSearch] = useState<string>("");
 const [selectedMapFilter, setSelectedMapFilter] = useState<string>("ALL");
 const [showAllTeamsMap, setShowAllTeamsMap] = useState<boolean>(false);
@@ -3654,70 +3662,53 @@ totalsPerDrop[drop]++;
 });
 return { analysis, totalsPerDrop };
 }, [data.details]);
-// Ranking de Times por Fechamento de Safe
-const safeRankingStats = useMemo(() => {
-if (!selectedSafeLocation) return [];
-// Filtrar partidas que fecharam nesse mapa e nesse local
-const safeMatches = data.details.filter(
-(d) =>
-normalize(d.MAPA) === normalize(selectedSafeLocation.mapName) &&
-normalize(d.ONDE_FECHOU) === normalize(selectedSafeLocation.local),
-);
-// Calcular estatísticas apenas para essas partidas
-const stats = calculateTeamStats({ ...data, details: safeMatches });
-return stats.sort((a, b) => {
-let valA = 0;
-let valB = 0;
-switch (safeSortConfig.key) {
-case "pts":
-valA = a.pts;
-valB = b.pts;
-break;
-case "b":
-valA = a.b;
-valB = b.b;
-break;
-case "abts":
-valA = a.abts;
-valB = b.abts;
-break;
-case "ptsc":
-valA = a.ptsc;
-valB = b.ptsc;
-break;
-case "s":
-valA = a.s;
-valB = b.s;
-break;
-case "mediaPts":
-valA = a.s > 0 ? a.pts / a.s : 0;
-valB = b.s > 0 ? b.pts / b.s : 0;
-break;
-case "mediaAbts":
-valA = a.s > 0 ? a.abts / a.s : 0;
-valB = b.s > 0 ? b.abts / b.s : 0;
-break;
-case "mediaPtsc":
-valA = a.s > 0 ? a.ptsc / a.s : 0;
-valB = b.s > 0 ? b.ptsc / b.s : 0;
-break;
-default:
-valA = a.pts;
-valB = b.pts;
-break;
-}
-if (valA === valB) {
-// Desempate
-if (safeSortConfig.key !== "pts" && safeSortConfig.key !== "b") {
-return b.pts - a.pts; // Se iguais, desempatar por pontos decrescente
-}
-if (safeSortConfig.key === "pts") {
-return b.b - a.b; // Se pontos iguais, desempatar por booyahs
-}
-}
-return safeSortConfig.direction === "desc" ? valB - valA : valA - valB;
-});
-}, [data, selectedSafeLocation, safeSortConfig]);
+const cleanStr = (s: string | undefined | null) =>
+  (s || "")
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+// Dicionário de jogador -> time para lookup rápido de eliminações no KillFeed
+const playerTeamLookup = useMemo(() => {
+  const map = new Map<string, string>();
+  (data.players || []).forEach((p) => {
+    if (p.PLAYER && p.TIME) {
+      map.set(normalize(p.PLAYER), formatTeamName(p.TIME));
+    }
+  });
+  (data.playersDimension || []).forEach((pd) => {
+    if (pd.Name && pd.Time && !map.has(normalize(pd.Name))) {
+      map.set(normalize(pd.Name), formatTeamName(pd.Time));
+    }
+  });
+  return map;
+}, [data.players, data.playersDimension]);
+
+// Mapa de última morte por equipe em cada partida (chave: `${rd}-${q}-${cleanMap}`)
+const teamDeathSafesByMatch = useMemo(() => {
+  const matchTeamDeaths = new Map<string, Map<string, number>>();
+  (data.killFeed || []).forEach((k) => {
+    if (!k.RD || !k.Q || !k.VITIMA) return;
+    const cleanMap = formatMapName(k.MAPA);
+    const matchKey = `${normalize(k.RD)}-${normalize(k.Q)}-${cleanMap}`;
+    const victim = normalize(k.VITIMA);
+    const team = playerTeamLookup.get(victim);
+    if (!team) return;
+    const safeNum = parseInt(k.SAFE || '0') || 0;
+    if (safeNum <= 0) return;
+
+    if (!matchTeamDeaths.has(matchKey)) {
+      matchTeamDeaths.set(matchKey, new Map<string, number>());
+    }
+    const teamDeaths = matchTeamDeaths.get(matchKey)!;
+    const currentMax = teamDeaths.get(team) || 0;
+    if (safeNum > currentMax) {
+      teamDeaths.set(team, safeNum);
+    }
+  });
+  return matchTeamDeaths;
+}, [data.killFeed, playerTeamLookup]);
 
 // Lista detalhada de partidas que fecharam no local selecionado com identificação do Booyah, Rodada e Queda
 const selectedSafeMatchesList = useMemo(() => {
@@ -3739,8 +3730,12 @@ const selectedSafeMatchesList = useMemo(() => {
   data.details.forEach(d => {
     if (!d.RD || !d.Q) return;
     const cleanMap = formatMapName(d.MAPA);
-    if (normalize(cleanMap) !== normalize(selectedSafeLocation.mapName) && normalize(d.MAPA) !== normalize(selectedSafeLocation.mapName)) return;
-    if (normalize(d.ONDE_FECHOU) !== normalize(selectedSafeLocation.local)) return;
+    const cleanSelectedMap = cleanStr(selectedSafeLocation.mapName);
+    const cleanSelectedLocal = cleanStr(selectedSafeLocation.local);
+
+    const mapMatches = cleanStr(cleanMap) === cleanSelectedMap || cleanStr(d.MAPA) === cleanSelectedMap;
+    const localMatches = cleanStr(d.ONDE_FECHOU) === cleanSelectedLocal;
+    if (!mapMatches || !localMatches) return;
 
     const matchKey = `${d.CONFRONTO || 'OFICIAL'}-${d.RD}-${d.Q}-${cleanMap}`;
     if (!matchesMap.has(matchKey)) {
@@ -3766,18 +3761,19 @@ const selectedSafeMatchesList = useMemo(() => {
     const isBooyah = b === 1 || pos === 1;
 
     if (d.TIME) {
+      const canonicalTeam = formatTeamName(d.TIME);
       m.standings.push({
-        time: d.TIME,
+        time: canonicalTeam,
         pos,
         pts,
         abts,
         b,
-        image: findTeamLogo(d.TIME, data.teamsReference)
+        image: findTeamLogo(canonicalTeam, data.teamsReference)
       });
 
       if (isBooyah && !m.booyahTeam) {
-        m.booyahTeam = d.TIME;
-        m.booyahTeamLogo = findTeamLogo(d.TIME, data.teamsReference);
+        m.booyahTeam = canonicalTeam;
+        m.booyahTeamLogo = findTeamLogo(canonicalTeam, data.teamsReference);
         m.booyahAbts = abts;
         m.booyahPts = pts;
       }
@@ -3805,6 +3801,243 @@ const selectedSafeMatchesList = useMemo(() => {
     return qA - qB;
   });
 }, [data.details, data.teamsReference, selectedSafeLocation]);
+
+// Partidas ativas filtradas para o ranking
+const activeSafeMatches = useMemo(() => {
+  if (!selectedSafeLocation) return [];
+  const cleanSelectedMap = cleanStr(selectedSafeLocation.mapName);
+  const cleanSelectedLocal = cleanStr(selectedSafeLocation.local);
+
+  return data.details.filter((d) => {
+    if (!d.RD || !d.Q) return false;
+    const cleanMap = formatMapName(d.MAPA);
+    const mapMatches = cleanStr(cleanMap) === cleanSelectedMap || cleanStr(d.MAPA) === cleanSelectedMap;
+    const localMatches = cleanStr(d.ONDE_FECHOU) === cleanSelectedLocal;
+    if (!mapMatches || !localMatches) return false;
+
+    if (safeRankingMatchFilter !== "ALL") {
+      const matchKey = `${d.CONFRONTO || 'OFICIAL'}-${d.RD}-${d.Q}-${cleanMap}`;
+      return matchKey === safeRankingMatchFilter;
+    }
+    return true;
+  });
+}, [data.details, selectedSafeLocation, safeRankingMatchFilter]);
+
+// Ranking de Times por Fechamento de Safe com cálculo de momento e indicadores visuais de eliminação
+const safeRankingStats = useMemo(() => {
+  if (!selectedSafeLocation || activeSafeMatches.length === 0) return [];
+
+  const teamMap = new Map<string, {
+    name: string;
+    image?: string;
+    pts: number;
+    b: number;
+    abts: number;
+    ptsc: number;
+    s: number;
+    positions: number[];
+    survivedCount: number;
+    eliminatedBeforeCount: number;
+    matchRecords: {
+      matchKey: string;
+      rd: string;
+      q: string;
+      pos: number;
+      pts: number;
+      abts: number;
+      survived: boolean;
+      deathSafe?: number;
+    }[];
+  }>();
+
+  activeSafeMatches.forEach((row) => {
+    const rawTeamName = row.TIME;
+    if (!rawTeamName) return;
+    const teamName = formatTeamName(rawTeamName);
+    if (!teamName) return;
+
+    let rowPts = parseInt(row.PTS || '0') || 0;
+    let rowPtsc = parseInt(row.PTSC || '0') || 0;
+    let rowAbts = parseInt(row.ABTS || '0') || 0;
+    let rowB = parseInt(row.B || '0') || 0;
+    let rowPos = parseInt(row.POS || '99') || 99;
+
+    // Booyah derivado
+    if (rowB === 0 && rowPos === 1) {
+      rowB = 1;
+    }
+
+    // PTSC derivado da posição se vazio
+    if (rowPtsc === 0 && rowPos >= 1 && rowPos <= 10) {
+      const POSITION_PTS: Record<number, number> = { 1: 12, 2: 9, 3: 8, 4: 7, 5: 6, 6: 5, 7: 4, 8: 3, 9: 2, 10: 1 };
+      rowPtsc = POSITION_PTS[rowPos] || 0;
+    }
+
+    if (rowPts === 0) {
+      rowPts = rowPtsc + rowAbts;
+    } else if (rowPtsc === 0 && rowPts > rowAbts) {
+      rowPtsc = rowPts - rowAbts;
+    }
+
+    const cleanMap = formatMapName(row.MAPA);
+    const matchLookupKey = `${normalize(row.RD)}-${normalize(row.Q)}-${cleanMap}`;
+    const deathSafe = teamDeathSafesByMatch.get(matchLookupKey)?.get(teamName);
+
+    // Determinar sobrevivência até o momento da safe
+    let survived = false;
+    if (rowPos === 1 || rowB === 1) {
+      survived = true; // Campeão do Booyah, sobreviveu até o fim
+    } else if (rowPos >= 2 && rowPos <= 5) {
+      survived = true; // Top 5 disputa o fechamento final da safe
+    } else if (deathSafe && deathSafe >= 4) {
+      survived = true; // Caiu na Safe 4+, participou do fechamento
+    } else if (rowPos >= 9 || (deathSafe && deathSafe <= 3)) {
+      survived = false; // Eliminada nas primeiras fases (Safes 1 a 3)
+    } else if (rowPos === 6 || rowPos === 7 || rowPos === 8) {
+      survived = deathSafe ? deathSafe >= 4 : rowPos <= 7;
+    }
+
+    if (!teamMap.has(teamName)) {
+      teamMap.set(teamName, {
+        name: teamName,
+        image: findTeamLogo(teamName, data.teamsReference),
+        pts: 0,
+        b: 0,
+        abts: 0,
+        ptsc: 0,
+        s: 0,
+        positions: [],
+        survivedCount: 0,
+        eliminatedBeforeCount: 0,
+        matchRecords: []
+      });
+    }
+
+    const t = teamMap.get(teamName)!;
+    t.pts += rowPts;
+    t.ptsc += rowPtsc;
+    t.abts += rowAbts;
+    t.b += rowB;
+    t.s += 1;
+    t.positions.push(rowPos);
+
+    if (survived) {
+      t.survivedCount += 1;
+    } else {
+      t.eliminatedBeforeCount += 1;
+    }
+
+    t.matchRecords.push({
+      matchKey: `${row.CONFRONTO || 'OFICIAL'}-${row.RD}-${row.Q}-${cleanMap}`,
+      rd: row.RD,
+      q: row.Q,
+      pos: rowPos,
+      pts: rowPts,
+      abts: rowAbts,
+      survived,
+      deathSafe
+    });
+  });
+
+  const stats = Array.from(teamMap.values()).map(t => {
+    const avgPos = t.positions.length > 0
+      ? (t.positions.reduce((sum, p) => sum + p, 0) / t.positions.length).toFixed(1)
+      : '99';
+
+    // Status principal e rótulos contextuais
+    let primaryStatus: 'champion' | 'survived' | 'eliminated_before' | 'mixed';
+    let statusLabel = '';
+    let statusDetail = '';
+
+    if (t.b > 0) {
+      primaryStatus = 'champion';
+      statusLabel = t.b === 1 ? 'Booyah no Fechamento' : `${t.b}x Booyah no Fechamento`;
+      statusDetail = 'Venceu a partida disputando o final desta safe';
+    } else if (t.survivedCount > 0 && t.eliminatedBeforeCount === 0) {
+      primaryStatus = 'survived';
+      statusLabel = 'Sobreviveu até a Safe';
+      statusDetail = t.s === 1
+        ? `Disputou a safe final (#${avgPos}º lugar)`
+        : `Presente no fechamento em todas as ${t.s} quedas`;
+    } else if (t.eliminatedBeforeCount > 0 && t.survivedCount === 0) {
+      primaryStatus = 'eliminated_before';
+      statusLabel = 'Eliminada Antes da Safe';
+      statusDetail = t.s === 1
+        ? `Caiu na fase inicial (#${avgPos}º lugar • antes do fechamento)`
+        : `Eliminada precocemente em todas as ${t.s} quedas`;
+    } else {
+      primaryStatus = 'mixed';
+      statusLabel = `${t.survivedCount}x na Safe / ${t.eliminatedBeforeCount}x Antes`;
+      statusDetail = `Desempenho misto: disputou ${t.survivedCount} de ${t.s} quedas`;
+    }
+
+    return {
+      ...t,
+      avgPos: parseFloat(avgPos),
+      primaryStatus,
+      statusLabel,
+      statusDetail
+    };
+  });
+
+  const sorted = stats.sort((a, b) => {
+    let valA = 0;
+    let valB = 0;
+    switch (safeSortConfig.key) {
+      case "pts": valA = a.pts; valB = b.pts; break;
+      case "b": valA = a.b; valB = b.b; break;
+      case "abts": valA = a.abts; valB = b.abts; break;
+      case "ptsc": valA = a.ptsc; valB = b.ptsc; break;
+      case "s": valA = a.s; valB = b.s; break;
+      case "mediaPts": valA = a.s > 0 ? a.pts / a.s : 0; valB = b.s > 0 ? b.pts / b.s : 0; break;
+      case "mediaAbts": valA = a.s > 0 ? a.abts / a.s : 0; valB = b.s > 0 ? b.abts / b.s : 0; break;
+      case "mediaPtsc": valA = a.s > 0 ? a.ptsc / a.s : 0; valB = b.s > 0 ? b.ptsc / b.s : 0; break;
+      default: valA = a.pts; valB = b.pts; break;
+    }
+    if (valA === valB) {
+      if (safeSortConfig.key !== "pts" && safeSortConfig.key !== "b") {
+        return b.pts - a.pts;
+      }
+      if (safeSortConfig.key === "pts") {
+        return b.b - a.b;
+      }
+    }
+    return safeSortConfig.direction === "desc" ? valB - valA : valA - valB;
+  });
+
+  // Console.log para validação da filtragem e garantia do contexto do momento exato
+  console.log(`[Safe Ranking Filter] Classificação calculada para "${selectedSafeLocation.local}" (${selectedSafeLocation.mapName}):`, {
+    local: selectedSafeLocation.local,
+    mapa: selectedSafeLocation.mapName,
+    filtroPartida: safeRankingMatchFilter,
+    totalPartidasConsideradas: activeSafeMatches.length,
+    partidas: Array.from(new Set(activeSafeMatches.map(m => `RD ${m.RD} Q${m.Q}`))),
+    totalEquipes: sorted.length,
+    equipes: sorted.map(t => ({
+      posRank: t.avgPos,
+      time: t.name,
+      pts: t.pts,
+      abts: t.abts,
+      ptsc: t.ptsc,
+      booyah: t.b,
+      status: t.statusLabel,
+      detalhe: t.statusDetail
+    }))
+  });
+
+  return sorted;
+}, [selectedSafeLocation, activeSafeMatches, teamDeathSafesByMatch, safeSortConfig, data.teamsReference, safeRankingMatchFilter]);
+
+const displayedSafeRanking = useMemo(() => {
+  if (safeRankingStatusFilter === "ALL") return safeRankingStats;
+  if (safeRankingStatusFilter === "SURVIVED") {
+    return safeRankingStats.filter(t => t.primaryStatus === "champion" || t.primaryStatus === "survived" || t.survivedCount > 0);
+  }
+  if (safeRankingStatusFilter === "ELIMINATED") {
+    return safeRankingStats.filter(t => t.primaryStatus === "eliminated_before" || t.eliminatedBeforeCount > 0);
+  }
+  return safeRankingStats;
+}, [safeRankingStats, safeRankingStatusFilter]);
 
 // Todas as partidas do campeonato com registro de fechamento da safe + time do Booyah
 const allSafeMatchesLog = useMemo(() => {
@@ -3857,18 +4090,19 @@ const allSafeMatchesLog = useMemo(() => {
     const isBooyah = b === 1 || pos === 1;
 
     if (d.TIME) {
+      const canonicalTeam = formatTeamName(d.TIME);
       m.standings.push({
-        time: d.TIME,
+        time: canonicalTeam,
         pos,
         pts,
         abts,
         b,
-        image: findTeamLogo(d.TIME, data.teamsReference)
+        image: findTeamLogo(canonicalTeam, data.teamsReference)
       });
 
       if (isBooyah && !m.booyahTeam) {
-        m.booyahTeam = d.TIME;
-        m.booyahTeamLogo = findTeamLogo(d.TIME, data.teamsReference);
+        m.booyahTeam = canonicalTeam;
+        m.booyahTeamLogo = findTeamLogo(canonicalTeam, data.teamsReference);
         m.booyahAbts = abts;
         m.booyahPts = pts;
       }
@@ -10244,9 +10478,14 @@ className="w-4 h-4 object-contain shrink-0"
 <div className="space-y-3">
 <div className="flex items-center gap-2">
 <BarChart2 size={18} className="text-yellow-500" />
+<div>
 <h4 className="text-xs font-black uppercase tracking-wider text-white font-display">
 Líderes Acumulados em Partidas que Fecharam em {selectedSafeLocation.local}
 </h4>
+<p className="text-[10px] text-gray-400 font-medium">
+Estatísticas calculadas exclusivamente nas {selectedSafeMatchesList.length} quedas deste fechamento
+</p>
+</div>
 </div>
 <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
 {[
@@ -10319,156 +10558,294 @@ className="flex justify-between items-center text-xs"
 )}
 
 {/* SEÇÃO 3: TABELA COMPLETA DE CLASSIFICAÇÃO DAS EQUIPES NESTE FECHAMENTO */}
-<div className="space-y-3">
-<div className="flex items-center justify-between">
-<div className="flex items-center gap-2">
-<ListOrdered size={18} className="text-yellow-500" />
-<h4 className="text-xs font-black uppercase tracking-wider text-white font-display">
-Classificação Geral das Equipes Neste Fechamento
-</h4>
-</div>
-<span className="text-[10px] text-gray-500 font-bold uppercase">
-Clique nas colunas para ordenar
-</span>
-</div>
+<div className="space-y-4">
+  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+    <div className="flex items-center gap-2">
+      <ListOrdered size={18} className="text-yellow-500" />
+      <div>
+        <h4 className="text-xs font-black uppercase tracking-wider text-white font-display">
+          Classificação das Equipes Quando a Safe Fechou em {selectedSafeLocation.local}
+        </h4>
+        <p className="text-[10px] text-gray-400 font-medium">
+          {safeRankingMatchFilter === "ALL" 
+            ? `Pontos, abates e colocações obtidos exclusivamente nas ${selectedSafeMatchesList.length} partidas deste fechamento`
+            : `Pontos, abates e colocações obtidos na ${selectedSafeMatchesList.find(m => m.key === safeRankingMatchFilter)?.rd ? `Rodada ${selectedSafeMatchesList.find(m => m.key === safeRankingMatchFilter)?.rd} • Queda ${selectedSafeMatchesList.find(m => m.key === safeRankingMatchFilter)?.q}` : 'partida selecionada'}`}
+        </p>
+      </div>
+    </div>
+    <span className="text-[10px] text-gray-500 font-bold uppercase">
+      Clique nas colunas para ordenar
+    </span>
+  </div>
 
-<div className="bg-[#1a1a1a] rounded-3xl overflow-hidden border border-gray-800 shadow-xl overflow-x-auto">
-<table className="w-full text-left min-w-[1000px]">
-<thead className="bg-black/60 text-[10px] text-gray-500 uppercase tracking-widest font-black italic select-none">
-<tr>
-<th className="p-4 w-16 text-center">Pos</th>
-<th className="p-4">Equipe</th>
-{[
-{ key: "pts", label: "PTS" },
-{ key: "b", label: "BOOYAH" },
-{ key: "abts", label: "ABTS" },
-{ key: "ptsc", label: "PTSC" },
-{ key: "s", label: "Partidas" },
-{ key: "mediaPts", label: "Média PTS" },
-{ key: "mediaAbts", label: "Média ABTS" },
-{ key: "mediaPtsc", label: "Média PTSC" },
-].map((col) => (
-<th
-key={col.key}
-className="p-4 text-center cursor-pointer hover:bg-white/5 transition-colors group"
-onClick={() =>
-setSafeSortConfig((prev) => ({
-key: col.key,
-direction:
-prev.key === col.key &&
-prev.direction === "desc"
-? "asc"
-: "desc",
-}))
-}
->
-<div className="flex items-center justify-center gap-1">
-<span
-className={
-safeSortConfig.key === col.key
-? "text-yellow-500"
-: ""
-}
->
-{col.label}
-</span>
-<ArrowDown
-size={12}
-className={`transition-all ${safeSortConfig.key === col.key ? "text-yellow-500 opacity-100" : "opacity-0 group-hover:opacity-50"} ${safeSortConfig.key === col.key && safeSortConfig.direction === "asc" ? "rotate-180" : ""}`}
-/>
-</div>
-</th>
-))}
-</tr>
-</thead>
-<tbody className="divide-y divide-white/5">
-{safeRankingStats.map((team, idx) => {
-const mediaPts =
-team.s > 0 ? (team.pts / team.s).toFixed(1) : "0.0";
-const mediaAbts =
-team.s > 0 ? (team.abts / team.s).toFixed(1) : "0.0";
-const mediaPtsc =
-team.s > 0 ? (team.ptsc / team.s).toFixed(1) : "0.0";
-return (
-<tr
-key={team.name}
-className="hover:bg-white/5 transition-colors group"
->
-<td className="p-4 text-center">
-<div
-className={`w-6 h-6 mx-auto rounded flex items-center justify-center text-[10px] font-black italic ${
-idx === 0 && safeSortConfig.key === "pts"
-? "bg-yellow-500 text-black"
-: idx === 1 && safeSortConfig.key === "pts"
-? "bg-gray-300 text-black"
-: idx === 2 && safeSortConfig.key === "pts"
-? "bg-amber-600 text-white"
-: "bg-black text-gray-500 border border-white/10"
-}`}
->
-{idx + 1}
-</div>
-</td>
-<td className="p-4">
-<div className="flex items-center gap-3">
-{team.image ? (
-<img
-src={team.image}
-alt={team.name}
-className="w-8 h-8 rounded-lg object-contain bg-black border border-white/5"
-/>
-) : (
-<div className="w-8 h-8 rounded-lg bg-black border border-white/5 flex items-center justify-center">
-<Shield size={14} className="text-gray-700" />
-</div>
-)}
-<span className="text-white font-black italic uppercase tracking-wider text-sm group-hover:text-yellow-500 transition-colors">
-{team.name}
-</span>
-</div>
-</td>
-<td className="p-4 text-center">
-<span className="text-yellow-500 font-black italic text-lg">
-{team.pts}
-</span>
-</td>
-<td className="p-4 text-center text-orange-400 font-bold">
-{team.b}
-</td>
-<td className="p-4 text-center text-red-400 font-bold">
-{team.abts}
-</td>
-<td className="p-4 text-center text-blue-400 font-bold">
-{team.ptsc}
-</td>
-<td className="p-4 text-center text-gray-400 font-bold">
-{team.s}
-</td>
-<td className="p-4 text-center text-yellow-500/80 font-bold">
-{mediaPts}
-</td>
-<td className="p-4 text-center text-red-400/80 font-bold">
-{mediaAbts}
-</td>
-<td className="p-4 text-center text-blue-400/80 font-bold">
-{mediaPtsc}
-</td>
-</tr>
-);
-})}
-{safeRankingStats.length === 0 && (
-<tr>
-<td
-colSpan={10}
-className="p-8 text-center text-gray-500 font-bold uppercase tracking-widest italic"
->
-Nenhum time pontuou nesta safe.
-</td>
-</tr>
-)}
-</tbody>
-</table>
-</div>
+  {/* Banner Explicativo de Contexto dos Pontos & Momento da Eliminação */}
+  <div className="bg-gradient-to-r from-yellow-500/10 via-[#16161c] to-black/40 border border-yellow-500/25 rounded-2xl p-4 shadow-xl space-y-2">
+    <div className="flex items-start gap-3">
+      <div className="p-2 bg-yellow-500/20 text-yellow-400 rounded-xl shrink-0 mt-0.5 shadow-[0_0_12px_rgba(234,179,8,0.2)]">
+        <Info size={16} />
+      </div>
+      <div className="space-y-1">
+        <h5 className="text-xs font-black uppercase text-yellow-400 tracking-wider font-display flex items-center gap-2 flex-wrap">
+          <span>Por que a pontuação nesta classificação parece diferente?</span>
+          <span className="text-[9px] px-2 py-0.5 rounded-full bg-white/10 text-gray-300 font-mono font-bold">
+            {safeRankingMatchFilter === "ALL" ? `${selectedSafeMatchesList.length} Quedas Consideradas` : "Queda Específica"}
+          </span>
+        </h5>
+        <p className="text-[11px] text-gray-300 leading-relaxed font-medium">
+          Esta tabela reflete <strong>exclusivamente as partidas em que a safe fechou em {selectedSafeLocation.local}</strong>. Equipes identificadas com o status <span className="inline-flex items-center gap-1 text-rose-400 font-bold bg-rose-500/15 px-2 py-0.5 rounded-md border border-rose-500/30 text-[10px] mx-1"><AlertTriangle size={11} /> Eliminada Antes da Safe</span> caíram nas fases iniciais da partida (Safes 1 a 3) e não alcançaram a disputa final deste local, pontuando apenas pelo histórico até a sua queda. Já as equipes marcadas como <span className="inline-flex items-center gap-1 text-emerald-400 font-bold bg-emerald-500/15 px-2 py-0.5 rounded-md border border-emerald-500/30 text-[10px] mx-1"><ShieldCheck size={11} /> Sobreviveu até a Safe</span> lutaram dentro do fechamento final.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  {/* Barra de Filtros Interativos: Por Queda e Por Status de Sobrevivência */}
+  <div className="bg-[#141419] p-3 sm:p-4 rounded-2xl border border-white/5 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-3">
+    {/* Filtro por Partida Específica vs Todas */}
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="text-[10px] font-black uppercase text-gray-400 tracking-widest flex items-center gap-1">
+        <Filter size={12} className="text-yellow-500" /> Partida:
+      </span>
+      <button
+        onClick={() => setSafeRankingMatchFilter("ALL")}
+        className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase transition-all cursor-pointer ${
+          safeRankingMatchFilter === "ALL"
+            ? "bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black"
+            : "bg-white/5 hover:bg-white/10 text-gray-300"
+        }`}
+      >
+        Todas ({selectedSafeMatchesList.length})
+      </button>
+      {selectedSafeMatchesList.map((m) => (
+        <button
+          key={m.key}
+          onClick={() => setSafeRankingMatchFilter(m.key)}
+          className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase transition-all cursor-pointer flex items-center gap-1.5 ${
+            safeRankingMatchFilter === m.key
+              ? "bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black"
+              : "bg-white/5 hover:bg-white/10 text-gray-300"
+          }`}
+          title={`Ver classificação exata da Rodada ${m.rd} - Queda ${m.q} (Booyah: ${m.booyahTeam || 'N/A'})`}
+        >
+          <span>RD {m.rd} - Q{m.q}</span>
+          {m.booyahTeam && (
+            <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${safeRankingMatchFilter === m.key ? "bg-black/20 text-black font-black" : "bg-yellow-500/20 text-yellow-400 font-bold"}`}>
+              👑 {m.booyahTeam}
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+
+    {/* Filtro por Status de Sobrevivência */}
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="text-[10px] font-black uppercase text-gray-400 tracking-widest">
+        Status:
+      </span>
+      <button
+        onClick={() => setSafeRankingStatusFilter("ALL")}
+        className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all cursor-pointer ${
+          safeRankingStatusFilter === "ALL"
+            ? "bg-white/20 text-white font-black"
+            : "bg-white/5 text-gray-400 hover:text-white"
+        }`}
+      >
+        Todas ({safeRankingStats.length})
+      </button>
+      <button
+        onClick={() => setSafeRankingStatusFilter("SURVIVED")}
+        className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all cursor-pointer flex items-center gap-1 ${
+          safeRankingStatusFilter === "SURVIVED"
+            ? "bg-emerald-500/30 text-emerald-300 border border-emerald-500/50 font-black"
+            : "bg-white/5 text-emerald-400/70 hover:text-emerald-300"
+        }`}
+      >
+        <ShieldCheck size={11} /> Presentes na Safe ({safeRankingStats.filter(t => t.primaryStatus === "champion" || t.primaryStatus === "survived" || t.survivedCount > 0).length})
+      </button>
+      <button
+        onClick={() => setSafeRankingStatusFilter("ELIMINATED")}
+        className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all cursor-pointer flex items-center gap-1 ${
+          safeRankingStatusFilter === "ELIMINATED"
+            ? "bg-rose-500/30 text-rose-300 border border-rose-500/50 font-black"
+            : "bg-white/5 text-rose-400/70 hover:text-rose-300"
+        }`}
+      >
+        <AlertTriangle size={11} /> Eliminadas Antes ({safeRankingStats.filter(t => t.primaryStatus === "eliminated_before" || t.eliminatedBeforeCount > 0).length})
+      </button>
+    </div>
+  </div>
+
+  <div className="bg-[#1a1a1a] rounded-3xl overflow-hidden border border-gray-800 shadow-xl overflow-x-auto">
+    <table className="w-full text-left min-w-[1050px]">
+      <thead className="bg-black/60 text-[10px] text-gray-500 uppercase tracking-widest font-black italic select-none">
+        <tr>
+          <th className="p-4 w-16 text-center">Pos</th>
+          <th className="p-4">Equipe</th>
+          <th className="p-4 text-center">Status no Fechamento</th>
+          {[
+            { key: "pts", label: "PTS" },
+            { key: "b", label: "BOOYAH" },
+            { key: "abts", label: "ABTS" },
+            { key: "ptsc", label: "PTSC" },
+            { key: "s", label: "Partidas" },
+            { key: "mediaPts", label: "Média PTS" },
+            { key: "mediaAbts", label: "Média ABTS" },
+            { key: "mediaPtsc", label: "Média PTSC" },
+          ].map((col) => (
+            <th
+              key={col.key}
+              className="p-4 text-center cursor-pointer hover:bg-white/5 transition-colors group"
+              onClick={() =>
+                setSafeSortConfig((prev) => ({
+                  key: col.key,
+                  direction:
+                    prev.key === col.key &&
+                    prev.direction === "desc"
+                      ? "asc"
+                      : "desc",
+                }))
+              }
+            >
+              <div className="flex items-center justify-center gap-1">
+                <span
+                  className={
+                    safeSortConfig.key === col.key
+                      ? "text-yellow-500"
+                      : ""
+                  }
+                >
+                  {col.label}
+                </span>
+                <ArrowDown
+                  size={12}
+                  className={`transition-all ${safeSortConfig.key === col.key ? "text-yellow-500 opacity-100" : "opacity-0 group-hover:opacity-50"} ${safeSortConfig.key === col.key && safeSortConfig.direction === "asc" ? "rotate-180" : ""}`}
+                />
+              </div>
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-white/5">
+        {displayedSafeRanking.map((team, idx) => {
+          const mediaPts =
+            team.s > 0 ? (team.pts / team.s).toFixed(1) : "0.0";
+          const mediaAbts =
+            team.s > 0 ? (team.abts / team.s).toFixed(1) : "0.0";
+          const mediaPtsc =
+            team.s > 0 ? (team.ptsc / team.s).toFixed(1) : "0.0";
+
+          const isEliminatedBefore = team.primaryStatus === "eliminated_before";
+          const isChampion = team.primaryStatus === "champion";
+
+          return (
+            <tr
+              key={team.name}
+              className={`transition-colors group ${
+                isChampion
+                  ? "bg-yellow-500/5 hover:bg-yellow-500/10"
+                  : isEliminatedBefore
+                  ? "bg-rose-950/10 hover:bg-rose-950/20"
+                  : "hover:bg-white/5"
+              }`}
+            >
+              <td className="p-4 text-center">
+                <div
+                  className={`w-6 h-6 mx-auto rounded flex items-center justify-center text-[10px] font-black italic ${
+                    idx === 0 && safeSortConfig.key === "pts"
+                      ? "bg-yellow-500 text-black"
+                      : idx === 1 && safeSortConfig.key === "pts"
+                      ? "bg-gray-300 text-black"
+                      : idx === 2 && safeSortConfig.key === "pts"
+                      ? "bg-amber-600 text-white"
+                      : "bg-black text-gray-500 border border-white/10"
+                  }`}
+                >
+                  {idx + 1}
+                </div>
+              </td>
+              <td className="p-4">
+                <div className="flex items-center gap-3">
+                  {team.image ? (
+                    <img
+                      src={team.image}
+                      alt={team.name}
+                      className="w-8 h-8 rounded-lg object-contain bg-black border border-white/5 shrink-0"
+                    />
+                  ) : (
+                    <div className="w-8 h-8 rounded-lg bg-black border border-white/5 flex items-center justify-center shrink-0">
+                      <Shield size={14} className="text-gray-700" />
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-white font-black italic uppercase tracking-wider text-sm group-hover:text-yellow-500 transition-colors block">
+                      {team.name}
+                    </span>
+                    <span className="text-[10px] text-gray-400 font-mono font-medium block">
+                      Posição Média: #{team.avgPos} • {team.statusDetail}
+                    </span>
+                  </div>
+                </div>
+              </td>
+              <td className="p-4 text-center whitespace-nowrap">
+                {team.primaryStatus === "champion" ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-yellow-500/20 text-yellow-300 border border-yellow-500/40 text-[10px] font-black uppercase tracking-wider shadow-[0_0_10px_rgba(234,179,8,0.2)]">
+                    <Crown size={12} className="text-yellow-400 fill-yellow-400" /> {team.statusLabel}
+                  </span>
+                ) : team.primaryStatus === "survived" ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-black uppercase tracking-wider">
+                    <ShieldCheck size={13} className="text-emerald-400" /> {team.statusLabel}
+                  </span>
+                ) : team.primaryStatus === "eliminated_before" ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-rose-500/15 text-rose-300 border border-rose-500/30 text-[10px] font-black uppercase tracking-wider" title="Equipe eliminada antes de alcançar o fechamento final da safe">
+                    <AlertTriangle size={12} className="text-rose-400" /> {team.statusLabel}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-blue-500/15 text-blue-300 border border-blue-500/30 text-[10px] font-black uppercase tracking-wider">
+                    <Activity size={12} className="text-blue-400" /> {team.statusLabel}
+                  </span>
+                )}
+              </td>
+              <td className="p-4 text-center">
+                <span className="text-yellow-500 font-black italic text-lg">
+                  {team.pts}
+                </span>
+              </td>
+              <td className="p-4 text-center text-orange-400 font-bold">
+                {team.b}
+              </td>
+              <td className="p-4 text-center text-red-400 font-bold">
+                {team.abts}
+              </td>
+              <td className="p-4 text-center text-blue-400 font-bold">
+                {team.ptsc}
+              </td>
+              <td className="p-4 text-center text-gray-400 font-bold">
+                {team.s}
+              </td>
+              <td className="p-4 text-center text-yellow-500/80 font-bold">
+                {mediaPts}
+              </td>
+              <td className="p-4 text-center text-red-400/80 font-bold">
+                {mediaAbts}
+              </td>
+              <td className="p-4 text-center text-blue-400/80 font-bold">
+                {mediaPtsc}
+              </td>
+            </tr>
+          );
+        })}
+        {displayedSafeRanking.length === 0 && (
+          <tr>
+            <td
+              colSpan={11}
+              className="p-8 text-center text-gray-500 font-bold uppercase tracking-widest italic"
+            >
+              Nenhum time encontrado para os filtros selecionados.
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  </div>
 </div>
 </div>
 ) : (
