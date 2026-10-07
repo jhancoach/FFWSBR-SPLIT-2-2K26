@@ -162,7 +162,7 @@ export const calculateRushDuosData = (
   filters?: {
     teamFilter?: string;
     mapFilter?: string;
-    roundFilter?: string;
+    roundFilter?: string | string[];
     onlyRushDuo?: boolean;
     minMatches?: number;
   }
@@ -171,7 +171,7 @@ export const calculateRushDuosData = (
 
   const teamFilter = filters?.teamFilter?.trim();
   const mapFilter = filters?.mapFilter?.trim().toUpperCase();
-  const roundFilter = filters?.roundFilter?.trim();
+  const roundFilter = filters?.roundFilter;
   const onlyRush = filters?.onlyRushDuo ?? false;
   const minMatches = filters?.minMatches ?? 1;
 
@@ -205,7 +205,20 @@ export const calculateRushDuosData = (
     if (teamFilter && !isSameTeam(p.TIME, teamFilter)) return;
 
     const rd = (p.RD || '').trim();
-    if (roundFilter && roundFilter !== 'ALL' && rd !== roundFilter) return;
+    if (roundFilter) {
+      if (Array.isArray(roundFilter)) {
+        if (roundFilter.length > 0 && !roundFilter.includes('ALL')) {
+          const matchRound = roundFilter.some(r => {
+            const cleanR = r.trim().toUpperCase();
+            const cleanRd = rd.toUpperCase();
+            return cleanR === cleanRd || cleanR.replace(/\D/g, '') === cleanRd.replace(/\D/g, '');
+          });
+          if (!matchRound) return;
+        }
+      } else if (roundFilter !== 'ALL' && rd !== roundFilter) {
+        return;
+      }
+    }
 
     const rawMap = p.MAPA || '';
     const normMap = normalizeMap(rawMap);

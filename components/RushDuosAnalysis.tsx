@@ -28,7 +28,8 @@ export const RushDuosAnalysis: React.FC<RushDuosAnalysisProps> = ({
 }) => {
   const [selectedTeam, setSelectedTeam] = useState<string>(initialTeamFilter);
   const [selectedMap, setSelectedMap] = useState<string>('ALL');
-  const [selectedRound, setSelectedRound] = useState<string>('ALL');
+  const [selectedRounds, setSelectedRounds] = useState<string[]>([]);
+  const [showRoundDropdown, setShowRoundDropdown] = useState<boolean>(false);
   const [duoTypeFilter, setDuoTypeFilter] = useState<'ALL' | 'RUSH_ONLY' | 'RUSH_PURE'>('RUSH_PURE');
   const [sortBy, setSortBy] = useState<'kills' | 'kpm' | 'damage' | 'synergy' | 'knockdowns' | 'booyahs' | 'kda'>('kills');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -61,7 +62,7 @@ export const RushDuosAnalysis: React.FC<RushDuosAnalysisProps> = ({
     const rawDuos = calculateRushDuosData(data, {
       teamFilter: hideTeamFilter ? initialTeamFilter : (selectedTeam || undefined),
       mapFilter: selectedMap !== 'ALL' ? selectedMap : undefined,
-      roundFilter: selectedRound !== 'ALL' ? selectedRound : undefined,
+      roundFilter: selectedRounds.length > 0 ? selectedRounds : undefined,
       onlyRushDuo: false,
       minMatches: 1
     });
@@ -93,7 +94,7 @@ export const RushDuosAnalysis: React.FC<RushDuosAnalysisProps> = ({
       if (sortBy === 'booyahs') return b.booyahsTogether - a.booyahsTogether;
       return b.combinedKills - a.combinedKills;
     });
-  }, [data, selectedTeam, initialTeamFilter, hideTeamFilter, selectedMap, selectedRound, duoTypeFilter, searchQuery, sortBy]);
+  }, [data, selectedTeam, initialTeamFilter, hideTeamFilter, selectedMap, selectedRounds, duoTypeFilter, searchQuery, sortBy]);
 
   // Top 3 for podium
   const topThree = duos.slice(0, 3);
@@ -300,19 +301,92 @@ export const RushDuosAnalysis: React.FC<RushDuosAnalysisProps> = ({
                 </select>
               </div>
 
-              {/* Round filter */}
-              <div>
-                <label className="text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5 block">Rodada</label>
-                <select
-                  value={selectedRound}
-                  onChange={e => setSelectedRound(e.target.value)}
-                  className="w-full bg-black/80 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-yellow-500 font-bold"
+              {/* Round multi-select filter */}
+              <div className="relative">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-gray-400 block">
+                    Rodadas ({selectedRounds.length === 0 ? 'Todas' : `${selectedRounds.length}`})
+                  </label>
+                  {selectedRounds.length > 0 && (
+                    <button
+                      onClick={() => setSelectedRounds([])}
+                      className="text-[9px] font-black uppercase text-yellow-400 hover:text-white"
+                    >
+                      Limpar
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowRoundDropdown(prev => !prev)}
+                  className="w-full bg-black/80 border border-white/10 hover:border-yellow-500/50 rounded-xl px-3.5 py-2.5 text-xs text-white flex items-center justify-between font-bold transition-all"
                 >
-                  <option value="ALL">Todas as Rodadas</option>
-                  {uniqueRounds.map(r => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
+                  <span className="truncate">
+                    {selectedRounds.length === 0 
+                      ? 'Todas as Rodadas' 
+                      : selectedRounds.length === 1 
+                        ? `Rodada ${selectedRounds[0]}` 
+                        : `${selectedRounds.length} Rodadas Selecionadas`}
+                  </span>
+                  <ChevronDown size={14} className={`text-gray-400 transition-transform ${showRoundDropdown ? 'rotate-180' : ''}`} />
+                </button>
+
+                {/* Dropdown Popover */}
+                {showRoundDropdown && (
+                  <div className="absolute top-full left-0 right-0 mt-2 z-30 bg-[#161616] border border-yellow-500/30 rounded-2xl p-3 shadow-2xl space-y-2 max-h-60 overflow-y-auto backdrop-blur-xl">
+                    <div className="flex items-center justify-between pb-1.5 border-b border-white/10 text-[10px] font-black">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedRounds([])}
+                        className="text-gray-400 hover:text-white uppercase"
+                      >
+                        Marcar Todas (Tudo)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowRoundDropdown(false)}
+                        className="text-yellow-400 hover:text-yellow-300 uppercase"
+                      >
+                        Concluir ✕
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1.5 pt-1">
+                      {uniqueRounds.map(r => {
+                        const isSelected = selectedRounds.length === 0 || selectedRounds.includes(r);
+                        return (
+                          <label
+                            key={r}
+                            onClick={() => {
+                              setSelectedRounds(prev => {
+                                if (prev.includes(r)) {
+                                  const updated = prev.filter(x => x !== r);
+                                  return updated;
+                                } else {
+                                  return [...prev, r];
+                                }
+                              });
+                            }}
+                            className={`flex items-center gap-2 p-2 rounded-xl text-xs font-bold cursor-pointer transition-all border ${
+                              selectedRounds.includes(r)
+                                ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40'
+                                : 'bg-black/40 text-gray-300 border-white/5 hover:border-white/20'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedRounds.includes(r)}
+                              onChange={() => {}}
+                              className="accent-yellow-400 w-3.5 h-3.5 rounded"
+                            />
+                            <span className="truncate">RD {r}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Duo Type Filter */}
@@ -348,25 +422,46 @@ export const RushDuosAnalysis: React.FC<RushDuosAnalysisProps> = ({
               </div>
             </div>
 
-            {/* Search inside duos */}
-            <div className="relative pt-1">
-              <Search size={16} className="absolute left-3.5 top-3.5 text-gray-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Buscar por jogador ou time na lista de duplas..."
-                className="w-full bg-black/50 border border-white/10 rounded-xl pl-10 pr-4 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500"
-              />
-              {searchQuery && (
+            {/* Quick Round Selector Pills */}
+            {uniqueRounds.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <span className="text-[10px] font-black uppercase text-gray-400 mr-1">Filtro Rápido de Rodadas:</span>
                 <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-2.5 text-gray-400 hover:text-white text-xs font-bold"
+                  onClick={() => setSelectedRounds([])}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all ${
+                    selectedRounds.length === 0
+                      ? 'bg-yellow-500 text-black shadow-md'
+                      : 'bg-white/5 text-gray-400 hover:text-white border border-white/10'
+                  }`}
                 >
-                  Limpar
+                  Todas
                 </button>
-              )}
-            </div>
+                {uniqueRounds.map(r => {
+                  const isSelected = selectedRounds.includes(r);
+                  return (
+                    <button
+                      key={r}
+                      onClick={() => {
+                        setSelectedRounds(prev => {
+                          if (prev.includes(r)) {
+                            return prev.filter(x => x !== r);
+                          } else {
+                            return [...prev, r];
+                          }
+                        });
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all border ${
+                        isSelected
+                          ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/50 shadow-sm'
+                          : 'bg-black/40 text-gray-400 border-white/5 hover:border-white/20'
+                      }`}
+                    >
+                      RD {r}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* TOP 3 PODIUM - REIS DO RUSH */}
