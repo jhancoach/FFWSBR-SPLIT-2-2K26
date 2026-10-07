@@ -31,6 +31,35 @@ interface PlayersProps {
 const normalize = (val: string | undefined) => (val || '').trim().toUpperCase();
 const cleanKey = (s: string) => s.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "").trim();
 
+const checkRoleMatch = (playerRoles: (string | undefined | null)[], selectedFilter: string): boolean => {
+  if (!selectedFilter || selectedFilter === 'ALL' || selectedFilter === 'Todas' || selectedFilter === 'TODAS AS FUNÇÕES') return true;
+  
+  const fNorm = selectedFilter.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const combined = playerRoles.filter(Boolean).join(' ').toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+  if (fNorm === 'RUSH' || fNorm === 'RUSHER') {
+    return combined.includes('RUSH') || combined.includes('RUSHER') || combined.includes('ENTRY') || combined.includes('ATACANTE') || combined.includes('FRONTA');
+  }
+  if (fNorm === 'BOMBA' || fNorm === 'GRANADEIRO' || fNorm === 'GRAN') {
+    return combined.includes('BOMBA') || combined.includes('GRANADEIRO') || combined.includes('GRENADIER') || combined.includes('GRANADA') || combined.includes('GRAN');
+  }
+  if (fNorm === 'SNIPER' || fNorm === 'SUPORTE' || fNorm === 'SUP') {
+    return combined.includes('SNIPER') || combined.includes('SNIP') || combined.includes('SUPORTE') || combined.includes('SUP') || combined.includes('ATIRADOR');
+  }
+  if (fNorm === 'CPT' || fNorm === 'CAPITAO' || fNorm === 'CAPITÃO' || fNorm === 'IGL') {
+    return combined.includes('CPT') || combined.includes('CAPITAO') || combined.includes('IGL') || combined.includes('LIDER') || combined.includes('CAP');
+  }
+  if (fNorm === 'CORINGA' || fNorm === 'FLEX') {
+    return combined.includes('CORINGA') || combined.includes('FLEX') || combined.includes('APOIO');
+  }
+
+  return playerRoles.some(r => {
+    if (!r) return false;
+    const rNorm = r.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    return rNorm.includes(fNorm) || fNorm.includes(rNorm);
+  });
+};
+
 const matchRd = (filterVal: string, itemVal: string | undefined | null): boolean => {
   if (!itemVal) return false;
   const normF = normalize(filterVal);
@@ -183,9 +212,9 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
       ...data.players.map(p => p.CONFRONTO)
     ].filter(Boolean))).sort();
 
-    const funcoes = Array.from(new Set(
-      (data.playersDimension || []).flatMap(d => [d.Funcao, d.Funcao2]).filter(Boolean)
-    )).sort() as string[];
+    const mainRoles = ['RUSH', 'BOMBA', 'SNIPER', 'CPT', 'CORINGA'];
+    const rawRoles = (data.playersDimension || []).flatMap(d => [d.Funcao, d.Funcao2]).filter(Boolean) as string[];
+    const funcoes = Array.from(new Set([...mainRoles, ...rawRoles])).sort();
 
     return { teams, players, weapons: [], safes: [], maps, rounds, quedas, confrontations, activeHabs, grupos, funcoes };
   }, [data.players, data.killFeed, data.characters, data.playersDimension, data.teamsReference, data.confrontationsDimension, data.details, filters.rodada]);
@@ -247,8 +276,8 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
         // Filtro de Função
         if (filters.funcao && filters.funcao.length > 0) {
             const dim = (data.playersDimension || []).find(d => normalize(d.Name) === normalize(p.PLAYER));
-            const pRoles = [dim?.Funcao, dim?.Funcao2].filter(Boolean).map(r => normalize(r));
-            const matchesRole = filters.funcao.some(f => pRoles.includes(normalize(f)));
+            const pRoles = [dim?.Funcao, dim?.Funcao2];
+            const matchesRole = filters.funcao.some(f => checkRoleMatch(pRoles, f));
             if (!matchesRole) return false;
         }
 

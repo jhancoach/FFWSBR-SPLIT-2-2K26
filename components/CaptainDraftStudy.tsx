@@ -16,6 +16,9 @@ interface CaptainDraftStudyProps {
 }
 
 const normalize = (s: string | undefined | null) => (s || '').trim().toUpperCase();
+const cleanKey = (s: string | undefined | null) => 
+  s ? s.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "").trim() : "";
+
 const parseNumber = (val: string | undefined | null): number => {
   if (!val) return 0;
   const cleaned = val.toString().replace(/\D/g, '');
@@ -26,7 +29,7 @@ const parseNumber = (val: string | undefined | null): number => {
 const isCptRole = (roleStr: string | undefined | null) => {
   if (!roleStr) return false;
   const norm = normalize(roleStr);
-  return norm.includes('CPT') || norm.includes('CAPITÃO') || norm.includes('CAPITAO') || norm.includes('CAP') || norm.includes('IGL');
+  return norm.includes('CPT') || norm.includes('CAPITÃO') || norm.includes('CAPITAO') || norm.includes('CAP') || norm.includes('IGL') || norm.includes('LÍDER') || norm.includes('LIDER');
 };
 
 export const CaptainDraftStudy: React.FC<CaptainDraftStudyProps> = ({ data }) => {
@@ -38,10 +41,22 @@ export const CaptainDraftStudy: React.FC<CaptainDraftStudyProps> = ({ data }) =>
   const [teamSearch, setTeamSearch] = useState<string>('');
   const [poolSearch, setPoolSearch] = useState<string>('');
   const [roleFilter, setRoleFilter] = useState<string>('ALL');
+  const [squadsLayoutMode, setSquadsLayoutMode] = useState<'compact' | 'detailed' | 'grid_12'>('compact');
 
   // Drag & Drop State
   const [draggedPlayerName, setDraggedPlayerName] = useState<string | null>(null);
   const [dragOverTarget, setDragOverTarget] = useState<{ teamName: string; roundIdx: number } | null>(null);
+
+  // Slot Picker Modal State
+  const [slotPickerModal, setSlotPickerModal] = useState<{ teamName: string; roundIdx: number } | null>(null);
+  const [slotModalSearch, setSlotModalSearch] = useState<string>('');
+  const [slotModalRoleFilter, setSlotModalRoleFilter] = useState<string>('ALL');
+
+  const handleOpenSlotPicker = (teamName: string, roundIdx: number) => {
+    setSlotModalSearch('');
+    setSlotModalRoleFilter('ALL');
+    setSlotPickerModal({ teamName, roundIdx });
+  };
 
   // 1. Calculate Standings for Fase Rumo ao Mundial (Bonus Points from Quali + Match Points in Rumo ao Mundial)
   const sortedTeamStandings = useMemo(() => {
@@ -133,16 +148,24 @@ export const CaptainDraftStudy: React.FC<CaptainDraftStudyProps> = ({ data }) =>
     return rumoStandings.slice(0, 12);
   }, [data]);
 
-  // Map of Player Name -> Dimension Info (Image, Role/Funcao)
-  const playerDimMap = useMemo(() => {
-    const map = new Map<string, GenericDimData>();
-    (data.playersDimension || []).forEach(d => {
-      if (d.Name) {
-        map.set(normalize(d.Name), d);
-      }
+  // Helper to find dimension info with clean key fallback
+  const findPlayerDim = (dims: GenericDimData[] = [], playerName: string = ''): GenericDimData | undefined => {
+    if (!playerName) return undefined;
+    const norm = normalize(playerName);
+    const clean = cleanKey(playerName);
+
+    let direct = dims.find(d => d && d.Name && normalize(d.Name) === norm);
+    if (direct) return direct;
+
+    direct = dims.find(d => d && d.Name && cleanKey(d.Name) === clean);
+    if (direct) return direct;
+
+    return dims.find(d => {
+      if (!d || !d.Name) return false;
+      const ck = cleanKey(d.Name);
+      return ck && (ck.includes(clean) || clean.includes(ck));
     });
-    return map;
-  }, [data.playersDimension]);
+  };
 
   // Aggregate stats per player across data.players
   const playerStatsMap = useMemo(() => {
@@ -166,7 +189,7 @@ export const CaptainDraftStudy: React.FC<CaptainDraftStudyProps> = ({ data }) =>
       if (!p.PLAYER) return;
       const nameKey = normalize(p.PLAYER);
       const teamName = p.TIME || 'SEM TIME';
-      const dim = playerDimMap.get(nameKey);
+      const dim = findPlayerDim(data.playersDimension, p.PLAYER);
       const role1 = dim?.Funcao || 'JOGADOR';
       const role2 = dim?.Funcao2 || '';
       const isCpt = isCptRole(role1) || isCptRole(role2);
@@ -198,7 +221,7 @@ export const CaptainDraftStudy: React.FC<CaptainDraftStudyProps> = ({ data }) =>
     });
 
     return map;
-  }, [data.players, data.playersDimension, data.teamsReference, playerDimMap]);
+  }, [data.players, data.playersDimension, data.teamsReference]);
 
   // List of all unique teams with roster ordered by standings and All Star Captain names/photos
   const teamsWithRosters = useMemo(() => {
@@ -480,6 +503,41 @@ export const CaptainDraftStudy: React.FC<CaptainDraftStudyProps> = ({ data }) =>
     };
   }, [snakePicks, snakeDraftOrder]);
 
+  // Visual Chronological Pick Log State & Computation
+  const [logFilter, setLogFilter] = useState<'ALL' | 'DONE' | 'PENDING'>('ALL');
+
+  const chronologicalDraftLog = useMemo(() => {
+    return snakeDraftOrder.map((item) => {
+      const roundIdx = item.round - 1;
+      const teamName = item.team.teamName;
+      const pickedPlayerName = snakePicks[teamName]?.[roundIdx];
+      const pickedPlayerStat = pickedPlayerName ? playerStatsMap.get(normalize(pickedPlayerName)) : null;
+
+      const isCompleted = !!pickedPlayerName;
+      const isCurrent = !currentTurnInfo.isComplete && currentTurnInfo.pickNum === item.pickNum;
+
+      return {
+        pickNum: item.pickNum,
+        round: item.round,
+        team: item.team,
+        pickedPlayerName,
+        pickedPlayerStat,
+        isCompleted,
+        isCurrent
+      };
+    });
+  }, [snakeDraftOrder, snakePicks, playerStatsMap, currentTurnInfo]);
+
+  const filteredDraftLog = useMemo(() => {
+    if (logFilter === 'DONE') return chronologicalDraftLog.filter(l => l.isCompleted);
+    if (logFilter === 'PENDING') return chronologicalDraftLog.filter(l => !l.isCompleted);
+    return chronologicalDraftLog;
+  }, [chronologicalDraftLog, logFilter]);
+
+  const completedDraftPicksCount = useMemo(() => {
+    return chronologicalDraftLog.filter(l => l.isCompleted).length;
+  }, [chronologicalDraftLog]);
+
   // Pool of all available unpicked players (Only players from the 12 teams in Fase Rumo ao Mundial)
   const availablePlayersPool = useMemo(() => {
     const list: Array<{
@@ -517,15 +575,55 @@ export const CaptainDraftStudy: React.FC<CaptainDraftStudyProps> = ({ data }) =>
     return list;
   }, [playerStatsMap, pickedPlayersSet, teamsWithRosters]);
 
+  // Flexible Role Matching Helper
+  const isRoleMatch = (player: { role: string; role2?: string; isCpt: boolean }, filter: string) => {
+    if (!filter || filter === 'ALL') return true;
+
+    const fNorm = filter.trim().toUpperCase();
+    const r1 = (player.role || '').toUpperCase();
+    const r2 = (player.role2 || '').toUpperCase();
+    const combined = `${r1} ${r2}`;
+    const cleanCombined = combined.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+    // CAPITÃO / CPT / IGL Filter
+    if (fNorm === 'CPT' || fNorm === 'CAPITÃO' || fNorm === 'CAPITAO' || fNorm === 'IGL') {
+      return player.isCpt || cleanCombined.includes('CPT') || cleanCombined.includes('CAPITAO') || cleanCombined.includes('IGL') || cleanCombined.includes('LIDER') || cleanCombined.includes('CAP');
+    }
+
+    // RUSHER / RUSH Filter
+    if (fNorm === 'RUSHER' || fNorm === 'RUSH') {
+      return cleanCombined.includes('RUSH') || cleanCombined.includes('RUSHER') || cleanCombined.includes('ENTRY') || cleanCombined.includes('ATACANTE') || cleanCombined.includes('FRONTA');
+    }
+
+    // SUPORTE / SNIPER Filter
+    if (fNorm === 'SUPORTE' || fNorm === 'SUP' || fNorm === 'SNIPER' || fNorm === 'SNIP') {
+      return cleanCombined.includes('SUPORTE') || cleanCombined.includes('SUP') || cleanCombined.includes('SNIPER') || cleanCombined.includes('SNIP') || cleanCombined.includes('ATIRADOR');
+    }
+
+    // GRANADEIRO / BOMBA Filter
+    if (fNorm === 'GRANADEIRO' || fNorm === 'GRAN' || fNorm === 'BOMBA') {
+      return cleanCombined.includes('GRANADEIRO') || cleanCombined.includes('GRENADIER') || cleanCombined.includes('GRANADA') || cleanCombined.includes('GRAN') || cleanCombined.includes('BOMBA');
+    }
+
+    // CORINGA / FLEX Filter
+    if (fNorm === 'CORINGA' || fNorm === 'FLEX') {
+      return cleanCombined.includes('CORINGA') || cleanCombined.includes('FLEX') || cleanCombined.includes('APOIO');
+    }
+
+    const cleanFilter = fNorm.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    return cleanCombined.includes(cleanFilter);
+  };
+
   // Filtered pool by search and role
   const filteredAvailablePool = useMemo(() => {
     return availablePlayersPool.filter(p => {
       const matchSearch = !poolSearch.trim() || 
         p.name.toLowerCase().includes(poolSearch.toLowerCase()) ||
         p.team.toLowerCase().includes(poolSearch.toLowerCase()) ||
-        p.role.toLowerCase().includes(poolSearch.toLowerCase());
+        p.role.toLowerCase().includes(poolSearch.toLowerCase()) ||
+        (p.role2 && p.role2.toLowerCase().includes(poolSearch.toLowerCase()));
 
-      const matchRole = roleFilter === 'ALL' || normalize(p.role).includes(normalize(roleFilter));
+      const matchRole = isRoleMatch(p, roleFilter);
 
       return matchSearch && matchRole;
     });
@@ -878,17 +976,17 @@ export const CaptainDraftStudy: React.FC<CaptainDraftStudyProps> = ({ data }) =>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* LEFT / TOP DRAWER: AVAILABLE PLAYERS POOL (DRAGGABLE) */}
-            <div className="lg:col-span-4 bg-black/80 border border-white/10 rounded-3xl p-5 space-y-4 backdrop-blur-md max-h-[850px] flex flex-col no-print">
+            {/* LEFT COLUMN: AVAILABLE PLAYERS POOL (DRAGGABLE) */}
+            <div className={`${squadsLayoutMode === 'grid_12' ? 'lg:col-span-12' : 'lg:col-span-3'} bg-black/80 border border-white/10 rounded-3xl p-5 space-y-4 backdrop-blur-md transition-all no-print`}>
               <div className="flex items-center justify-between border-b border-white/10 pb-3">
                 <div className="flex items-center gap-2">
                   <Hand size={18} className="text-yellow-400 animate-bounce" />
-                  <h3 className="text-sm font-black uppercase text-white tracking-wider">
+                  <h3 className="text-xs font-black uppercase text-white tracking-wider">
                     Atletas Disponíveis ({filteredAvailablePool.length})
                   </h3>
                 </div>
-                <span className="text-[10px] bg-yellow-500/20 text-yellow-400 font-bold px-2 py-0.5 rounded-full border border-yellow-500/30">
-                  Arraste para o Slot
+                <span className="text-[9px] bg-yellow-500/20 text-yellow-400 font-bold px-2 py-0.5 rounded-full border border-yellow-500/30">
+                  Arraste
                 </span>
               </div>
 
@@ -898,7 +996,7 @@ export const CaptainDraftStudy: React.FC<CaptainDraftStudyProps> = ({ data }) =>
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
                   <input
                     type="text"
-                    placeholder="Buscar jogador ou time..."
+                    placeholder="Buscar atleta ou time..."
                     value={poolSearch}
                     onChange={(e) => setPoolSearch(e.target.value)}
                     className="w-full bg-black/90 border border-white/10 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500 font-bold"
@@ -906,7 +1004,7 @@ export const CaptainDraftStudy: React.FC<CaptainDraftStudyProps> = ({ data }) =>
                 </div>
 
                 <div className="flex items-center gap-1 overflow-x-auto pb-1 text-[10px] font-black uppercase">
-                  {['ALL', 'RUSHER', 'SUPORTE', 'GRANADEIRO', 'CPT'].map(role => (
+                  {['ALL', 'RUSH', 'BOMBA', 'SNIPER', 'CPT', 'CORINGA'].map(role => (
                     <button
                       key={role}
                       onClick={() => setRoleFilter(role)}
@@ -923,9 +1021,13 @@ export const CaptainDraftStudy: React.FC<CaptainDraftStudyProps> = ({ data }) =>
               </div>
 
               {/* SCROLLABLE DRAGGABLE PLAYER LIST */}
-              <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 custom-scrollbar">
+              <div className={
+                squadsLayoutMode === 'grid_12'
+                  ? "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2.5 max-h-[400px] overflow-y-auto pr-1 custom-scrollbar"
+                  : "max-h-[680px] overflow-y-auto space-y-2 pr-1 custom-scrollbar"
+              }>
                 {filteredAvailablePool.length === 0 ? (
-                  <div className="text-center py-10 text-gray-500 text-xs font-bold">
+                  <div className="text-center py-10 text-gray-500 text-xs font-bold col-span-full">
                     Nenhum jogador disponível no filtro.
                   </div>
                 ) : (
@@ -934,29 +1036,29 @@ export const CaptainDraftStudy: React.FC<CaptainDraftStudyProps> = ({ data }) =>
                       key={player.name}
                       draggable={true}
                       onDragStart={(e) => handleDragStart(e, player.name)}
-                      className="group relative bg-black/90 hover:bg-yellow-500/10 border border-white/10 hover:border-yellow-500/50 rounded-2xl p-3 flex items-center justify-between cursor-grab active:cursor-grabbing transition-all hover:scale-[1.01] shadow-md"
+                      className="group relative bg-black/90 hover:bg-yellow-500/10 border border-white/10 hover:border-yellow-500/50 rounded-2xl p-2.5 flex items-center justify-between cursor-grab active:cursor-grabbing transition-all hover:scale-[1.01] shadow-md"
                     >
-                      <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex items-center gap-2.5 min-w-0">
                         {player.playerImg ? (
                           <img
                             src={player.playerImg}
                             alt={player.name}
-                            className="w-10 h-10 rounded-xl object-cover border border-white/20 shrink-0"
+                            className="w-9 h-9 rounded-xl object-cover border border-white/20 shrink-0"
                             onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
                           />
                         ) : (
-                          <div className="w-10 h-10 rounded-xl bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center text-yellow-400 font-black text-xs shrink-0">
-                            <Users size={16} />
+                          <div className="w-9 h-9 rounded-xl bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center text-yellow-400 font-black text-xs shrink-0">
+                            <Users size={14} />
                           </div>
                         )}
 
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1">
                             <span className="text-xs font-black uppercase text-white truncate group-hover:text-yellow-400">
                               {player.name}
                             </span>
                           </div>
-                          <div className="text-[10px] text-gray-400 font-bold truncate flex items-center gap-1">
+                          <div className="text-[9px] text-gray-400 font-bold truncate flex items-center gap-1">
                             {player.teamImg && (
                               <img src={player.teamImg} alt={player.team} className="w-3 h-3 object-contain shrink-0" />
                             )}
@@ -965,10 +1067,10 @@ export const CaptainDraftStudy: React.FC<CaptainDraftStudyProps> = ({ data }) =>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0 ml-2">
+                      <div className="flex items-center gap-1.5 shrink-0 ml-1">
                         <div className="text-right">
-                          <span className="text-xs font-black text-amber-400 block">{player.kills} Kills</span>
-                          <span className="text-[9px] text-gray-400 font-bold">{player.avgDamage} Dano</span>
+                          <span className="text-xs font-black text-amber-400 block">{player.kills} K</span>
+                          <span className="text-[8px] text-gray-400 font-bold">{player.avgDamage} D</span>
                         </div>
 
                         {/* Direct Click Pick Button */}
@@ -976,9 +1078,9 @@ export const CaptainDraftStudy: React.FC<CaptainDraftStudyProps> = ({ data }) =>
                           <button
                             onClick={() => handlePickForCurrentTurn(player.name)}
                             title="Pickar para o turno atual"
-                            className="p-1.5 rounded-xl bg-yellow-500/20 hover:bg-yellow-500 text-yellow-400 hover:text-black border border-yellow-500/40 transition-all"
+                            className="p-1 rounded-xl bg-yellow-500/20 hover:bg-yellow-500 text-yellow-400 hover:text-black border border-yellow-500/40 transition-all"
                           >
-                            <Check size={14} />
+                            <Check size={13} />
                           </button>
                         )}
                       </div>
@@ -988,23 +1090,71 @@ export const CaptainDraftStudy: React.FC<CaptainDraftStudyProps> = ({ data }) =>
               </div>
             </div>
 
-            {/* RIGHT MAIN AREA: 12 ALL STAR SQUADS DRAFT BOARD (DROP TARGETS) */}
-            <div className="lg:col-span-8 space-y-6">
-              <div className="bg-black/60 border border-white/10 rounded-3xl p-6 backdrop-blur-md space-y-6">
-                <div className="flex items-center justify-between border-b border-white/10 pb-4">
+            {/* CENTER MAIN AREA: 12 ALL STAR SQUADS DRAFT BOARD (DROP TARGETS) */}
+            <div className={`${squadsLayoutMode === 'grid_12' ? 'lg:col-span-12' : 'lg:col-span-6'} space-y-6 transition-all`}>
+              <div className="bg-black/60 border border-white/10 rounded-3xl p-4 sm:p-5 backdrop-blur-md space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-3">
                   <div>
-                    <h3 className="text-lg font-black uppercase italic text-white flex items-center gap-2">
-                      <Star className="text-yellow-400 fill-yellow-400" size={20} />
-                      Grade All Star Free Fire (12 Equipes dos Capitães)
+                    <h3 className="text-base font-black uppercase italic text-white flex items-center gap-2">
+                      <Star className="text-yellow-400 fill-yellow-400" size={18} />
+                      Grade All Star Free Fire (12 Equipes)
                     </h3>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      Times nomeados pelo capitão CPT (ex: TEAM TRAP) e estampados com a foto do líder.
+                    <p className="text-[11px] text-gray-400 mt-0.5">
+                      Times nomeados pelo capitão CPT (ex: TEAM TRAP) com a foto do líder.
                     </p>
+                  </div>
+
+                  {/* LAYOUT MODE TOGGLES (SEM ROLAR) */}
+                  <div className="flex items-center gap-1 bg-black/80 border border-white/10 p-1 rounded-2xl shrink-0 self-start sm:self-auto">
+                    <button
+                      onClick={() => setSquadsLayoutMode('compact')}
+                      title="Visão compacta sem rolar a tela"
+                      className={`px-2.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                        squadsLayoutMode === 'compact'
+                          ? 'bg-yellow-500 text-black shadow-md'
+                          : 'text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      <Layers size={12} />
+                      <span>Sem Rolar</span>
+                    </button>
+
+                    <button
+                      onClick={() => setSquadsLayoutMode('grid_12')}
+                      title="Visão Matriz Tabela (4 Colunas - Tela Cheia)"
+                      className={`px-2.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                        squadsLayoutMode === 'grid_12'
+                          ? 'bg-yellow-500 text-black shadow-md'
+                          : 'text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      <BarChart2 size={12} />
+                      <span>Matriz (12)</span>
+                    </button>
+
+                    <button
+                      onClick={() => setSquadsLayoutMode('detailed')}
+                      title="Visão Cards Ampliados"
+                      className={`px-2.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                        squadsLayoutMode === 'detailed'
+                          ? 'bg-yellow-500 text-black shadow-md'
+                          : 'text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      <Users size={12} />
+                      <span>Expandido</span>
+                    </button>
                   </div>
                 </div>
 
                 {/* 12 SQUADS GRID */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className={`grid gap-2.5 ${
+                  squadsLayoutMode === 'compact'
+                    ? 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-3'
+                    : squadsLayoutMode === 'grid_12'
+                    ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4'
+                    : 'grid-cols-1 md:grid-cols-2 gap-3.5'
+                }`}>
                   {teamsWithRosters.map((teamObj) => {
                     const captainPlayer = teamObj.captainPlayer || teamObj.roster[0];
                     const draftedPicksList = snakePicks[teamObj.teamName] || [];
@@ -1016,78 +1166,93 @@ export const CaptainDraftStudy: React.FC<CaptainDraftStudyProps> = ({ data }) =>
                       if (stat) totalSquadKills += stat.kills;
                     });
 
+                    const isCompactMode = squadsLayoutMode === 'compact' || squadsLayoutMode === 'grid_12';
+
                     return (
                       <div
                         key={teamObj.teamName}
-                        className={`bg-black/80 border rounded-3xl p-4 space-y-3 transition-all shadow-xl relative ${
+                        className={`bg-black/80 border rounded-2xl ${
+                          isCompactMode ? 'p-2 space-y-1.5' : 'p-3.5 space-y-2.5'
+                        } transition-all shadow-xl relative ${
                           isTurnActive
                             ? 'border-yellow-400 ring-2 ring-yellow-400/40 shadow-yellow-500/20 bg-yellow-950/10'
                             : 'border-white/15 hover:border-yellow-500/40'
                         }`}
                       >
                         {/* All Star Team Header with Captain Photo Logo */}
-                        <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                          <div className="flex items-center gap-3">
+                        <div className={`flex items-center justify-between border-b border-white/10 ${
+                          isCompactMode ? 'pb-1.5' : 'pb-2.5'
+                        }`}>
+                          <div className="flex items-center gap-2 min-w-0">
                             {/* Captain Photo as Team Logo Avatar */}
                             <div className="relative shrink-0">
                               {teamObj.captainPhoto ? (
                                 <img
                                   src={teamObj.captainPhoto}
                                   alt={captainPlayer?.name}
-                                  className="w-11 h-11 rounded-2xl object-cover border-2 border-yellow-400 shadow-md"
+                                  className={`${
+                                    isCompactMode ? 'w-7 h-7 rounded-xl' : 'w-10 h-10 rounded-2xl'
+                                  } object-cover border-2 border-yellow-400 shadow-md`}
                                 />
                               ) : (
-                                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-yellow-500 to-amber-600 border-2 border-yellow-400 flex items-center justify-center text-black font-black">
-                                  <Crown size={20} />
+                                <div className={`${
+                                  isCompactMode ? 'w-7 h-7 rounded-xl' : 'w-10 h-10 rounded-2xl'
+                                } bg-gradient-to-br from-yellow-500 to-amber-600 border-2 border-yellow-400 flex items-center justify-center text-black font-black`}>
+                                  <Crown size={isCompactMode ? 13 : 18} />
                                 </div>
                               )}
                               {teamObj.logo && (
                                 <img
                                   src={teamObj.logo}
                                   alt={teamObj.teamName}
-                                  className="w-5 h-5 object-contain absolute -bottom-1 -right-1 bg-black rounded-full p-0.5 border border-white/30 shadow"
+                                  className={`${
+                                    isCompactMode ? 'w-3 h-3' : 'w-4 h-4'
+                                  } object-contain absolute -bottom-1 -right-1 bg-black rounded-full p-0.5 border border-white/30 shadow`}
                                 />
                               )}
                             </div>
 
-                            <div>
-                              <div className="text-sm font-black uppercase text-yellow-400 flex items-center gap-1.5">
-                                <span>{teamObj.allStarTeamName}</span>
+                            <div className="min-w-0">
+                              <div className={`${
+                                isCompactMode ? 'text-[11px]' : 'text-xs'
+                              } font-black uppercase text-yellow-400 flex items-center gap-1 truncate`}>
+                                <span className="truncate">{teamObj.allStarTeamName}</span>
                               </div>
-                              <span className="text-[10px] text-gray-300 font-bold block">
-                                Capitão: {captainPlayer?.name || 'N/D'} • Base: {teamObj.teamName}
+                              <span className="text-[8px] sm:text-[9px] text-gray-300 font-bold block truncate">
+                                Cap. {captainPlayer?.name || 'N/D'}
                               </span>
                             </div>
                           </div>
 
-                          <div className="flex flex-col items-end gap-1">
-                            <span className="w-6 h-6 rounded-lg bg-yellow-500/20 text-yellow-400 font-black text-xs flex items-center justify-center border border-yellow-500/30">
+                          <div className="flex flex-col items-end gap-0.5 shrink-0 ml-1">
+                            <span className="w-4 h-4 sm:w-5 sm:h-5 rounded-lg bg-yellow-500/20 text-yellow-400 font-black text-[9px] sm:text-[10px] flex items-center justify-center border border-yellow-500/30">
                               #{teamObj.rank}
                             </span>
-                            <div className="bg-yellow-500/10 border border-yellow-500/30 px-2 py-0.5 rounded-lg text-[10px] font-black text-amber-300">
-                              🔥 {totalSquadKills} Kills
+                            <div className="bg-yellow-500/10 border border-yellow-500/30 px-1 py-0.2 rounded text-[8px] font-black text-amber-300">
+                              🔥 {totalSquadKills} K
                             </div>
                           </div>
                         </div>
 
                         {/* Roster of 4 Players */}
-                        <div className="space-y-2">
+                        <div className="space-y-1">
                           {/* Slot 1: Official CPT Captain */}
-                          <div className="bg-gradient-to-r from-yellow-500/25 via-amber-500/10 to-black border border-yellow-500/40 rounded-xl p-2 flex items-center justify-between text-xs">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <Crown size={14} className="text-yellow-400 fill-yellow-400 shrink-0" />
-                              <div className="min-w-0">
-                                <span className="font-black text-yellow-400 uppercase block truncate flex items-center gap-1">
+                          <div className={`bg-gradient-to-r from-yellow-500/25 via-amber-500/10 to-black border border-yellow-500/40 rounded-xl ${
+                            isCompactMode ? 'p-1 text-[10px]' : 'p-1.5 text-xs'
+                          } flex items-center justify-between`}>
+                            <div className="flex items-center gap-1 min-w-0">
+                              <Crown size={isCompactMode ? 11 : 13} className="text-yellow-400 fill-yellow-400 shrink-0" />
+                              <div className="min-w-0 flex items-center gap-1">
+                                <span className="font-black text-yellow-400 uppercase truncate text-[10px] sm:text-[11px]">
                                   {captainPlayer?.name || 'N/D'}
-                                  <span className="text-[8px] bg-yellow-500 text-black px-1 rounded font-black">CPT</span>
                                 </span>
-                                <span className="text-[9px] text-gray-400 font-bold block truncate">Capitão do {teamObj.allStarTeamName}</span>
+                                <span className="text-[7px] bg-yellow-500 text-black px-1 rounded font-black shrink-0">CPT</span>
                               </div>
                             </div>
-                            <span className="font-black text-white shrink-0 ml-1">{captainPlayer?.kills || 0} K</span>
+                            <span className="font-black text-white text-[10px] sm:text-[11px] shrink-0 ml-1">{captainPlayer?.kills || 0} K</span>
                           </div>
 
-                          {/* Slots 2, 3, 4: Drafted Picks (Drop Targets) */}
+                          {/* Slots 2, 3, 4: Drafted Picks (Click or Drop Targets) */}
                           {[0, 1, 2].map((roundIdx) => {
                             const pickName = draftedPicksList[roundIdx];
                             const pickStat = pickName ? playerStatsMap.get(normalize(pickName)) : null;
@@ -1096,55 +1261,64 @@ export const CaptainDraftStudy: React.FC<CaptainDraftStudyProps> = ({ data }) =>
                             return (
                               <div
                                 key={roundIdx}
+                                onClick={() => handleOpenSlotPicker(teamObj.teamName, roundIdx)}
                                 onDragOver={(e) => handleDragOver(e, teamObj.teamName, roundIdx)}
                                 onDragLeave={handleDragLeave}
                                 onDrop={(e) => handleDrop(e, teamObj.teamName, roundIdx)}
-                                className={`rounded-xl p-2 flex items-center justify-between text-xs border transition-all ${
+                                title="Clique para selecionar atleta ou arraste um atleta disponível"
+                                className={`rounded-xl cursor-pointer ${
+                                  isCompactMode ? 'p-1 text-[10px]' : 'p-1.5 text-xs'
+                                } flex items-center justify-between border transition-all group ${
                                   isOver
                                     ? 'border-yellow-400 bg-yellow-500/30 ring-2 ring-yellow-400 shadow-lg scale-[1.02]'
                                     : pickStat
-                                    ? 'bg-black/90 border-white/20'
-                                    : 'bg-black/30 border-dashed border-white/15 text-gray-500 hover:border-yellow-500/50'
+                                    ? 'bg-black/90 border-white/20 hover:border-yellow-400/60 hover:bg-black'
+                                    : 'bg-black/30 border-dashed border-white/15 text-gray-500 hover:border-yellow-500/70 hover:bg-yellow-500/10'
                                 }`}
                               >
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <span className="text-[8px] font-black uppercase bg-white/10 px-1 py-0.5 rounded text-gray-400 shrink-0">
-                                    Pick R{roundIdx + 1}
+                                <div className="flex items-center gap-1 min-w-0">
+                                  <span className="text-[7px] font-black uppercase bg-white/10 px-1 py-0.2 rounded text-gray-400 shrink-0">
+                                    R{roundIdx + 1}
                                   </span>
 
                                   {pickStat ? (
-                                    <div className="min-w-0">
-                                      <span className="font-black text-white uppercase block truncate">
+                                    <div className="min-w-0 flex items-center gap-1">
+                                      <span className="font-black text-white uppercase text-[10px] sm:text-[11px] truncate group-hover:text-yellow-300">
                                         {pickStat.name}
                                       </span>
-                                      <span className="text-[9px] text-gray-400 font-bold block truncate">
-                                        {pickStat.team} • {pickStat.role}
-                                      </span>
+                                      {!isCompactMode && (
+                                        <span className="text-[8px] text-gray-400 font-bold truncate">
+                                          • {pickStat.team}
+                                        </span>
+                                      )}
                                     </div>
                                   ) : (
-                                    <span className="text-gray-500 text-[10px] italic flex items-center gap-1">
-                                      <Hand size={11} className="text-yellow-500/60" />
-                                      {isOver ? 'Solte aqui para draftear' : 'Arraste um atleta aqui...'}
+                                    <span className="text-gray-400 group-hover:text-yellow-300 text-[8px] sm:text-[9px] italic flex items-center gap-1 truncate font-medium">
+                                      <MousePointer size={9} className="text-yellow-400 shrink-0" />
+                                      {isOver ? 'Solte...' : 'Clique ou Arraste...'}
                                     </span>
                                   )}
                                 </div>
 
                                 {pickStat ? (
-                                  <div className="flex items-center gap-1.5 shrink-0 ml-1">
-                                    <span className="font-black text-amber-300 text-xs">
+                                  <div className="flex items-center gap-1 shrink-0 ml-1">
+                                    <span className="font-black text-amber-300 text-[10px] sm:text-[11px]">
                                       {pickStat.kills} K
                                     </span>
                                     <button
-                                      onClick={() => handleRemovePick(teamObj.teamName, roundIdx)}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleRemovePick(teamObj.teamName, roundIdx);
+                                      }}
                                       title="Remover pick"
-                                      className="text-gray-500 hover:text-red-400 transition-colors p-1"
+                                      className="text-gray-500 hover:text-red-400 transition-colors p-0.5 text-[9px]"
                                     >
                                       ✕
                                     </button>
                                   </div>
                                 ) : (
-                                  <span className="text-[9px] text-yellow-500/50 font-black uppercase">
-                                    Slot {roundIdx + 1}
+                                  <span className="text-[7px] bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-1 py-0.2 rounded font-black uppercase group-hover:bg-yellow-500 group-hover:text-black">
+                                    + Slot
                                   </span>
                                 )}
                               </div>
@@ -1155,6 +1329,154 @@ export const CaptainDraftStudy: React.FC<CaptainDraftStudyProps> = ({ data }) =>
                     );
                   })}
                 </div>
+              </div>
+            </div>
+
+            {/* RIGHT COLUMN: VISUAL DRAFT PICK LOG (CHRONOLOGICAL FEED) */}
+            <div className={`${squadsLayoutMode === 'grid_12' ? 'lg:col-span-12' : 'lg:col-span-3'} bg-black/80 border border-white/10 rounded-3xl p-5 space-y-4 backdrop-blur-md transition-all no-print`}>
+              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <ListOrdered size={18} className="text-yellow-400 shrink-0" />
+                  <div className="min-w-0">
+                    <h3 className="text-xs font-black uppercase text-white tracking-wider truncate">
+                      Log Visual das Escolhas
+                    </h3>
+                    <span className="text-[9px] text-gray-400 font-bold block truncate">
+                      Ordem Cronológica do Serpenteamento
+                    </span>
+                  </div>
+                </div>
+                <span className="text-[10px] bg-yellow-500/20 text-yellow-400 font-black px-2 py-0.5 rounded-full border border-yellow-500/30 shrink-0">
+                  {completedDraftPicksCount}/36
+                </span>
+              </div>
+
+              {/* LOG FILTER BUTTONS */}
+              <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl text-[9px] font-black uppercase">
+                <button
+                  onClick={() => setLogFilter('ALL')}
+                  className={`flex-1 py-1 rounded-lg transition-all text-center ${
+                    logFilter === 'ALL' ? 'bg-yellow-500 text-black font-black' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Todas (36)
+                </button>
+                <button
+                  onClick={() => setLogFilter('DONE')}
+                  className={`flex-1 py-1 rounded-lg transition-all text-center ${
+                    logFilter === 'DONE' ? 'bg-yellow-500 text-black font-black' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Feitas ({completedDraftPicksCount})
+                </button>
+                <button
+                  onClick={() => setLogFilter('PENDING')}
+                  className={`flex-1 py-1 rounded-lg transition-all text-center ${
+                    logFilter === 'PENDING' ? 'bg-yellow-500 text-black font-black' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Pendentes ({36 - completedDraftPicksCount})
+                </button>
+              </div>
+
+              {/* SCROLLABLE CHRONOLOGICAL PICK LOG */}
+              <div className={
+                squadsLayoutMode === 'grid_12'
+                  ? "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2.5 max-h-[400px] overflow-y-auto pr-1 custom-scrollbar"
+                  : "max-h-[680px] overflow-y-auto space-y-2 pr-1 custom-scrollbar"
+              }>
+                {filteredDraftLog.length === 0 ? (
+                  <div className="text-center py-10 text-gray-500 text-xs font-bold col-span-full">
+                    Nenhum registro encontrado no filtro.
+                  </div>
+                ) : (
+                  filteredDraftLog.map((logItem) => (
+                    <div
+                      key={logItem.pickNum}
+                      className={`rounded-2xl p-2.5 border transition-all text-xs ${
+                        logItem.isCurrent
+                          ? 'bg-yellow-500/15 border-yellow-400 ring-2 ring-yellow-400/50 shadow-lg shadow-yellow-500/10'
+                          : logItem.isCompleted
+                          ? 'bg-black/90 border-white/15 hover:border-yellow-500/40'
+                          : 'bg-black/40 border-dashed border-white/10 opacity-60'
+                      }`}
+                    >
+                      {/* Pick Number & Round Tag Header */}
+                      <div className="flex items-center justify-between mb-1.5 border-b border-white/10 pb-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className={`text-[8px] font-black uppercase px-1.5 py-0.2 rounded-full ${
+                            logItem.isCurrent
+                              ? 'bg-yellow-400 text-black animate-pulse font-black'
+                              : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+                          }`}>
+                            Pick #{logItem.pickNum}
+                          </span>
+                          <span className="text-[9px] text-gray-300 font-bold">
+                            Rodada {logItem.round} {logItem.round === 2 ? '🔄' : ''}
+                          </span>
+                        </div>
+
+                        {logItem.isCompleted ? (
+                          <span className="text-[8px] text-green-400 font-bold flex items-center gap-0.5">
+                            <CheckCircle2 size={10} /> Concluída
+                          </span>
+                        ) : logItem.isCurrent ? (
+                          <span className="text-[8px] text-yellow-400 font-bold animate-pulse">
+                            ⚡ Vez do Pick
+                          </span>
+                        ) : (
+                          <span className="text-[8px] text-gray-500 italic">Pendente</span>
+                        )}
+                      </div>
+
+                      {/* Captain Team Info & Pick Choice Statement */}
+                      <div className="flex items-start gap-2">
+                        {logItem.team.captainPhoto ? (
+                          <img
+                            src={logItem.team.captainPhoto}
+                            alt={logItem.team.allStarTeamName}
+                            className="w-7 h-7 rounded-xl object-cover border border-yellow-400 shrink-0 mt-0.5"
+                          />
+                        ) : (
+                          <div className="w-7 h-7 rounded-xl bg-yellow-500/20 border border-yellow-400/40 flex items-center justify-center text-yellow-400 shrink-0 font-black text-[10px]">
+                            <Crown size={12} />
+                          </div>
+                        )}
+
+                        <div className="min-w-0 flex-1">
+                          <div className="font-bold text-gray-300 text-[10px] leading-tight truncate">
+                            <span className="text-yellow-400 font-black">{logItem.team.allStarTeamName}</span>
+                            <span className="text-gray-400 text-[9px] font-normal"> ({logItem.team.captainPlayer?.name || 'CPT'})</span>
+                          </div>
+
+                          {logItem.isCompleted && logItem.pickedPlayerStat ? (
+                            <div className="mt-1 bg-white/5 border border-white/10 rounded-xl p-1.5 flex items-center justify-between">
+                              <div className="min-w-0">
+                                <span className="text-[8px] text-gray-400 uppercase font-bold block leading-none">
+                                  Rodada {logItem.round}: escolheu
+                                </span>
+                                <span className="text-[11px] font-black text-white uppercase truncate block mt-0.5">
+                                  {logItem.pickedPlayerStat.name}
+                                </span>
+                                <span className="text-[8px] text-gray-400 font-bold block truncate">
+                                  {logItem.pickedPlayerStat.team} • {logItem.pickedPlayerStat.role}
+                                </span>
+                              </div>
+                              <div className="text-right shrink-0 ml-1">
+                                <span className="text-[11px] font-black text-amber-300 block">{logItem.pickedPlayerStat.kills} K</span>
+                                <span className="text-[7px] text-gray-400 font-bold">{logItem.pickedPlayerStat.avgDamage} Dano</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-[9px] text-gray-500 italic block mt-0.5">
+                              Aguardando escolha da Rodada {logItem.round}...
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -1513,6 +1835,219 @@ export const CaptainDraftStudy: React.FC<CaptainDraftStudyProps> = ({ data }) =>
           </div>
         </div>
       )}
+
+      {/* SLOT PLAYER SELECTION MODAL */}
+      {slotPickerModal && (() => {
+        const targetTeam = teamsWithRosters.find(t => t.teamName === slotPickerModal.teamName);
+        if (!targetTeam) return null;
+
+        const currentPickName = snakePicks[slotPickerModal.teamName]?.[slotPickerModal.roundIdx];
+        const currentPickStat = currentPickName ? playerStatsMap.get(normalize(currentPickName)) : null;
+
+        // Filter available players or currently picked player in this slot
+        const candidatePlayers = availablePlayersPool.filter(p => {
+          const matchSearch = !slotModalSearch.trim() ||
+            p.name.toLowerCase().includes(slotModalSearch.toLowerCase()) ||
+            p.team.toLowerCase().includes(slotModalSearch.toLowerCase()) ||
+            p.role.toLowerCase().includes(slotModalSearch.toLowerCase());
+
+          const matchRole = isRoleMatch(p, slotModalRoleFilter);
+          return matchSearch && matchRole;
+        });
+
+        // Include current pick in candidates list if filtered
+        if (currentPickStat && !candidatePlayers.some(p => normalize(p.name) === normalize(currentPickStat.name))) {
+          if (isRoleMatch(currentPickStat, slotModalRoleFilter)) {
+            const matchSearch = !slotModalSearch.trim() ||
+              currentPickStat.name.toLowerCase().includes(slotModalSearch.toLowerCase()) ||
+              currentPickStat.team.toLowerCase().includes(slotModalSearch.toLowerCase()) ||
+              currentPickStat.role.toLowerCase().includes(slotModalSearch.toLowerCase());
+            if (matchSearch) {
+              const avgKills = currentPickStat.matches > 0 ? Number((currentPickStat.kills / currentPickStat.matches).toFixed(1)) : 0;
+              const avgDamage = currentPickStat.matches > 0 ? Math.round(currentPickStat.damage / currentPickStat.matches) : 0;
+              candidatePlayers.unshift({
+                ...currentPickStat,
+                avgKills,
+                avgDamage
+              });
+            }
+          }
+        }
+
+        return (
+          <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200 no-print">
+            <div className="bg-zinc-950 border border-yellow-500/40 rounded-3xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+              {/* Modal Header */}
+              <div className="p-5 border-b border-white/10 bg-gradient-to-r from-yellow-950/50 via-black to-zinc-900 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  {targetTeam.captainPhoto ? (
+                    <img src={targetTeam.captainPhoto} alt={targetTeam.allStarTeamName} className="w-12 h-12 rounded-2xl object-cover border-2 border-yellow-400 shadow-md" />
+                  ) : (
+                    <div className="w-12 h-12 rounded-2xl bg-yellow-500 text-black flex items-center justify-center font-black">
+                      <Crown size={24} />
+                    </div>
+                  )}
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black uppercase text-yellow-400 bg-yellow-500/15 px-2.5 py-0.5 rounded-full border border-yellow-500/30">
+                        SELECIONAR JOGADOR • RODADA {slotPickerModal.roundIdx + 1}
+                      </span>
+                    </div>
+                    <h3 className="text-xl font-black text-white uppercase italic mt-0.5 flex items-center gap-2">
+                      <span>{targetTeam.allStarTeamName}</span>
+                      <span className="text-xs font-bold text-gray-400">({targetTeam.teamName})</span>
+                    </h3>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setSlotPickerModal(null)}
+                  className="w-9 h-9 rounded-full bg-white/10 hover:bg-red-500/20 text-gray-400 hover:text-red-400 flex items-center justify-center transition-all font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Modal Filters */}
+              <div className="p-4 border-b border-white/10 space-y-3 bg-black/40">
+                <div className="relative">
+                  <Search className="absolute left-3.5 top-3 text-gray-400" size={16} />
+                  <input
+                    type="text"
+                    placeholder="Buscar por nome do atleta, time ou função..."
+                    value={slotModalSearch}
+                    onChange={(e) => setSlotModalSearch(e.target.value)}
+                    className="w-full bg-black/80 border border-white/15 rounded-2xl pl-10 pr-4 py-2.5 text-xs font-bold text-white placeholder-gray-500 focus:outline-none focus:border-yellow-400"
+                  />
+                </div>
+
+                {/* Role Filter Badges */}
+                <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-black uppercase">
+                  {[
+                    { id: 'ALL', label: 'Todos Atletas' },
+                    { id: 'RUSHER', label: '⚔️ Rush' },
+                    { id: 'BOMBA', label: '💣 Bomba' },
+                    { id: 'SNIPER', label: '🎯 Sniper' },
+                    { id: 'CORINGA', label: '🃏 Coringa' },
+                    { id: 'CPT', label: '👑 Cpt / IGL' }
+                  ].map((f) => (
+                    <button
+                      key={f.id}
+                      onClick={() => setSlotModalRoleFilter(f.id)}
+                      className={`px-3 py-1.5 rounded-xl transition-all ${
+                        slotModalRoleFilter === f.id
+                          ? 'bg-yellow-500 text-black shadow-md font-black'
+                          : 'bg-white/5 text-gray-400 hover:text-white border border-white/10'
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Modal Player Candidates List */}
+              <div className="p-4 flex-1 overflow-y-auto space-y-2 max-h-[420px]">
+                {currentPickStat && (
+                  <div className="mb-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-2xl flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-black text-yellow-400 uppercase">Slot Atual:</span>
+                      <span className="text-sm font-black text-white uppercase">{currentPickStat.name} ({currentPickStat.team})</span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        handleRemovePick(slotPickerModal.teamName, slotPickerModal.roundIdx);
+                        setSlotPickerModal(null);
+                      }}
+                      className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500 text-red-400 hover:text-white rounded-xl text-xs font-black uppercase transition-all"
+                    >
+                      Remover Jogador do Slot
+                    </button>
+                  </div>
+                )}
+
+                {candidatePlayers.length === 0 ? (
+                  <div className="text-center py-10 text-gray-500 text-xs font-bold">
+                    Nenhum jogador disponível encontrado para os filtros aplicados.
+                  </div>
+                ) : (
+                  candidatePlayers.map((player) => {
+                    const isCurrentSelected = currentPickName && normalize(currentPickName) === normalize(player.name);
+
+                    return (
+                      <div
+                        key={player.name}
+                        onClick={() => {
+                          handlePickPlayerForTeam(slotPickerModal.teamName, player.name, slotPickerModal.roundIdx);
+                          setSlotPickerModal(null);
+                        }}
+                        className={`p-3 rounded-2xl border transition-all flex items-center justify-between cursor-pointer group ${
+                          isCurrentSelected
+                            ? 'bg-yellow-500/20 border-yellow-400 ring-1 ring-yellow-400'
+                            : 'bg-black/60 hover:bg-yellow-500/10 border-white/10 hover:border-yellow-500/50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          {player.playerImg ? (
+                            <img src={player.playerImg} alt={player.name} className="w-10 h-10 rounded-xl object-cover border border-white/20 shrink-0" />
+                          ) : (
+                            <div className="w-10 h-10 rounded-xl bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center text-yellow-400 font-black shrink-0">
+                              <Users size={16} />
+                            </div>
+                          )}
+
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-black uppercase text-white group-hover:text-yellow-400 truncate">
+                                {player.name}
+                              </span>
+                              <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-white/10 text-amber-300 shrink-0">
+                                {player.role}
+                              </span>
+                            </div>
+                            <div className="text-xs text-gray-400 font-bold flex items-center gap-1.5 mt-0.5">
+                              {player.teamImg && <img src={player.teamImg} alt={player.team} className="w-3.5 h-3.5 object-contain" />}
+                              <span>{player.team}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 shrink-0">
+                          <div className="text-right">
+                            <span className="text-xs font-black text-amber-400 block">{player.kills} Kills</span>
+                            <span className="text-[10px] text-gray-400 font-bold">{player.avgDamage} Dano Médio</span>
+                          </div>
+
+                          <button className={`px-3.5 py-1.5 rounded-xl text-xs font-black uppercase transition-all ${
+                            isCurrentSelected
+                              ? 'bg-yellow-500 text-black'
+                              : 'bg-yellow-500/20 text-yellow-400 group-hover:bg-yellow-500 group-hover:text-black'
+                          }`}>
+                            {isCurrentSelected ? 'Selecionado' : 'Escolher'}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 border-t border-white/10 bg-black/60 flex items-center justify-between text-xs">
+                <span className="text-gray-400 font-bold">
+                  {candidatePlayers.length} atletas disponíveis no pool
+                </span>
+                <button
+                  onClick={() => setSlotPickerModal(null)}
+                  className="px-5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-black uppercase"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
