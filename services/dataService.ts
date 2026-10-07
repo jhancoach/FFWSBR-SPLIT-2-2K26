@@ -242,72 +242,7 @@ export const fetchDashboardData = async (): Promise<DashboardData> => {
 
     const responses = await Promise.all(urls.map(url => safeFetch(url)));
     
-    // Parse players (Fonte Fato: fPlayersDados)
-    const players: PlayerData[] = parseCSV<any>(responses[0]).map(row => {
-        // Obter número da Queda: coluna '-' na planilha fPlayersDados contém 1..6
-        const qNum = (row['-'] && String(row['-']).trim()) || 
-                     (row['Q'] && String(row['Q']).trim()) || 
-                     (row['QUEDA'] && String(row['QUEDA']).trim()) || 
-                     (row['Queda'] && String(row['Queda']).trim()) || 
-                     (row['SALA'] && String(row['SALA']).trim()) || 
-                     (row['Sala'] && String(row['Sala']).trim()) || 
-                     (row['S'] && String(row['S']).trim()) || '1';
-
-        return {
-            PLAYER: getVal(row, ['PLAYER', 'Player', 'Jogador', 'JOGADOR', 'NOME', 'COMPETIDOR']),
-            TIME: getVal(row, ['TIME', 'Time', 'Equipe', 'EQUIPE', 'TAG', 'NOME DO TIME', 'TEAM']),
-            S: qNum,
-            CONFRONTO: getVal(row, ['CONFRONTO', 'Confronto', 'CF', 'CONFRONTO ', 'CONFRONTO_', 'CONFRONTOS', 'Confrontos', 'NOME', 'NAME']),
-            Abates: getVal(row, ['ABATES', 'Abates', 'Kills', 'KILLS', 'ABTS', 'KILL']) || '0',
-            Dano: getVal(row, ['DANO', 'Damage', 'DMG']),
-            HS: getVal(row, ['HS', 'Headshot', 'HEADSHOTS', 'CAPA']),
-            Deitados: getVal(row, ['DEITADOS', 'Knockdowns', 'KNOCKS', 'DEITOU']),
-            Assistencias: getVal(row, ['ASSISTENCIAS', 'Assists', 'ASSIST']),
-            Gelos: getVal(row, ['GELOS', 'Walls', 'GELO']),
-            GelosDestruidos: getVal(row, ['GELOS DESTRUIDOS', 'Walls Destroyed', 'GELO DESTRUIDO']),
-            Reviveu: getVal(row, ['REVIVEU', 'Revived']),
-            AliadosRevividos: getVal(row, ['ALIADOS REVIVIDOS', 'Allies Revived']),
-            MVP: getVal(row, ['MVP', 'Mvp', 'M.V.P']),
-            MAPA: getVal(row, ['MAPA', 'Mapa', 'Map']),
-            RD: getVal(row, ['RD', 'Rd', 'Rodada', 'Round']),
-            Q: qNum
-        };
-    }).filter(p => p.PLAYER && p.TIME && p.PLAYER.trim() !== '' && p.TIME.trim() !== '');
-
-    // Parse KillFeed (Fonte Fato)
-    const killFeed: KillFeed[] = parseCSV<any>(responses[1]).map(row => {
-        const qNum = (row['Q'] && String(row['Q']).trim()) || 
-                     (row['-'] && String(row['-']).trim()) || 
-                     (row['QUEDA'] && String(row['QUEDA']).trim()) || 
-                     (row['Queda'] && String(row['Queda']).trim()) || 
-                     (row['SALA'] && String(row['SALA']).trim()) || 
-                     (row['Sala'] && String(row['Sala']).trim()) || 
-                     (row['S'] && String(row['S']).trim()) || '1';
-
-        const killerRaw = getVal(row, ['PLAYER', 'Player', 'Killer', 'Matador']);
-        const vitimaRaw = getVal(row, ['VITIMA', 'Vitima', 'Victim', 'QUEM MORREU']);
-        const armaRaw = getVal(row, ['ARMA', 'Arma', 'Weapon']);
-        
-        // Tratar mortes pelo gás: quando o killer está vazio e arma é GÁS ou tem vítima
-        const isGasDeath = (armaRaw && armaRaw.toUpperCase().includes('GÁS')) || 
-                           (!killerRaw && vitimaRaw && (!armaRaw || armaRaw.toUpperCase().includes('GÁS')));
-        
-        const finalPlayer = killerRaw || (isGasDeath ? 'GÁS' : '');
-        const finalArma = armaRaw || (isGasDeath ? 'GÁS' : '');
-
-        return {
-            PLAYER: finalPlayer,
-            VITIMA: vitimaRaw,
-            ARMA: finalArma,
-            CONFRONTO: getVal(row, ['CONFRONTO', 'Confronto', 'CF', 'CONFRONTO ', 'CONFRONTO_', 'CONFRONTOS', 'Confrontos', 'NOME', 'NAME']),
-            MAPA: getVal(row, ['MAPA', 'Mapa', 'Map']),
-            RD: getVal(row, ['RD', 'Rd', 'Rodada']),
-            Q: qNum,
-            SAFE: getVal(row, ['SAFE', 'Safe'])
-        };
-    }).filter(k => (k.PLAYER && k.PLAYER.trim() !== '') || (k.VITIMA && k.VITIMA.trim() !== ''));
-
-    // Parse Detalhes (Fonte Fato)
+    // Parse Detalhes (Fonte Fato: fDetalhes) primeiro para construir mapa de Rodada -> Confronto
     const details: MatchDetails[] = parseCSV<any>(responses[2]).map(row => {
         const timeVal = getVal(row, ['TIME', 'Time', 'Equipe', 'EQUIPE', 'TAG', 'NOME DO TIME', 'TEAM', 'TIMES', 'EQUIPES', 'NOME', 'NAME', 'CLUBE', 'CLUB']);
         const ptsVal = getVal(row, ['PTS', 'PONTOS', 'PONTOS TOTAL', 'PTS TOTAL', 'TOTAL PTS', 'TOTAL PONTOS', 'TOTAL', 'PT', 'PTS_TOTAL', 'PONTOS_TOTAL', 'PONTUAÇÃO', 'PONTUACAO']);
@@ -359,7 +294,98 @@ export const fetchDashboardData = async (): Promise<DashboardData> => {
             ONDE_FECHOU: ondeFechouVal
         };
     }).filter(d => d.TIME);
+
+    // Mapeamento de Rodada para Confronto (ex: RD 1..14 -> CLASSIFICATÓRIA, RD 15..20 -> RUMO AO MUNDIAL, RD 21..22 -> FINAL)
+    const rdToConfrontoMap = new Map<string, string>();
+    details.forEach(d => {
+        if (d.RD && d.CONFRONTO && d.CONFRONTO.trim() !== '' && !rdToConfrontoMap.has(d.RD.trim())) {
+            rdToConfrontoMap.set(d.RD.trim(), d.CONFRONTO.trim());
+        }
+    });
+
+    // Fallback de regulamento se não estiver preenchido em fDetalhes
+    for (let r = 1; r <= 14; r++) {
+        if (!rdToConfrontoMap.has(String(r))) rdToConfrontoMap.set(String(r), 'CLASSIFICATÓRIA');
+    }
+    for (let r = 15; r <= 20; r++) {
+        if (!rdToConfrontoMap.has(String(r))) rdToConfrontoMap.set(String(r), 'RUMO AO MUNDIAL');
+    }
+    for (let r = 21; r <= 22; r++) {
+        if (!rdToConfrontoMap.has(String(r))) rdToConfrontoMap.set(String(r), 'FINAL');
+    }
     
+    // Parse players (Fonte Fato: fPlayersDados)
+    const players: PlayerData[] = parseCSV<any>(responses[0]).map(row => {
+        // Obter número da Queda: coluna '-' na planilha fPlayersDados contém 1..6
+        const qNum = (row['-'] && String(row['-']).trim()) || 
+                     (row['Q'] && String(row['Q']).trim()) || 
+                     (row['QUEDA'] && String(row['QUEDA']).trim()) || 
+                     (row['Queda'] && String(row['Queda']).trim()) || 
+                     (row['SALA'] && String(row['SALA']).trim()) || 
+                     (row['Sala'] && String(row['Sala']).trim()) || 
+                     (row['S'] && String(row['S']).trim()) || '1';
+
+        const rdVal = getVal(row, ['RD', 'Rd', 'Rodada', 'Round']);
+        const rawConfronto = getVal(row, ['CONFRONTO', 'Confronto', 'CF', 'CONFRONTO ', 'CONFRONTO_', 'CONFRONTOS', 'Confrontos', 'NOME', 'NAME']);
+        const finalConfronto = rawConfronto || (rdVal ? rdToConfrontoMap.get(rdVal.trim()) : '') || '';
+
+        return {
+            PLAYER: getVal(row, ['PLAYER', 'Player', 'Jogador', 'JOGADOR', 'NOME', 'COMPETIDOR']),
+            TIME: getVal(row, ['TIME', 'Time', 'Equipe', 'EQUIPE', 'TAG', 'NOME DO TIME', 'TEAM']),
+            S: qNum,
+            CONFRONTO: finalConfronto,
+            Abates: getVal(row, ['ABATES', 'Abates', 'Kills', 'KILLS', 'ABTS', 'KILL']) || '0',
+            Dano: getVal(row, ['DANO', 'Damage', 'DMG']),
+            HS: getVal(row, ['HS', 'Headshot', 'HEADSHOTS', 'CAPA']),
+            Deitados: getVal(row, ['DEITADOS', 'Knockdowns', 'KNOCKS', 'DEITOU']),
+            Assistencias: getVal(row, ['ASSISTENCIAS', 'Assists', 'ASSIST']),
+            Gelos: getVal(row, ['GELOS', 'Walls', 'GELO']),
+            GelosDestruidos: getVal(row, ['GELOS DESTRUIDOS', 'Walls Destroyed', 'GELO DESTRUIDO']),
+            Reviveu: getVal(row, ['REVIVEU', 'Revived']),
+            AliadosRevividos: getVal(row, ['ALIADOS REVIVIDOS', 'Allies Revived']),
+            MVP: getVal(row, ['MVP', 'Mvp', 'M.V.P']),
+            MAPA: getVal(row, ['MAPA', 'Mapa', 'Map']),
+            RD: rdVal,
+            Q: qNum
+        };
+    }).filter(p => p.PLAYER && p.TIME && p.PLAYER.trim() !== '' && p.TIME.trim() !== '');
+
+    // Parse KillFeed (Fonte Fato)
+    const killFeed: KillFeed[] = parseCSV<any>(responses[1]).map(row => {
+        const qNum = (row['Q'] && String(row['Q']).trim()) || 
+                     (row['-'] && String(row['-']).trim()) || 
+                     (row['QUEDA'] && String(row['QUEDA']).trim()) || 
+                     (row['Queda'] && String(row['Queda']).trim()) || 
+                     (row['SALA'] && String(row['SALA']).trim()) || 
+                     (row['Sala'] && String(row['Sala']).trim()) || 
+                     (row['S'] && String(row['S']).trim()) || '1';
+
+        const killerRaw = getVal(row, ['PLAYER', 'Player', 'Killer', 'Matador']);
+        const vitimaRaw = getVal(row, ['VITIMA', 'Vitima', 'Victim', 'QUEM MORREU']);
+        const armaRaw = getVal(row, ['ARMA', 'Arma', 'Weapon']);
+        const rdVal = getVal(row, ['RD', 'Rd', 'Rodada']);
+        const rawConfronto = getVal(row, ['CONFRONTO', 'Confronto', 'CF', 'CONFRONTO ', 'CONFRONTO_', 'CONFRONTOS', 'Confrontos', 'NOME', 'NAME']);
+        const finalConfronto = rawConfronto || (rdVal ? rdToConfrontoMap.get(rdVal.trim()) : '') || '';
+        
+        // Tratar mortes pelo gás: quando o killer está vazio e arma é GÁS ou tem vítima
+        const isGasDeath = (armaRaw && armaRaw.toUpperCase().includes('GÁS')) || 
+                           (!killerRaw && vitimaRaw && (!armaRaw || armaRaw.toUpperCase().includes('GÁS')));
+        
+        const finalPlayer = killerRaw || (isGasDeath ? 'GÁS' : '');
+        const finalArma = armaRaw || (isGasDeath ? 'GÁS' : '');
+
+        return {
+            PLAYER: finalPlayer,
+            VITIMA: vitimaRaw,
+            ARMA: finalArma,
+            CONFRONTO: finalConfronto,
+            MAPA: getVal(row, ['MAPA', 'Mapa', 'Map']),
+            RD: rdVal,
+            Q: qNum,
+            SAFE: getVal(row, ['SAFE', 'Safe'])
+        };
+    }).filter(k => (k.PLAYER && k.PLAYER.trim() !== '') || (k.VITIMA && k.VITIMA.trim() !== ''));
+
     // Parse Loadouts (Fonte Fato)
     const characters: CharacterData[] = parseCSV<any>(responses[3]).map(row => {
         const qVal = (row['Q'] && String(row['Q']).trim()) || 
@@ -368,6 +394,10 @@ export const fetchDashboardData = async (): Promise<DashboardData> => {
                      (row['SALA'] && String(row['SALA']).trim()) || 
                      (row['QUEDA'] && String(row['QUEDA']).trim()) || 
                      (row['Queda'] && String(row['Queda']).trim()) || '1';
+
+        const rdVal = getVal(row, ['Rd', 'RD', 'Rodada']);
+        const rawConfronto = getVal(row, ['Confronto', 'CONFRONTO', 'CF', 'CONFRONTO ', 'CONFRONTO_', 'CONFRONTOS', 'Confrontos', 'NOME', 'NAME']);
+        const finalConfronto = rawConfronto || (rdVal ? rdToConfrontoMap.get(rdVal.trim()) : '') || '';
 
         return {
             Player: getVal(row, ['Player', 'Jogador', 'PLAYER', 'NOME']),
@@ -378,8 +408,8 @@ export const fetchDashboardData = async (): Promise<DashboardData> => {
             Hab4: getVal(row, ['Hab4', 'Hab 4', 'Passiva 3']),
             Pet: getVal(row, ['Pet', 'PET']),
             Item: getVal(row, ['Item', 'ITEM']),
-            Rd: getVal(row, ['Rd', 'RD', 'Rodada']),
-            Confronto: getVal(row, ['Confronto', 'CONFRONTO', 'CF', 'CONFRONTO ', 'CONFRONTO_', 'CONFRONTOS', 'Confrontos', 'NOME', 'NAME']),
+            Rd: rdVal,
+            Confronto: finalConfronto,
             Mapa: getVal(row, ['Mapa', 'MAPA', 'Map']),
             S: (row['S'] && String(row['S']).trim()) || '1',
             Q: qVal

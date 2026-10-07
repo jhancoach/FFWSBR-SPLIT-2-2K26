@@ -66,6 +66,7 @@ Download,
 FileText,
 Copy,
 Check,
+Globe,
 } from "lucide-react";
 import {
 BarChart,
@@ -253,6 +254,10 @@ direction: "asc" | "desc";
 }>({ key: "pts", direction: "desc" });
 const [safeRankingMatchFilter, setSafeRankingMatchFilter] = useState<string>("ALL");
 const [safeRankingStatusFilter, setSafeRankingStatusFilter] = useState<"ALL" | "SURVIVED" | "ELIMINATED">("ALL");
+const [pointsTableExpandedTeam, setPointsTableExpandedTeam] = useState<string | null>(null);
+const [pointsTableExpandedMatchKey, setPointsTableExpandedMatchKey] = useState<string | null>(null);
+const [pointsTableViewMode, setPointsTableViewMode] = useState<"table" | "matches" | "both">("both");
+const [pointsTableSelectedRound, setPointsTableSelectedRound] = useState<string | null>(null);
 
 useEffect(() => {
   setSafeRankingMatchFilter("ALL");
@@ -368,6 +373,12 @@ null,
 );
 const normalize = (val: string | undefined) =>
 (val || "").trim().toUpperCase();
+const matchConfronto = (filterConf: string, targetConf: string | undefined) => {
+  if (!targetConf) return false;
+  const a = (filterConf || "").trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const b = (targetConf || "").trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return a === b || a.includes(b) || b.includes(a);
+};
 // Análise de Comparação por Mapa
 const comparisonMapStats = useMemo(() => {
 if (!filters.team[0] || !compareTeamB) return [];
@@ -456,7 +467,7 @@ return false;
 if (
 filters.confrontation.length > 0 &&
 !filters.confrontation.some(
-(c) => normalize(c) === normalize(d.CONFRONTO),
+(c) => matchConfronto(c, d.CONFRONTO),
 )
 )
 return false;
@@ -481,7 +492,7 @@ return false;
 if (
 filters.confrontation.length > 0 &&
 !filters.confrontation.some(
-(c) => normalize(c) === normalize(p.CONFRONTO),
+(c) => matchConfronto(c, p.CONFRONTO),
 )
 )
 return false;
@@ -506,7 +517,7 @@ return false;
 if (
 filters.confrontation.length > 0 &&
 !filters.confrontation.some(
-(c) => normalize(c) === normalize(k.CONFRONTO),
+(c) => matchConfronto(c, k.CONFRONTO),
 )
 )
 return false;
@@ -3502,8 +3513,10 @@ avgAbts: [...stats].sort((a, b) => a.avgAbts - b.avgAbts).slice(0, 12),
 }, [displayTeamStats]);
 // Lista ordenada de todas as rodadas / dias
 const sortedRoundsList = useMemo(() => {
+const isFiltered = filters.rodada.length > 0 || filters.confrontation.length > 0 || filters.map.length > 0 || filters.queda.length > 0;
+const source = isFiltered ? filteredData.details : data.details;
 const uniqueRounds = Array.from(
-new Set(data.details.map((d) => d.RD)),
+new Set(source.map((d) => d.RD)),
 ).filter(Boolean) as string[];
 return uniqueRounds.sort((a: string, b: string) => {
 const numA = parseInt(a.replace(/\D/g, "")) || 0;
@@ -3511,7 +3524,7 @@ const numB = parseInt(b.replace(/\D/g, "")) || 0;
 if (numA !== numB) return numA - numB;
 return a.localeCompare(b);
 });
-}, [data.details]);
+}, [data.details, filteredData.details, filters.rodada, filters.confrontation, filters.map, filters.queda]);
 // Formata o cabeçalho da rodada para "Day X" se for numérico, correspondendo ao print do usuário
 const formatRoundHeader = (rd: string) => {
 const num = parseInt(rd.replace(/\D/g, ""));
@@ -3520,10 +3533,10 @@ return `Day ${num}`;
 }
 return rd;
 };
-// Mapeamento de pontos por rodada e time
+// Mapeamento de pontos por rodada e time respeitando os filtros ativos (ex: mapa selecionado)
 const teamRoundPoints = useMemo(() => {
 const pointsMap: Record<string, Record<string, number>> = {};
-data.details.forEach((d) => {
+filteredData.details.forEach((d) => {
 const teamName = d.TIME;
 const round = d.RD;
 if (!teamName || !round) return;
@@ -3534,7 +3547,90 @@ const pts = parseInt(d.PTS) || 0;
 pointsMap[teamName][round] = (pointsMap[teamName][round] || 0) + pts;
 });
 return pointsMap;
-}, [data.details]);
+}, [filteredData.details]);
+
+// Lista de partidas (quedas) detalhadas do confronto/filtro ativo
+const confrontationMatchesList = useMemo(() => {
+  const matchMap = new Map<string, {
+    key: string;
+    rd: string;
+    q: string;
+    confronto: string;
+    mapa: string;
+    ondeFechou: string;
+    totalKills: number;
+    booyahTeam?: string;
+    booyahLogo?: string;
+    booyahAbts?: number;
+    booyahPts?: number;
+    teams: {
+      team: string;
+      logo?: string;
+      pos: number;
+      pts: number;
+      ptsc: number;
+      abts: number;
+      b: number;
+    }[];
+  }>();
+
+  filteredData.details.forEach(d => {
+    const matchKey = `${d.RD}-${d.Q}-${d.MAPA}`;
+    if (!matchMap.has(matchKey)) {
+      matchMap.set(matchKey, {
+        key: matchKey,
+        rd: d.RD,
+        q: d.Q,
+        confronto: d.CONFRONTO || 'OFICIAL',
+        mapa: d.MAPA,
+        ondeFechou: d.ONDE_FECHOU || '',
+        totalKills: 0,
+        teams: []
+      });
+    }
+    const m = matchMap.get(matchKey)!;
+    const pos = parseInt(d.POS) || 0;
+    const pts = parseInt(d.PTS) || 0;
+    const ptsc = parseInt(d.PTSC) || 0;
+    const abts = parseInt(d.ABTS) || 0;
+    const b = parseInt(d.B) || (pos === 1 ? 1 : 0);
+    const logo = findTeamLogo(d.TIME, data.teamsReference);
+
+    m.totalKills += abts;
+    m.teams.push({
+      team: d.TIME,
+      logo,
+      pos,
+      pts,
+      ptsc,
+      abts,
+      b
+    });
+
+    if (b > 0 || pos === 1) {
+      m.booyahTeam = d.TIME;
+      m.booyahLogo = logo;
+      m.booyahAbts = abts;
+      m.booyahPts = pts;
+    }
+  });
+
+  matchMap.forEach(m => {
+    m.teams.sort((a, b) => a.pos - b.pos);
+  });
+
+  return Array.from(matchMap.values()).sort((a, b) => {
+    const rdA = parseInt(a.rd.replace(/\D/g, "")) || 0;
+    const rdB = parseInt(b.rd.replace(/\D/g, "")) || 0;
+    if (rdA !== rdB) return rdA - rdB;
+    return (parseInt(a.q) || 0) - (parseInt(b.q) || 0);
+  });
+}, [filteredData.details, data.teamsReference]);
+
+const displayedConfrontationMatches = useMemo(() => {
+  if (!pointsTableSelectedRound) return confrontationMatchesList;
+  return confrontationMatchesList.filter(m => m.rd === pointsTableSelectedRound);
+}, [confrontationMatchesList, pointsTableSelectedRound]);
 // Tendências de Rank baseadas no acumulado anterior ao último round
 const rankTrends = useMemo(() => {
 const trends: Record<
@@ -3549,7 +3645,7 @@ const prevTeamStats: Record<
 string,
 { pts: number; b: number; abts: number; name: string }
 > = {};
-data.details.forEach((row) => {
+filteredData.details.forEach((row) => {
 const teamName = row.TIME;
 if (!teamName || !row.RD || !penultimaRounds.includes(row.RD)) return;
 if (!prevTeamStats[teamName]) {
@@ -3583,7 +3679,7 @@ trends[teamCurrent.name] = { change: 0, type: "neutral" };
 }
 });
 return trends;
-}, [data.details, sortedRoundsList, filteredTeamStats]);
+}, [filteredData.details, sortedRoundsList, filteredTeamStats]);
 // Rodadas jogadas pelo time selecionado
 const selectedTeamRounds = useMemo(() => {
 if (!selectedTeamName) return [];
@@ -3599,7 +3695,7 @@ abts: number;
 booyahs: number;
 }
 > = {};
-data.details.forEach((d) => {
+filteredData.details.forEach((d) => {
 if (normalize(d.TIME) !== normalize(selectedTeamName)) return;
 const rd = d.RD;
 if (!rd) return;
@@ -3632,7 +3728,7 @@ const numB = parseInt(b.round.replace(/\D/g, "")) || 0;
 if (numA !== numB) return numA - numB;
 return a.round.localeCompare(b.round);
 });
-}, [data.details, selectedTeamName]);
+}, [filteredData.details, selectedTeamName]);
 const teamsList = useMemo(() => {
 return displayTeamStats
 .map((t) => ({
@@ -13099,17 +13195,56 @@ setFilters((prev) => ({ ...prev, team: [name] }))
 ) : activeTab === "pointsTable" ? (
 <div className="space-y-6 animate-in fade-in duration-500 pb-10">
 <div className="bg-[#1a1a1a] p-6 rounded-3xl border border-gray-800 shadow-xl overflow-hidden">
-<div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8">
+<div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
 <div>
+<div className="flex items-center gap-2 flex-wrap">
 <h3 className="text-xl font-black text-white uppercase italic tracking-widest flex items-center gap-3">
 <ListOrdered size={20} className="text-yellow-500" /> TABELA
 DE PONTOS POR RODADA
 </h3>
+{filters.confrontation.length > 0 && (
+<span className="px-3 py-1 bg-purple-500/15 border border-purple-500/40 text-purple-400 rounded-xl text-xs font-black uppercase flex items-center gap-1.5 shadow-sm">
+<Globe size={13} className="animate-pulse" /> {filters.confrontation.join(", ")}
+</span>
+)}
+{filters.map.length > 0 && (
+<span className="px-2.5 py-1 bg-yellow-500/15 border border-yellow-500/40 text-yellow-400 rounded-xl text-xs font-black uppercase flex items-center gap-1">
+<MapIcon size={12} /> {filters.map.join(", ")}
+</span>
+)}
+</div>
 <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mt-1">
-Classificação Geral & evolução de pontos de todos os times
+{confrontationMatchesList.length} partidas registradas em {sortedRoundsList.length} rodadas (dias) • Clique na equipe para ver todas as suas partidas
 </p>
 </div>
 <div className="flex flex-wrap items-center gap-3">
+{/* Alternador de Modo de Visualização */}
+<div className="bg-black/60 p-1 rounded-xl border border-white/10 flex items-center gap-1 text-[10px] font-black uppercase">
+<button
+onClick={() => setPointsTableViewMode("table")}
+className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+pointsTableViewMode === "table" ? "bg-yellow-500 text-black shadow-md font-black" : "text-gray-400 hover:text-white"
+}`}
+>
+<ListOrdered size={12} /> Tabela
+</button>
+<button
+onClick={() => setPointsTableViewMode("matches")}
+className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+pointsTableViewMode === "matches" ? "bg-yellow-500 text-black shadow-md font-black" : "text-gray-400 hover:text-white"
+}`}
+>
+<Swords size={12} /> Partidas ({confrontationMatchesList.length})
+</button>
+<button
+onClick={() => setPointsTableViewMode("both")}
+className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+pointsTableViewMode === "both" ? "bg-yellow-500 text-black shadow-md font-black" : "text-gray-400 hover:text-white"
+}`}
+>
+<LayoutList size={12} /> Ambos
+</button>
+</div>
 <span className="text-[9px] text-gray-400 font-black uppercase tracking-widest bg-black/40 px-3 py-1.5 rounded-lg border border-white/5 flex items-center gap-2">
 <span className="w-2 h-2 rounded bg-blue-500 inline-block shadow-[0_0_8px_rgba(59,130,246,0.6)]"></span>{" "}
 LÍDER (1º)
@@ -13124,13 +13259,15 @@ REBAIXAMENTO (13º+)
 </span>
 </div>
 </div>
-<div className="overflow-x-auto w-full rounded-2xl border border-gray-800/60 shadow-inner scrollbar-thin scrollbar-thumb-gray-800">
+
+{(pointsTableViewMode === "table" || pointsTableViewMode === "both") && (
+<div className="overflow-x-auto w-full rounded-2xl border border-gray-800/60 shadow-inner scrollbar-thin scrollbar-thumb-gray-800 mb-6">
 <table className="w-full text-left border-collapse table-auto whitespace-nowrap">
 <thead className="bg-[#0f0f0f] border-b border-gray-800 text-gray-400 text-[10px] uppercase font-black tracking-wider">
 <tr>
 <th className="px-4 py-4 text-center w-16">#</th>
 <th className="px-4 py-4 text-center w-14">TEND</th>
-<th className="px-4 py-4 min-w-[200px]">Equipe</th>
+<th className="px-4 py-4 min-w-[220px]">Equipe</th>
 <th className="px-4 py-4 text-center bg-yellow-900/10 text-yellow-500 w-24">
 PTS
 </th>
@@ -13151,7 +13288,7 @@ const trend = rankTrends[team.name] || {
 change: 0,
 type: "neutral",
 };
-// Determinar a cor do badge de rank do print do Free Fire
+const isExpandedTeam = pointsTableExpandedTeam === team.name;
 let rankBadgeClass =
 "w-6 h-6 rounded flex items-center justify-center font-black text-xs ";
 if (rank === 1) {
@@ -13164,7 +13301,6 @@ rankBadgeClass +=
 rankBadgeClass +=
 "bg-red-950/80 text-white border border-red-800/30";
 }
-// Determinar as bordas esquerdas das divisões
 let rowBorderClass =
 "hover:bg-white/[0.03] transition-colors ";
 if (rank <= 12) {
@@ -13175,7 +13311,8 @@ rowBorderClass +=
 "border-l-[4px] border-red-700 bg-red-500/[0.01]";
 }
 return (
-<tr key={team.name} className={rowBorderClass}>
+<React.Fragment key={team.name}>
+<tr className={rowBorderClass}>
 <td className="px-4 py-3 text-center">
 <div className="flex justify-center items-center">
 <span className={rankBadgeClass}>{rank}</span>
@@ -13200,7 +13337,12 @@ return (
 )}
 </div>
 </td>
-<td className="px-4 py-3 font-bold text-white">
+<td
+className="px-4 py-3 font-bold text-white cursor-pointer select-none"
+onClick={() => setPointsTableExpandedTeam(isExpandedTeam ? null : team.name)}
+title="Clique para expandir/ocultar as partidas desta equipe"
+>
+<div className="flex items-center justify-between gap-3">
 <div className="flex items-center gap-3">
 <div className="w-8 h-8 rounded-lg bg-black border border-gray-800 p-1 flex-shrink-0 flex items-center justify-center">
 {team.image ? (
@@ -13214,7 +13356,7 @@ className="w-full h-full object-contain"
 )}
 </div>
 <div className="flex flex-col">
-<span className="text-sm font-black uppercase italic tracking-tight">
+<span className="text-sm font-black uppercase italic tracking-tight hover:text-yellow-400 transition-colors">
 {team.name}
 </span>
 {team.grupo && (
@@ -13222,6 +13364,16 @@ className="w-full h-full object-contain"
 {team.grupo}
 </span>
 )}
+</div>
+</div>
+<div className="flex items-center gap-1 text-gray-500 hover:text-yellow-400">
+<span className="text-[9px] font-black uppercase hidden sm:inline">
+{isExpandedTeam ? "Ocultar" : "Partidas"}
+</span>
+<ChevronDown
+size={14}
+className={`transition-transform duration-200 ${isExpandedTeam ? "rotate-180 text-yellow-500" : ""}`}
+/>
 </div>
 </div>
 </td>
@@ -13249,11 +13401,295 @@ className="px-4 py-3 text-center font-bold text-xs font-mono"
 );
 })}
 </tr>
+{/* Detalhamento expandido das partidas da equipe no confronto/filtro */}
+{isExpandedTeam && (() => {
+const teamMatches = filteredData.details
+.filter((d) => normalize(d.TIME) === normalize(team.name))
+.sort((a, b) => {
+const rdA = parseInt(a.RD.replace(/\D/g, "")) || 0;
+const rdB = parseInt(b.RD.replace(/\D/g, "")) || 0;
+if (rdA !== rdB) return rdA - rdB;
+return (parseInt(a.Q) || 0) - (parseInt(b.Q) || 0);
+});
+return (
+<tr className="bg-black/95 border-y-2 border-yellow-500/40">
+<td colSpan={4 + sortedRoundsList.length} className="p-4 sm:p-5">
+<div className="space-y-3">
+<div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-white/10 pb-2.5">
+<div className="flex items-center gap-2 flex-wrap">
+<span className="text-xs font-black text-yellow-400 uppercase italic flex items-center gap-1.5 font-display">
+<Swords size={14} /> Partidas Disputadas por {team.name} ({teamMatches.length} Quedas)
+</span>
+{filters.confrontation.length > 0 && (
+<span className="text-[9px] font-black text-purple-400 bg-purple-500/10 border border-purple-500/20 px-2 py-0.5 rounded">
+{filters.confrontation.join(", ")}
+</span>
+)}
+</div>
+<button
+onClick={() => setPointsTableExpandedTeam(null)}
+className="text-[10px] font-black text-gray-400 hover:text-white uppercase cursor-pointer"
+>
+Fechar Detalhes ✕
+</button>
+</div>
+<div className="overflow-x-auto rounded-xl border border-white/10">
+<table className="w-full text-left text-xs whitespace-nowrap">
+<thead className="bg-[#141418] text-[9px] font-black uppercase text-gray-400 border-b border-white/10">
+<tr>
+<th className="p-2.5">Rodada</th>
+<th className="p-2.5">Queda</th>
+<th className="p-2.5">Confronto</th>
+<th className="p-2.5">Mapa</th>
+<th className="p-2.5 text-center">Posição</th>
+<th className="p-2.5 text-center text-yellow-500">Pontos</th>
+<th className="p-2.5 text-center text-orange-400">Pts Col</th>
+<th className="p-2.5 text-center text-red-500">Abates</th>
+<th className="p-2.5">Onde Fechou</th>
+</tr>
+</thead>
+<tbody className="divide-y divide-white/5">
+{teamMatches.map((tm, tmIdx) => {
+const posNum = parseInt(tm.POS) || 0;
+const isBooyah = posNum === 1 || parseInt(tm.B) > 0;
+return (
+<tr
+key={tmIdx}
+className={`hover:bg-white/5 ${isBooyah ? "bg-yellow-500/10 font-bold" : ""}`}
+>
+<td className="p-2.5 font-mono font-bold text-white">Day {tm.RD}</td>
+<td className="p-2.5 font-mono text-gray-300">Queda {tm.Q}</td>
+<td className="p-2.5 text-purple-400 font-bold">{tm.CONFRONTO || "OFICIAL"}</td>
+<td className="p-2.5 uppercase font-bold text-gray-200">{tm.MAPA}</td>
+<td className="p-2.5 text-center">
+<span
+className={`px-2 py-0.5 rounded text-[10px] font-black italic ${
+isBooyah
+? "bg-yellow-500 text-black font-black"
+: "bg-black/60 text-gray-300 border border-white/10"
+}`}
+>
+{posNum}º {isBooyah ? "🏆 Booyah" : ""}
+</span>
+</td>
+<td className="p-2.5 text-center font-black text-yellow-400 font-mono">
+{tm.PTS}
+</td>
+<td className="p-2.5 text-center font-black text-orange-400 font-mono">
+{tm.PTSC}
+</td>
+<td className="p-2.5 text-center font-black text-red-400 font-mono">
+{tm.ABTS}
+</td>
+<td className="p-2.5 text-gray-400 font-medium">{tm.ONDE_FECHOU || "-"}</td>
+</tr>
 );
 })}
 </tbody>
 </table>
 </div>
+</div>
+</td>
+</tr>
+);
+})()}
+</React.Fragment>
+);
+})}
+</tbody>
+</table>
+</div>
+)}
+
+{/* Seção Completa de Partidas (Quedas) do Confronto */}
+{(pointsTableViewMode === "matches" || pointsTableViewMode === "both") && (
+<div className="pt-6 border-t border-gray-800 space-y-6">
+<div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+<div>
+<h4 className="text-lg font-black text-white uppercase italic tracking-wider flex items-center gap-2.5 font-display">
+<Swords size={20} className="text-yellow-500" /> PARTIDAS DO CONFRONTO ({confrontationMatchesList.length} QUEDAS)
+</h4>
+<p className="text-xs text-gray-400 font-medium mt-0.5">
+Detalhamento completo de cada queda disputada{filters.confrontation.length > 0 ? ` no confronto ${filters.confrontation.join(", ")}` : ""}
+</p>
+</div>
+
+{/* Filtro rápido por Rodada / Day */}
+<div className="flex items-center gap-1.5 flex-wrap">
+<button
+onClick={() => setPointsTableSelectedRound(null)}
+className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase transition-all cursor-pointer ${
+pointsTableSelectedRound === null
+? "bg-yellow-500 text-black shadow-md"
+: "bg-black/60 text-gray-400 hover:text-white border border-white/10"
+}`}
+>
+Todas ({confrontationMatchesList.length})
+</button>
+{sortedRoundsList.map((rd) => {
+const count = confrontationMatchesList.filter((m) => m.rd === rd).length;
+const isSel = pointsTableSelectedRound === rd;
+return (
+<button
+key={rd}
+onClick={() => setPointsTableSelectedRound(isSel ? null : rd)}
+className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase transition-all cursor-pointer ${
+isSel
+? "bg-yellow-500 text-black shadow-md"
+: "bg-black/60 text-gray-400 hover:text-white border border-white/10"
+}`}
+>
+Day {rd} ({count})
+</button>
+);
+})}
+</div>
+</div>
+
+{/* Grid de Partidas */}
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+{displayedConfrontationMatches.map((match) => {
+const isExpMatch = pointsTableExpandedMatchKey === match.key;
+return (
+<div
+key={match.key}
+className={`bg-black/40 rounded-2xl border transition-all p-4 space-y-3 flex flex-col justify-between shadow-xl ${
+isExpMatch
+? "border-yellow-500 bg-yellow-500/5 shadow-yellow-500/10"
+: "border-white/10 hover:border-white/20"
+}`}
+>
+{/* Header da Partida */}
+<div className="flex items-center justify-between">
+<div className="flex items-center gap-2">
+<span className="px-2.5 py-1 rounded-lg bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 text-[10px] font-black uppercase tracking-wider">
+Day {match.rd} • Queda {match.q}
+</span>
+<span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-white font-black text-[10px] uppercase">
+{match.mapa}
+</span>
+</div>
+<span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[9px] font-bold uppercase truncate max-w-[120px]">
+{match.confronto}
+</span>
+</div>
+
+{/* Vencedor / Booyah & Onde Fechou */}
+<div className="bg-[#121215] p-3 rounded-xl border border-white/5 space-y-2">
+<div className="flex items-center justify-between">
+<span className="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1">
+<Crown size={12} className="text-yellow-500" /> BOOYAH (1º LUGAR)
+</span>
+{match.booyahPts !== undefined && (
+<span className="text-xs font-black text-yellow-400 font-mono">
+{match.booyahPts} Pts ({match.booyahAbts} Kills)
+</span>
+)}
+</div>
+<div className="flex items-center gap-2.5">
+<div className="w-8 h-8 rounded-lg bg-black border border-yellow-500/30 p-1 flex items-center justify-center shrink-0">
+{match.booyahLogo ? (
+<img
+src={match.booyahLogo}
+alt={match.booyahTeam}
+className="w-full h-full object-contain"
+/>
+) : (
+<Shield size={16} className="text-yellow-500" />
+)}
+</div>
+<span className="text-sm font-black uppercase italic text-white truncate">
+{match.booyahTeam || "N/A"}
+</span>
+</div>
+</div>
+
+{/* Métricas da Queda */}
+<div className="flex items-center justify-between text-[10px] text-gray-400 border-t border-white/5 pt-2">
+<span>
+🎯 Onde Fechou:{" "}
+<strong className="text-white font-bold">
+{match.ondeFechou || "N/A"}
+</strong>
+</span>
+<span>
+Total Kills:{" "}
+<strong className="text-red-400 font-bold">{match.totalKills}</strong>
+</span>
+</div>
+
+{/* Botão de Expandir Classificação da Queda */}
+<button
+onClick={() =>
+setPointsTableExpandedMatchKey(isExpMatch ? null : match.key)
+}
+className={`w-full py-2 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+isExpMatch
+? "bg-yellow-500 text-black shadow-md"
+: "bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10"
+}`}
+>
+<span>
+{isExpMatch ? "Ocultar Classificação" : "Ver Classificação da Queda"}
+</span>
+<ChevronDown
+size={13}
+className={`transition-transform duration-200 ${isExpMatch ? "rotate-180" : ""}`}
+/>
+</button>
+
+{/* Tabela Expandida da Queda */}
+{isExpMatch && (
+<div className="pt-2 border-t border-white/10 animate-in fade-in duration-200">
+<div className="overflow-x-auto rounded-xl border border-white/10 max-h-60 overflow-y-auto">
+<table className="w-full text-left text-xs whitespace-nowrap">
+<thead className="bg-[#0e0e11] text-[8px] uppercase font-black text-gray-400 sticky top-0 border-b border-white/10">
+<tr>
+<th className="p-2 w-8 text-center">#</th>
+<th className="p-2">Equipe</th>
+<th className="p-2 text-center text-yellow-500">PTS</th>
+<th className="p-2 text-center text-orange-400">POS</th>
+<th className="p-2 text-center text-red-400">KILLS</th>
+</tr>
+</thead>
+<tbody className="divide-y divide-white/5 text-[11px]">
+{match.teams.map((t) => (
+<tr
+key={t.team}
+className={
+t.pos === 1
+? "bg-yellow-500/10 font-black"
+: "hover:bg-white/5"
+}
+>
+<td className="p-2 text-center font-bold text-gray-400 font-mono">
+{t.pos === 1 ? "🏆" : `${t.pos}º`}
+</td>
+<td className="p-2 font-bold text-white uppercase truncate max-w-[120px]">
+{t.team}
+</td>
+<td className="p-2 text-center font-black text-yellow-400 font-mono">
+{t.pts}
+</td>
+<td className="p-2 text-center font-bold text-orange-400 font-mono">
+{t.ptsc}
+</td>
+<td className="p-2 text-center font-bold text-red-400 font-mono">
+{t.abts}
+</td>
+</tr>
+))}
+</tbody>
+</table>
+</div>
+</div>
+)}
+</div>
+);
+})}
+</div>
+</div>
+)}
 </div>
 </div>
 ) : activeTab === "teamRounds" ? (

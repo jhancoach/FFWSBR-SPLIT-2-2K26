@@ -2,7 +2,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { DashboardData, PlayerData, CharacterData } from '../types';
-import { Trophy, Crown, User, Users, Swords, Zap, BarChart2, Scale, Map as MapIcon, Skull, ChevronRight, ChevronDown, ChevronUp, Sparkles, X, Activity, Info, Crosshair, Shield, ShieldAlert, ArrowLeft, Disc, Flame, Target, AlertCircle, LayoutGrid, MapPin, Hash, Target as TargetIcon, CheckCircle2, AlertTriangle, Search, Star, ListOrdered, Eye, EyeOff, Gamepad2, LayoutList, Layers, TrendingUp } from 'lucide-react';
+import { Trophy, Crown, User, Users, Swords, Zap, BarChart2, Scale, Map as MapIcon, Skull, ChevronRight, ChevronDown, ChevronUp, Sparkles, X, Activity, Info, Crosshair, Shield, ShieldAlert, ArrowLeft, Disc, Flame, Target, AlertCircle, LayoutGrid, MapPin, Hash, Target as TargetIcon, CheckCircle2, AlertTriangle, Search, Star, ListOrdered, Eye, EyeOff, Gamepad2, LayoutList, Layers, TrendingUp, Check } from 'lucide-react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, LabelList, Cell, YAxis, CartesianGrid, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts';
 import { calculateOverallKpmFromMapStats, calculateMapDurationSec, getMapGroup, SAFE_DURATIONS_SEC } from '../utils/kpmUtils';
 import FilterBar from '../components/FilterBar';
@@ -73,6 +73,35 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
   const [rankingSort, setRankingSort] = useState<{ field: string, direction: 'asc' | 'desc' }>({ field: 'kills', direction: 'desc' });
   const [comparePlayers, setComparePlayers] = useState<{p1: string, p1Hab: string, p2: string, p2Hab: string}>({p1: '', p1Hab: 'All', p2: '', p2Hab: 'All'});
   const [compareMode, setCompareMode] = useState<'pvp' | 'pvt'>('pvp');
+  const [compareSelection, setCompareSelection] = useState<string[]>([]);
+
+  const toggleComparePlayer = (playerName: string) => {
+    setCompareSelection(prev => {
+      const exists = prev.some(n => normalize(n) === normalize(playerName));
+      if (exists) {
+        return prev.filter(n => normalize(n) !== normalize(playerName));
+      }
+      if (prev.length >= 2) {
+        return [prev[1], playerName];
+      }
+      return [...prev, playerName];
+    });
+  };
+
+  const handleLaunchCompare = (p1Name?: string, p2Name?: string) => {
+    const p1ToUse = p1Name || compareSelection[0] || '';
+    const p2ToUse = p2Name || compareSelection[1] || '';
+    if (p1ToUse || p2ToUse) {
+      setComparePlayers(prev => ({
+        ...prev,
+        p1: p1ToUse || prev.p1,
+        p2: p2ToUse || prev.p2
+      }));
+    }
+    setActiveTab('compare');
+    setCompareMode('pvp');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
   const [comparePvt, setComparePvt] = useState<{ player: string; playerHab: string; team: string; teamMetric: 'total' | 'average' }>({ player: '', playerHab: 'All', team: '', teamMetric: 'total' });
   const [activeHabFilter, setActiveHabFilter] = useState<string>('All');
   const [activeHabSort, setActiveHabSort] = useState<{field: string, direction: 'asc'|'desc'}>({ field: 'kills', direction: 'desc' });
@@ -867,9 +896,24 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
   }, [charactersData, data.characters, activeHabFilter]);
 
   const allPlayersList = useMemo(() => {
-    return data.playersDimension.length > 0 
-        ? data.playersDimension.map(d => ({ name: d.Name, img: d.IMG, team: d.Time }))
-        : Array.from(new Set(data.players.map(p => p.PLAYER))).filter(Boolean).map(name => ({ name, img: undefined, team: undefined }));
+    const listMap = new Map<string, { name: string; img?: string; team?: string }>();
+    (data.playersDimension || []).forEach(d => {
+      if (d.Name) {
+        listMap.set(normalize(d.Name), { name: d.Name, img: d.IMG, team: d.Time });
+      }
+    });
+    (data.players || []).forEach(p => {
+      if (p.PLAYER) {
+        const norm = normalize(p.PLAYER);
+        if (!listMap.has(norm)) {
+          listMap.set(norm, { name: p.PLAYER, img: undefined, team: p.TIME });
+        } else {
+          const item = listMap.get(norm)!;
+          if (!item.team && p.TIME) item.team = p.TIME;
+        }
+      }
+    });
+    return Array.from(listMap.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [data.playersDimension, data.players]);
 
   const compareData = useMemo(() => {
@@ -1162,17 +1206,31 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             return w?.IMG;
         };
 
-        const killerWeapons = Array.from(killerWeaponsMap.entries()).map(([name, count]) => ({
-            name,
-            count,
-            img: getWeaponImg(name)
-        })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+        const totalKillerWeaponKills = Array.from(killerWeaponsMap.values()).reduce((a, b) => a + b, 0);
+        const killerWeapons = Array.from(killerWeaponsMap.entries()).map(([name, count]) => {
+            const baseKills = stats.kills > 0 ? stats.kills : (totalKillerWeaponKills > 0 ? totalKillerWeaponKills : 1);
+            const pct = Number(((count / baseKills) * 100).toFixed(1));
+            return {
+                name,
+                count,
+                percentage: pct,
+                pctText: `${pct}%`,
+                img: getWeaponImg(name)
+            };
+        }).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 
-        const victimWeapons = Array.from(victimWeaponsMap.entries()).map(([name, count]) => ({
-            name,
-            count,
-            img: getWeaponImg(name)
-        })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+        const totalVictimWeaponDeaths = Array.from(victimWeaponsMap.values()).reduce((a, b) => a + b, 0);
+        const victimWeapons = Array.from(victimWeaponsMap.entries()).map(([name, count]) => {
+            const baseDeaths = stats.deaths > 0 ? stats.deaths : (totalVictimWeaponDeaths > 0 ? totalVictimWeaponDeaths : 1);
+            const pct = Number(((count / baseDeaths) * 100).toFixed(1));
+            return {
+                name,
+                count,
+                percentage: pct,
+                pctText: `${pct}%`,
+                img: getWeaponImg(name)
+            };
+        }).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 
         // Use rankingData fallback if habFilter is 'All' so we get exactly the same baseline as before for global
         if (habFilter === 'All' && stats.matches === 0) {
@@ -2353,7 +2411,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
             { id: 'roles', label: 'Funções', icon: <LayoutGrid size={18} /> },
             { id: 'chars', label: 'Personagens (Hab1 a Hab4)', icon: <Flame size={18} /> },
             { id: 'auditoria', label: 'Auditoria Kills', icon: <Shield size={18} /> },
-            { id: 'compare', label: 'Duelo', icon: <Swords size={18} /> },
+            { id: 'compare', label: 'Comparar Jogadores', icon: <Swords size={18} /> },
             { id: 'report', label: 'Perfil Individual', icon: <Activity size={18} /> },
         ].map(tab => (
             <button 
@@ -4537,6 +4595,27 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                             {showHsEvolutionChart ? <EyeOff size={12} /> : <Eye size={12} />}
                             <span>{showHsEvolutionChart ? 'Ocultar Gráfico' : 'Exibir Gráfico'}</span>
                           </button>
+
+                          <button
+                            onClick={() => {
+                              if (compareSelection.length >= 2) {
+                                handleLaunchCompare();
+                              } else {
+                                setActiveTab('compare');
+                                setCompareMode('pvp');
+                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                              }
+                            }}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                              compareSelection.length > 0
+                                ? 'bg-yellow-500 text-black shadow-md shadow-yellow-500/25'
+                                : 'bg-white/5 text-gray-300 hover:text-white hover:bg-white/10 border border-white/5'
+                            }`}
+                            title="Comparar Jogadores selecionados lado a lado"
+                          >
+                            <Swords size={12} />
+                            <span>Comparar Jogadores {compareSelection.length > 0 ? `(${compareSelection.length}/2)` : ''}</span>
+                          </button>
                         </div>
                       </div>
 
@@ -4587,6 +4666,11 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                     <table className="w-full text-left whitespace-nowrap border-separate border-spacing-0">
                         <thead className="bg-[#0a0a0a] text-gray-500 text-[9px] uppercase font-bold tracking-widest sticky top-0 z-20">
                             <tr>
+                                <th className="px-2 py-4 w-12 text-center border-b border-gray-800 text-yellow-500 font-black">
+                                    <div className="flex items-center justify-center" title="Selecionar para Comparar">
+                                        <Swords size={12} />
+                                    </div>
+                                </th>
                                 <th className="px-4 py-4 w-12 text-center border-b border-gray-800">#</th>
                                 <th className="px-4 py-4 border-b border-gray-800 cursor-pointer hover:text-white transition-colors" onClick={() => handleRankingSort('name')}>
                                     <div className="flex items-center gap-1">
@@ -4770,6 +4854,24 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                                             : 'hover:bg-yellow-900/10'
                                     }`}
                                 >
+                                    <td className="px-2 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                                        <button
+                                            type="button"
+                                            onClick={() => toggleComparePlayer(player.name)}
+                                            title={compareSelection.some(n => normalize(n) === normalize(player.name)) ? "Remover da comparação" : "Comparar este jogador"}
+                                            className={`w-7 h-7 rounded-lg border flex items-center justify-center transition-all mx-auto cursor-pointer ${
+                                                compareSelection.some(n => normalize(n) === normalize(player.name))
+                                                    ? 'bg-yellow-500 text-black border-yellow-400 shadow-md shadow-yellow-500/30'
+                                                    : 'bg-black/60 text-gray-400 border-gray-800 hover:text-white hover:border-yellow-500/50'
+                                            }`}
+                                        >
+                                            {compareSelection.some(n => normalize(n) === normalize(player.name)) ? (
+                                                <Check size={12} className="stroke-[3]" />
+                                            ) : (
+                                                <Swords size={12} />
+                                            )}
+                                        </button>
+                                    </td>
                                     <td className="px-4 py-3 text-gray-600 font-mono text-center">
                                         <span className={(player.team?.toLowerCase().includes('loud') || player.name?.toLowerCase().includes('loud')) ? 'text-yellow-400 font-black text-xs flex items-center justify-center gap-0.5' : ''}>
                                             {idx + 1} {(player.team?.toLowerCase().includes('loud') || player.name?.toLowerCase().includes('loud')) && <Star size={10} className="fill-yellow-400 text-yellow-400" />}
@@ -4900,6 +5002,54 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
                     </table>
                 </div>
             </div>
+
+            {/* Floating Bottom Comparison Dock */}
+            {compareSelection.length > 0 && (
+              <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-[95%] max-w-xl animate-in fade-in slide-in-from-bottom-5 duration-300">
+                <div className="bg-[#12141a]/95 border-2 border-yellow-500/50 rounded-2xl p-4 shadow-2xl backdrop-blur-xl flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl bg-yellow-500/20 text-yellow-400 border border-yellow-500/40">
+                      <Swords size={20} />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-yellow-500 block">
+                        Comparar Jogadores ({compareSelection.length}/2 Selecionados)
+                      </span>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-sm font-black text-white uppercase italic">{compareSelection[0]}</span>
+                        {compareSelection.length === 2 && (
+                          <>
+                            <span className="text-xs font-black text-gray-500">VS</span>
+                            <span className="text-sm font-black text-yellow-400 uppercase italic">{compareSelection[1]}</span>
+                          </>
+                        )}
+                        {compareSelection.length === 1 && (
+                          <span className="text-xs font-medium text-gray-400">+ Selecione outro atleta na lista</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setCompareSelection([])}
+                      className="px-3 py-2 text-xs font-bold uppercase text-gray-400 hover:text-white transition-colors cursor-pointer"
+                    >
+                      Limpar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleLaunchCompare()}
+                      className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-yellow-500 to-amber-500 text-black font-black text-xs uppercase tracking-wider shadow-lg shadow-yellow-500/25 hover:scale-105 transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <span>{compareSelection.length === 2 ? 'Comparar Lado a Lado' : 'Abrir Comparador'}</span>
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             </div>
             )}
           </div>
