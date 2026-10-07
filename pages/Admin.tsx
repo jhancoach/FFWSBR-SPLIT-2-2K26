@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Save, RotateCcw, Database, AlertTriangle, Check, Type } from 'lucide-react';
+import { Save, RotateCcw, Database, AlertTriangle, Check, Type, SunMoon } from 'lucide-react';
 import { CSV_URLS, DEFAULT_CONFIG } from '../constants';
 import { getActiveUrls, getAppConfig } from '../services/dataService';
+import ThemeSelector from '../components/ThemeSelector';
 
 interface AdminProps {
   onRefresh: () => void;
@@ -95,6 +96,18 @@ const Admin: React.FC<AdminProps> = ({ onRefresh }) => {
                   <div className="bg-black/40 p-4 rounded-xl border border-white/5">
                       <label className="block text-[10px] font-bold text-gray-500 uppercase mb-2">Subtítulo / Edição</label>
                       <input type="text" value={config.subtitle} onChange={(e) => handleConfigChange('subtitle', e.target.value)} className="w-full bg-black text-gray-300 p-3 rounded-lg border border-gray-800 focus:border-[#facc15] outline-none uppercase text-xs font-bold tracking-widest" />
+                  </div>
+
+                  {/* Seletor de Tema Visual */}
+                  <div className="bg-black/40 p-4 rounded-xl border border-white/5">
+                      <div className="flex items-center gap-2 mb-2">
+                          <SunMoon size={16} className="text-[#facc15]" />
+                          <label className="block text-[10px] font-bold text-gray-400 uppercase">Tema e Modo de Exibição</label>
+                      </div>
+                      <p className="text-xs text-gray-400 mb-3">
+                          Alterne entre o modo claro, escuro ou automático de acordo com a preferência do sistema operacional.
+                      </p>
+                      <ThemeSelector showLabels />
                   </div>
               </div>
           )}

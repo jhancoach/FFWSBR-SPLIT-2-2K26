@@ -7,6 +7,7 @@ import { fetchDashboardData, getAppConfig } from './services/dataService';
 import { DashboardData } from './types';
 import { DEFAULT_CONFIG } from './constants';
 import { RefreshCw } from 'lucide-react';
+import { ThemeProvider } from './context/ThemeContext';
 
 // Lazy loading das páginas para navegação fluida, leve e instantânea
 const Leaderboard = lazy(() => import('./pages/Leaderboard'));
@@ -17,6 +18,7 @@ const KillFeedPage = lazy(() => import('./pages/KillFeedPage'));
 const Studies = lazy(() => import('./pages/Studies'));
 const Banners = lazy(() => import('./pages/Banners'));
 const Admin = lazy(() => import('./pages/Admin'));
+const Presentation = lazy(() => import('./pages/Presentation'));
 
 const PageLoader: React.FC = () => (
   <div className="w-full min-h-[450px] flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-150">
@@ -52,6 +54,8 @@ const AppContent: React.FC<{ data: DashboardData; loadData: () => void }> = ({ d
           <Route path="/killfeed" element={<KillFeedPage data={data} />} />
           <Route path="/estudos" element={<Studies data={data} />} />
           <Route path="/banners" element={<Banners data={data} />} />
+          <Route path="/slides" element={<Presentation data={data} />} />
+          <Route path="/apresentacao" element={<Presentation data={data} />} />
           <Route path="/admin" element={<Admin onRefresh={loadData} />} />
           <Route path="*" element={<Leaderboard data={data} />} />
         </Routes>
@@ -106,12 +110,14 @@ const App: React.FC = () => {
   }
 
   return (
-    <HashRouter>
-      <ScrollToTop />
-      <Layout onRefresh={loadData} loading={data.loading} lastUpdated={data.lastUpdated} config={config}>
-        <AppContent data={data} loadData={loadData} />
-      </Layout>
-    </HashRouter>
+    <ThemeProvider>
+      <HashRouter>
+        <ScrollToTop />
+        <Layout onRefresh={loadData} loading={data.loading} lastUpdated={data.lastUpdated} config={config} data={data}>
+          <AppContent data={data} loadData={loadData} />
+        </Layout>
+      </HashRouter>
+    </ThemeProvider>
   );
 };
 

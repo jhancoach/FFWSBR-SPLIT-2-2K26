@@ -67,6 +67,7 @@ FileText,
 Copy,
 Check,
 Globe,
+Presentation,
 } from "lucide-react";
 import {
 BarChart,
@@ -4753,7 +4754,15 @@ defaultOpen={false}
 <div className="absolute top-0 right-0 p-12 opacity-5">
 <Shield size={220} className="text-yellow-500" />
 </div>
-<div className="absolute top-6 right-6 z-20">
+<div className="absolute top-6 right-6 z-20 flex items-center gap-2">
+<button
+onClick={() => navigate(`/slides?type=team&name=${encodeURIComponent(selectedTeamStats.name)}`)}
+className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-yellow-500 to-amber-500 text-black font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-lg shadow-yellow-500/25 hover:scale-105 cursor-pointer"
+title="Apresentar este time em slides para reunião"
+>
+<Presentation size={14} />
+<span>Apresentar em Slides</span>
+</button>
 <button
 onClick={() => toggleTeamSection("header")}
 className="px-3 py-1.5 rounded-xl bg-black/60 border border-white/10 text-gray-400 hover:text-white hover:border-yellow-500/40 text-[11px] font-bold flex items-center gap-1.5 transition-all shadow-md"

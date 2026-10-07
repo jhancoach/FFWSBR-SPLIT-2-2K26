@@ -7,20 +7,158 @@
     <meta name="description" content="Dashboard premium para análise competitiva de Free Fire com dados em tempo real." />
     <meta property="og:title" content="FFWSBR 2026 SPLIT 2" />
     <meta property="og:description" content="Dashboard premium para análise competitiva de Free Fire com dados em tempo real." />
+    <script>
+      (function() {
+        try {
+          var saved = localStorage.getItem('ffwsbr_theme_preference');
+          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var isDark = saved === 'dark' || (saved !== 'light' && prefersDark);
+          if (isDark) {
+            document.documentElement.classList.add('dark');
+            document.documentElement.classList.remove('light');
+            document.documentElement.setAttribute('data-theme', 'dark');
+          } else {
+            document.documentElement.classList.add('light');
+            document.documentElement.classList.remove('dark');
+            document.documentElement.setAttribute('data-theme', 'light');
+          }
+        } catch (e) {}
+      })();
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+              display: ['Rajdhani', 'sans-serif'],
+            }
+          }
+        }
+      };
+    </script>
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Rajdhani:wght@500;600;700;800&display=swap');
       
+      :root {
+        --color-bg-base: #0a0a0a;
+        --color-text-base: #F3F4F6;
+      }
+
       body {
         font-family: 'Inter', sans-serif;
         background-color: #0a0a0a;
-        /* Cores baseadas na imagem: Amarelo -> Roxo -> Preto */
         background-image: 
           radial-gradient(circle at 50% 0%, #3b0764 0%, transparent 50%),
           radial-gradient(circle at 100% 20%, #7e22ce 0%, transparent 30%),
           radial-gradient(circle at 0% 20%, #854d0e 0%, transparent 30%);
         background-attachment: fixed;
         color: #F3F4F6;
+        transition: background-color 0.3s ease, color 0.3s ease;
+      }
+
+      /* Light Mode Overrides */
+      html.light body,
+      body.theme-light {
+        background-color: #f4f6fb;
+        background-image: 
+          radial-gradient(circle at 50% 0%, rgba(216, 180, 254, 0.25) 0%, transparent 50%),
+          radial-gradient(circle at 100% 20%, rgba(253, 230, 138, 0.25) 0%, transparent 30%),
+          radial-gradient(circle at 0% 20%, rgba(254, 215, 170, 0.25) 0%, transparent 30%);
+        color: #0f172a;
+      }
+
+      html.light nav.glass {
+        background: rgba(255, 255, 255, 0.88) !important;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+      }
+
+      html.light .glass {
+        background: rgba(255, 255, 255, 0.88);
+        border-color: rgba(0, 0, 0, 0.08);
+      }
+
+      html.light .theme-dropdown-surface {
+        background: rgba(255, 255, 255, 0.98) !important;
+        border-color: rgba(234, 179, 8, 0.4) !important;
+        box-shadow: 0 10px 35px rgba(0, 0, 0, 0.12) !important;
+      }
+
+      html.light .theme-card-surface,
+      html.light .bg-black\/60,
+      html.light .bg-black\/70,
+      html.light .bg-black\/80,
+      html.light .bg-black\/90,
+      html.light .bg-black\/95,
+      html.light .bg-black {
+        background-color: rgba(255, 255, 255, 0.92) !important;
+      }
+
+      html.light .bg-\[\#0e0712\],
+      html.light .bg-\[\#13091c\],
+      html.light .bg-\[\#180b22\],
+      html.light .bg-\[\#120817\],
+      html.light .bg-\[\#1c0f2b\],
+      html.light .bg-\[\#15091e\],
+      html.light .bg-\[\#0a050a\],
+      html.light .bg-gray-900,
+      html.light .bg-gray-950,
+      html.light .bg-zinc-900,
+      html.light .bg-zinc-950 {
+        background-color: #ffffff !important;
+      }
+
+      html.light .border-white\/10,
+      html.light .border-white\/5,
+      html.light .border-white\/15,
+      html.light .border-white\/20 {
+        border-color: rgba(0, 0, 0, 0.08) !important;
+      }
+
+      html.light .text-gray-400,
+      html.light .text-gray-500 {
+        color: #64748b !important;
+      }
+
+      html.light .text-gray-300,
+      html.light .text-gray-200 {
+        color: #334155 !important;
+      }
+
+      html.light .text-gray-100 {
+        color: #0f172a !important;
+      }
+
+      html.light .text-white {
+        color: #0f172a;
+      }
+
+      /* Keep gradient text, badges, and button text styled appropriately */
+      html.light .bg-gradient-to-r.from-\[\#f97316\].to-\[\#facc15\],
+      html.light button[class*="from-\[\#701a75\]"],
+      html.light .badge-keep,
+      html.light [class*="bg-yellow-"],
+      html.light [class*="bg-orange-"],
+      html.light [class*="bg-purple-"],
+      html.light [class*="bg-amber-"] {
+        color: inherit;
+      }
+
+      html.light .hover\:bg-white\/5:hover,
+      html.light .hover\:bg-white\/10:hover {
+        background-color: rgba(0, 0, 0, 0.04) !important;
+      }
+
+      html.light ::-webkit-scrollbar-track {
+        background: #e2e8f0;
+      }
+
+      html.light ::-webkit-scrollbar-thumb {
+        background: linear-gradient(135deg, #f97316 0%, #eab308 100%);
+        border: 2px solid #e2e8f0;
       }
 
       h1, h2, h3, h4, h5, h6, .font-display {

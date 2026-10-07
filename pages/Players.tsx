@@ -1,8 +1,8 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { DashboardData, PlayerData, CharacterData } from '../types';
-import { Trophy, Crown, User, Users, Swords, Zap, BarChart2, Scale, Map as MapIcon, Skull, ChevronRight, ChevronDown, ChevronUp, Sparkles, X, Activity, Info, Crosshair, Shield, ShieldAlert, ArrowLeft, Disc, Flame, Target, AlertCircle, LayoutGrid, MapPin, Hash, Target as TargetIcon, CheckCircle2, AlertTriangle, Search, Star, ListOrdered, Eye, EyeOff, Gamepad2, LayoutList, Layers, TrendingUp, Check } from 'lucide-react';
+import { Trophy, Crown, User, Users, Swords, Zap, BarChart2, Scale, Map as MapIcon, Skull, ChevronRight, ChevronDown, ChevronUp, Sparkles, X, Activity, Info, Crosshair, Shield, ShieldAlert, ArrowLeft, Disc, Flame, Target, AlertCircle, LayoutGrid, MapPin, Hash, Target as TargetIcon, CheckCircle2, AlertTriangle, Search, Star, ListOrdered, Eye, EyeOff, Gamepad2, LayoutList, Layers, TrendingUp, Check, Presentation, Download, FileText } from 'lucide-react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, LabelList, Cell, YAxis, CartesianGrid, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts';
 import { calculateOverallKpmFromMapStats, calculateMapDurationSec, getMapGroup, SAFE_DURATIONS_SEC } from '../utils/kpmUtils';
 import FilterBar from '../components/FilterBar';
@@ -62,6 +62,7 @@ const parseNumber = (val: string | undefined | null): number => {
 
 const Players: React.FC<PlayersProps> = ({ data }) => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'ranking' | 'momentum' | 'kpmSafes' | 'playerRounds' | 'playerDrops' | 'chars' | 'report' | 'auditoria' | 'stats' | 'roles' | 'compare' | 'mapKings'>('ranking');
   const [mapKingsSubTab, setMapKingsSubTab] = useState<"maps" | "drops">("maps");
   const [instagramPost, setInstagramPost] = useState<{ group: any; type: "map" | "drop" } | null>(null);
@@ -5351,9 +5352,29 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
               <div className="animate-in fade-in duration-300">
                   {filters.players.length === 1 ? (
                       <div className="space-y-4">
-                           <button onClick={() => { setFilters(prev => ({...prev, players: []})); setActiveTab('ranking'); }} className="text-xs text-yellow-500 hover:text-yellow-400 flex items-center gap-1 font-black uppercase tracking-widest bg-white/5 px-4 py-2 rounded-lg border border-white/5 transition-colors">
-                               <ArrowLeft size={14}/> Voltar para Ranking
-                           </button>
+                           <div className="flex flex-wrap items-center justify-between gap-3">
+                               <button onClick={() => { setFilters(prev => ({...prev, players: []})); setActiveTab('ranking'); }} className="text-xs text-yellow-500 hover:text-yellow-400 flex items-center gap-1 font-black uppercase tracking-widest bg-white/5 px-4 py-2 rounded-lg border border-white/5 transition-colors cursor-pointer">
+                                   <ArrowLeft size={14}/> Voltar para Ranking
+                               </button>
+                               <div className="flex items-center gap-2">
+                                   <button 
+                                       onClick={() => window.print()}
+                                       className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-red-600/25 via-red-500/35 to-amber-500/25 border border-red-500/40 text-red-300 hover:text-white font-black text-xs uppercase tracking-wider shadow-md shadow-red-500/10 hover:scale-105 transition-all cursor-pointer"
+                                       title="Exportar dossiê do atleta em relatório PDF estruturado para envio externo"
+                                   >
+                                       <Download size={14} className="text-red-400" />
+                                       <span>Exportar para PDF</span>
+                                   </button>
+                                   <button 
+                                       onClick={() => navigate(`/slides?type=player&name=${encodeURIComponent(filters.players[0])}`)}
+                                       className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-yellow-500 to-amber-500 text-black font-black text-xs uppercase tracking-wider shadow-lg shadow-yellow-500/25 hover:scale-105 transition-all cursor-pointer"
+                                       title="Apresentar este atleta em slides para reunião"
+                                   >
+                                       <Presentation size={14} />
+                                       <span>Apresentar em Slides</span>
+                                   </button>
+                               </div>
+                           </div>
                            <PlayerProfile data={data} playerName={filters.players[0]} filters={filters} characters={data.characters} rankingData={allRankingData} />
                       </div>
                   ) : (
@@ -6802,6 +6823,16 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                 </div>
 
                 <div className="flex items-center gap-2 relative">
+                    {/* Botão Exportar Relatório PDF */}
+                    <button
+                        onClick={() => window.print()}
+                        className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-red-600/25 via-red-500/35 to-amber-500/25 border border-red-500/40 text-red-300 hover:text-white hover:border-red-400 text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md shadow-red-500/10 cursor-pointer"
+                        title="Exportar dossiê completo do atleta em PDF para envio externo"
+                    >
+                        <Download size={14} className="text-red-400" />
+                        <span className="hidden sm:inline">Exportar para PDF</span>
+                    </button>
+
                     {/* Botão Gerenciar Seções */}
                     <div className="relative">
                         <button
@@ -8408,27 +8439,142 @@ const PlayerProfile = ({ data, playerName, filters, characters, rankingData }: a
                 </div>
             )}
 
-            {/* Análise KPM (KPM por Minuto & KPM por Safe) */}
-            {(profileSubTab === 'all' || profileSubTab === 'kpm') && playerVisibleSections.kpm && (
-                <div className="space-y-6 pt-2 relative group">
-                    <div className="flex justify-end mb-2">
-                        <button
-                            onClick={() => togglePlayerSection('kpm')}
-                            className="p-1.5 px-2.5 rounded-xl bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-white/10 text-[10px] font-bold uppercase flex items-center gap-1.5 transition-all"
-                            title="Ocultar Análise KPM"
-                        >
-                            <EyeOff size={12} />
-                            <span>Ocultar KPM</span>
-                        </button>
+            {/* ========================================================================= */}
+            {/* SEÇÃO PRINT-ONLY: RELATÓRIO ESTRUTURADO DO ATLETA PARA EXPORTAÇÃO EM PDF */}
+            {/* ========================================================================= */}
+            <div className="hidden print:block space-y-6 bg-white text-black p-4 mt-6">
+                {/* Página 1: Capa & Métricas Principais */}
+                <div className="p-8 bg-black text-white rounded-3xl border border-gray-800 break-after-page min-h-[520px] flex flex-col justify-between">
+                    <div className="flex items-center justify-between border-b border-gray-800 pb-4">
+                        <div className="flex items-center gap-4">
+                            <div className="w-16 h-16 bg-black border-2 border-yellow-500/40 rounded-2xl p-1 flex items-center justify-center overflow-hidden">
+                                {stats.playerImg ? (
+                                    <img src={stats.playerImg} alt={playerName} className="w-full h-full object-cover rounded-xl" />
+                                ) : (
+                                    <User size={32} className="text-yellow-400" />
+                                )}
+                            </div>
+                            <div>
+                                <span className="text-xs font-black uppercase text-yellow-400 tracking-widest">DOSSIÊ ESTRATÉGICO DO ATLETA</span>
+                                <h1 className="text-4xl font-black uppercase italic font-display">{playerName}</h1>
+                                <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-400 font-bold uppercase">
+                                    <span>{stats.team || 'Equipe'}</span>
+                                    <span>•</span>
+                                    <span>Função: {stats.funcao || 'Atleta'} {stats.funcao2 !== 'N/A' && `(${stats.funcao2})`}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="text-right">
+                            <span className="text-xs text-gray-400 uppercase font-bold block">FFWS BRASIL 2026 SPLIT 2</span>
+                            <span className="text-base font-black text-red-400 uppercase font-mono">
+                                #{rankings?.kills?.rank || 1} no Ranking de Abates
+                            </span>
+                        </div>
                     </div>
-                    <PlayerKpmAnalysis 
-                        data={data} 
-                        selectedPlayer={playerName} 
-                        singlePlayerOnly={true}
-                        hideTopControls={true} 
-                    />
+
+                    {/* Grade de KPIs */}
+                    <div className="grid grid-cols-4 gap-4 my-6">
+                        <div className="bg-gray-900 p-4 rounded-2xl border border-gray-800 text-center">
+                            <span className="text-[10px] uppercase font-bold text-gray-400 block">Abates Totais</span>
+                            <span className="text-3xl font-black text-red-400 font-mono">{stats.kills}</span>
+                        </div>
+                        <div className="bg-gray-900 p-4 rounded-2xl border border-gray-800 text-center">
+                            <span className="text-[10px] uppercase font-bold text-gray-400 block">Média / Queda</span>
+                            <span className="text-3xl font-black text-yellow-400 font-mono">{stats.avg}</span>
+                        </div>
+                        <div className="bg-gray-900 p-4 rounded-2xl border border-gray-800 text-center">
+                            <span className="text-[10px] uppercase font-bold text-gray-400 block">Dano Médio</span>
+                            <span className="text-3xl font-black text-white font-mono">{stats.avgDmg}</span>
+                        </div>
+                        <div className="bg-gray-900 p-4 rounded-2xl border border-gray-800 text-center">
+                            <span className="text-[10px] uppercase font-bold text-gray-400 block">Taxa de HS</span>
+                            <span className="text-3xl font-black text-blue-400 font-mono">
+                                {stats.kills > 0 ? `${((stats.hs / stats.kills) * 100).toFixed(1)}%` : '0%'}
+                            </span>
+                        </div>
+                        <div className="bg-gray-900 p-3 rounded-2xl border border-gray-800 text-center">
+                            <span className="text-[9px] uppercase font-bold text-gray-400 block">K/D Ratio</span>
+                            <span className="text-xl font-black text-white font-mono">{stats.kdRatio}</span>
+                        </div>
+                        <div className="bg-gray-900 p-3 rounded-2xl border border-gray-800 text-center">
+                            <span className="text-[9px] uppercase font-bold text-gray-400 block">Deitados (Knocks)</span>
+                            <span className="text-xl font-black text-white font-mono">{stats.knocks}</span>
+                        </div>
+                        <div className="bg-gray-900 p-3 rounded-2xl border border-gray-800 text-center">
+                            <span className="text-[9px] uppercase font-bold text-gray-400 block">Assistências</span>
+                            <span className="text-xl font-black text-white font-mono">{stats.assists}</span>
+                        </div>
+                        <div className="bg-gray-900 p-3 rounded-2xl border border-gray-800 text-center">
+                            <span className="text-[9px] uppercase font-bold text-gray-400 block">% Kills do Time</span>
+                            <span className="text-xl font-black text-yellow-400 font-mono">{stats.killContributionPct}%</span>
+                        </div>
+                    </div>
+
+                    <div className="border-t border-gray-800 pt-3 flex items-center justify-between text-xs text-gray-500">
+                        <span>Relatório Oficial Gerado para Envio Externo e Avaliação Técnica</span>
+                        <span>Analista: Jhan Medeiros</span>
+                    </div>
                 </div>
-            )}
+
+                {/* Página 2: Arsenal & Habilidades */}
+                <div className="p-8 bg-black text-white rounded-3xl border border-gray-800 break-after-page space-y-6">
+                    <h2 className="text-xl font-black uppercase text-yellow-400 border-b border-gray-800 pb-2">
+                        1. Arsenal de Armas & Configuração de Habilidades
+                    </h2>
+
+                    <div className="grid grid-cols-2 gap-6">
+                        <div>
+                            <h3 className="text-xs font-black uppercase text-gray-400 mb-2">Armas Mais Letais (% de Kills)</h3>
+                            <table className="w-full text-left text-xs">
+                                <thead className="bg-gray-900 text-gray-400 uppercase">
+                                    <tr>
+                                        <th className="p-2">Arma</th>
+                                        <th className="p-2">Tipo</th>
+                                        <th className="p-2 text-center">Abates</th>
+                                        <th className="p-2 text-center">% Kills</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-800">
+                                    {(stats.weaponKillsList || []).slice(0, 8).map((w: any) => (
+                                        <tr key={w.name}>
+                                            <td className="p-2 font-bold uppercase text-white">{w.name}</td>
+                                            <td className="p-2 text-gray-400 uppercase text-[10px]">{w.tipo}</td>
+                                            <td className="p-2 text-center font-mono text-red-400 font-bold">{w.kills}</td>
+                                            <td className="p-2 text-center font-mono text-yellow-400">{w.percentage}%</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div>
+                            <h3 className="text-xs font-black uppercase text-gray-400 mb-2">Loadout e Habilidades Meta</h3>
+                            {stats.loadout ? (
+                                <div className="bg-gray-900 p-4 rounded-2xl border border-gray-800 space-y-3 text-xs">
+                                    <div>
+                                        <span className="text-[10px] uppercase font-bold text-yellow-500 block">Habilidade Ativa</span>
+                                        <span className="text-white font-black uppercase">{stats.loadout.Hab1 || 'N/A'}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-[10px] uppercase font-bold text-gray-400 block">Passiva 1</span>
+                                        <span className="text-white font-bold uppercase">{stats.loadout.Hab2 || 'N/A'}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-[10px] uppercase font-bold text-gray-400 block">Passiva 2</span>
+                                        <span className="text-white font-bold uppercase">{stats.loadout.Hab3 || 'N/A'}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-[10px] uppercase font-bold text-gray-400 block">Passiva 3</span>
+                                        <span className="text-white font-bold uppercase">{stats.loadout.Hab4 || 'N/A'}</span>
+                                    </div>
+                                </div>
+                            ) : (
+                                <span className="text-gray-500 text-xs">Sem loadout registrado</span>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };
