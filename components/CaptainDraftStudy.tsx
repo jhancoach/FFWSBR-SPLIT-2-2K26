@@ -43,26 +43,82 @@ export const CaptainDraftStudy: React.FC<CaptainDraftStudyProps> = ({ data }) =>
   const [draggedPlayerName, setDraggedPlayerName] = useState<string | null>(null);
   const [dragOverTarget, setDragOverTarget] = useState<{ teamName: string; roundIdx: number } | null>(null);
 
-  // 1. Calculate Standings (Rumo ao Mundial / General Classification)
+  // 1. Calculate Standings for Fase Rumo ao Mundial (Bonus Points from Quali + Match Points in Rumo ao Mundial)
   const sortedTeamStandings = useMemo(() => {
-    const rumoDetails = (data.details || []).filter(d => {
-      const rdNorm = normalize(d.RD);
-      const confNorm = normalize(d.CONFRONTO);
+    if (!data.details || data.details.length === 0) {
+      const stats = calculateTeamStats(data);
+      return stats.slice(0, 12);
+    }
+
+    const BONUS_TABLE = [50, 42, 35, 29, 24, 19, 15, 11, 8, 5, 2, 0];
+
+    // 1. Qualificatória (Rodadas 1 a 14) to determine top 12 and bonus points
+    const qualiDetails = data.details.filter(d => {
       const roundNum = parseInt(d.RD?.replace(/\D/g, '') || '0', 10) || 0;
-      return confNorm.includes('RUMO') || confNorm.includes('MUNDIAL') || rdNorm.includes('RUMO') || rdNorm.includes('MUNDIAL') || (roundNum >= 15 && roundNum <= 20);
+      const confNorm = normalize(d.CONFRONTO);
+      const rdNorm = normalize(d.RD);
+      const isQualiText = confNorm.includes('CLASSIF') || confNorm.includes('QUALI') || rdNorm.includes('CLASSIF') || rdNorm.includes('FASE 1') || rdNorm.includes('1A FASE') || rdNorm.includes('1ª FASE');
+      const isQualiRound = (!confNorm || (!confNorm.includes('MUNDIAL') && !confNorm.includes('RUMO') && !confNorm.includes('FINAL'))) && (roundNum === 0 || (roundNum >= 1 && roundNum <= 14));
+      return isQualiText || isQualiRound;
     });
 
-    const targetDetails = rumoDetails.length > 0 ? rumoDetails : data.details;
-    const stats: TeamStats[] = calculateTeamStats({ ...data, details: targetDetails });
+    const targetQualiDetails = qualiDetails.length > 0 ? qualiDetails : data.details;
+    const qualiStats = calculateTeamStats({ ...data, details: targetQualiDetails });
+    const top12Quali = qualiStats.slice(0, 12);
 
-    const topTeams = stats.slice(0, 12);
+    const bonusMap = new Map<string, number>();
+    top12Quali.forEach((t, idx) => {
+      bonusMap.set(normalize(t.name), BONUS_TABLE[idx] ?? 0);
+    });
 
-    if (topTeams.length < 12) {
-      const existing = new Set(topTeams.map(t => normalize(t.name)));
+    // 2. Rumo ao Mundial (Rodadas 15 a 20)
+    const rumoDetails = data.details.filter(d => {
+      const roundNum = parseInt(d.RD?.replace(/\D/g, '') || '0', 10) || 0;
+      const confNorm = normalize(d.CONFRONTO);
+      const rdNorm = normalize(d.RD);
+      const isRumoText = confNorm.includes('RUMO') || confNorm.includes('MUNDIAL') || confNorm.includes('FASE 2') || confNorm.includes('2A FASE') || confNorm.includes('2ª FASE') || rdNorm.includes('RUMO') || rdNorm.includes('MUNDIAL');
+      const isRumoRound = (!confNorm || (!confNorm.includes('CLASSIF') && !confNorm.includes('FINAL'))) && (roundNum >= 15 && roundNum <= 20);
+      return isRumoText || isRumoRound;
+    });
+
+    const rumoStats = rumoDetails.length > 0 ? calculateTeamStats({ ...data, details: rumoDetails }) : [];
+    const rumoMap = new Map<string, TeamStats>();
+    rumoStats.forEach(s => rumoMap.set(normalize(s.name), s));
+
+    // Combine for each of the 12 teams in Rumo ao Mundial
+    const rumoStandings: TeamStats[] = top12Quali.map(qTeam => {
+      const normN = normalize(qTeam.name);
+      const bonus = bonusMap.get(normN) ?? 0;
+      const rStats = rumoMap.get(normN);
+
+      const rPts = rStats ? rStats.pts : 0;
+      const rAbts = rStats ? rStats.abts : 0;
+      const rPtsc = rStats ? rStats.ptsc : 0;
+      const rB = rStats ? rStats.b : 0;
+      const rS = rStats ? rStats.s : 0;
+
+      const totalPts = rPts + bonus;
+
+      return {
+        ...qTeam,
+        pts: totalPts,
+        abts: rAbts > 0 ? rAbts : qTeam.abts,
+        ptsc: rPtsc > 0 ? rPtsc : qTeam.ptsc,
+        b: rB > 0 ? rB : qTeam.b,
+        s: rS > 0 ? rS : qTeam.s,
+        avgPts: rS > 0 ? parseFloat((totalPts / rS).toFixed(2)) : qTeam.avgPts,
+        avgAbts: rS > 0 ? parseFloat((rAbts / rS).toFixed(2)) : qTeam.avgAbts,
+        avgPtsc: rS > 0 ? parseFloat((rPtsc / rS).toFixed(2)) : qTeam.avgPtsc,
+      };
+    });
+
+    // If top12Quali has less than 12 teams, pad with reference teams
+    if (rumoStandings.length < 12) {
+      const existing = new Set(rumoStandings.map(t => normalize(t.name)));
       (data.teamsReference || []).forEach(tr => {
-        if (topTeams.length < 12 && !existing.has(normalize(tr.TIME))) {
+        if (rumoStandings.length < 12 && !existing.has(normalize(tr.TIME))) {
           existing.add(normalize(tr.TIME));
-          topTeams.push({
+          rumoStandings.push({
             name: tr.TIME,
             s: 0, b: 0, ptsc: 0, abts: 0, pts: 0,
             avgAbts: 0, avgPts: 0, avgPtsc: 0, percentPos: 0, percentAbts: 0, lastPos: 99
@@ -71,7 +127,10 @@ export const CaptainDraftStudy: React.FC<CaptainDraftStudyProps> = ({ data }) =>
       });
     }
 
-    return topTeams.slice(0, 12);
+    // Sort by Total Points in Rumo ao Mundial (Bonus + Match Points) desc, then Booyahs, then Kills, then Placement Points
+    rumoStandings.sort((a, b) => (b.pts - a.pts) || (b.b - a.b) || (b.abts - a.abts) || (b.ptsc - a.ptsc));
+
+    return rumoStandings.slice(0, 12);
   }, [data]);
 
   // Map of Player Name -> Dimension Info (Image, Role/Funcao)
