@@ -102,6 +102,7 @@ import { TeamVsTeamSafeKillsCompare } from "../components/TeamVsTeamSafeKillsCom
 import { TeamVsTeamMapCompare } from "../components/TeamVsTeamMapCompare";
 import { TeamPointsEvolutionChart } from "../components/TeamPointsEvolutionChart";
 import { PerformanceEvolutionChart } from "../components/PerformanceEvolutionChart";
+import { RushDuosAnalysis } from "../components/RushDuosAnalysis";
 interface TeamsProps {
 data: DashboardData;
 }
@@ -210,6 +211,7 @@ const [activeTab, setActiveTab] = useState<
 | "mapStats"
 | "activeSkills"
 | "dropCompositions"
+| "rushDuos"
 >("gallery");
 const [positionTabFilter, setPositionTabFilter] = useState<number | "ALL">(
 "ALL",
@@ -4715,6 +4717,12 @@ onClick={() => setActiveTab("dropCompositions")}
 className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === "dropCompositions" ? "bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black" : "text-gray-400 hover:text-white hover:bg-white/5"}`}
 >
 <ShieldAlert size={15} /> Composições por Queda
+</button>
+<button
+onClick={() => setActiveTab("rushDuos")}
+className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${activeTab === "rushDuos" ? "bg-gradient-to-r from-red-600 to-yellow-500 text-black shadow-lg shadow-yellow-500/20 font-black" : "text-gray-400 hover:text-white hover:bg-white/5"}`}
+>
+<Flame size={15} className={activeTab === "rushDuos" ? "fill-black text-black" : "text-red-400"} /> Duplas de Rush
 </button>
 </div>
 {selectedTeamName &&
@@ -15296,6 +15304,14 @@ onSelectTeam={(t) => {
 setFilters((prev) => ({ ...prev, team: [t] }));
 setActiveTab("gallery");
 }}
+/>
+</div>
+) : activeTab === "rushDuos" ? (
+<div className="space-y-6 animate-in fade-in duration-300">
+<RushDuosAnalysis
+data={data}
+initialTeamFilter={selectedTeamName || undefined}
+title={selectedTeamName ? `Duplas de Rush & Sinergia: ${selectedTeamName}` : "Análise de Duplas de Rush do Campeonato"}
 />
 </div>
 ) : (

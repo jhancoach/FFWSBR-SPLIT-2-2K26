@@ -19,6 +19,7 @@ import { findTeamLogo, formatTeamName } from '../utils/teamUtils';
 import { getWeaponInfo } from '../utils/weaponUtils';
 import { findDimImg } from '../utils/skillImages';
 import { getTeamCharacters, getTeamCharacterSummary, isSameTeam } from '../utils/characterUtils';
+import { calculateRushDuosData } from '../utils/rushDuosUtils';
 import { TeamSlidesSections } from '../components/slides/TeamSlidesSections';
 import { PlayerSlidesSections } from '../components/slides/PlayerSlidesSections';
 
@@ -855,6 +856,16 @@ export const Presentation: React.FC<PresentationProps> = ({ data }) => {
     }));
   }, [teamMatchDetails]);
 
+  // Duplas de Rush & Sinergia da equipe
+  const teamRushDuos = useMemo(() => {
+    if (!selectedTeamName) return [];
+    return calculateRushDuosData(data, {
+      teamFilter: selectedTeamName,
+      onlyRushDuo: false,
+      minMatches: 1
+    });
+  }, [data, selectedTeamName]);
+
   // Player matches list
   const playerMatchesList = useMemo(() => {
     return (data.players || []).filter(p => normalize(p.PLAYER) === normalize(selectedPlayerName));
@@ -981,15 +992,16 @@ export const Presentation: React.FC<PresentationProps> = ({ data }) => {
     '8. Abates & MVP por Mapa',
     '9. Formações Escaladas (Lineups)',
     '10. Composição de Habilidades',
-    '11. Fases do Jogo (Kill Feed)',
-    '12. Histórico de Performance',
-    '13. Domínio Territorial',
-    '14. KPM por Safe',
-    '15. Sumário de Posições',
-    '16. Performance por Ordem de Queda',
-    '17. Desempenho do Elenco',
-    '18. Arsenal & Armas',
-    '19. Pauta da Reunião'
+    '11. Duplas de Rush & Sinergia',
+    '12. Fases do Jogo (Kill Feed)',
+    '13. Histórico de Performance',
+    '14. Domínio Territorial',
+    '15. KPM por Safe',
+    '16. Sumário de Posições',
+    '17. Performance por Ordem de Queda',
+    '18. Desempenho do Elenco',
+    '19. Arsenal & Armas',
+    '20. Pauta da Reunião'
   ];
 
   const playerSlideTitles = [
@@ -1432,6 +1444,7 @@ export const Presentation: React.FC<PresentationProps> = ({ data }) => {
               killfeedPhases={killfeedPhases}
               positionsSummary={positionsSummary}
               dropsSummary={dropsSummary}
+              teamRushDuos={teamRushDuos}
             />
           ) : (
             <PlayerSlidesSections
@@ -1673,6 +1686,28 @@ export const Presentation: React.FC<PresentationProps> = ({ data }) => {
                       </div>
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* Duplas de Rush & Sinergia no Relatório */}
+              <div className="pt-2 border-t border-gray-800">
+                <h3 className="text-xs font-black uppercase text-yellow-400 mb-2">Duplas de Rush & Sinergia da Linha de Frente</h3>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  {teamRushDuos.slice(0, 3).map((duo, dIdx) => (
+                    <div key={dIdx} className="bg-gray-900 p-2.5 rounded-xl border border-gray-800 space-y-1">
+                      <div className="flex justify-between font-bold text-white">
+                        <span className="truncate">{duo.player1.name} & {duo.player2.name}</span>
+                        <span className="text-yellow-400 font-mono">{duo.combinedKills} kills</span>
+                      </div>
+                      <div className="flex justify-between text-[10px] text-gray-400">
+                        <span>{duo.killsPerMatch} K/Q • {duo.teamKillShare}% time</span>
+                        <span className="text-emerald-400 font-bold">{duo.synergyScore}% sinergia</span>
+                      </div>
+                    </div>
+                  ))}
+                  {teamRushDuos.length === 0 && (
+                    <div className="col-span-3 text-gray-500 text-[11px] py-2">Sem dados de duplas de rush cadastrados</div>
+                  )}
                 </div>
               </div>
 

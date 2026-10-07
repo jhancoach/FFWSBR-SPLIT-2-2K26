@@ -12,6 +12,7 @@ import {
 } from 'recharts';
 import { DashboardData, TeamStats, MatchDetails } from '../../types';
 import { TeamKpmAnalysis } from '../TeamKpmAnalysis';
+import { RushDuoData, calculateRushDuosData } from '../../utils/rushDuosUtils';
 
 export interface TeamSlidesSectionsProps {
   slideIndex: number;
@@ -32,6 +33,7 @@ export interface TeamSlidesSectionsProps {
   killfeedPhases: any;
   positionsSummary: any[];
   dropsSummary: any[];
+  teamRushDuos?: RushDuoData[];
 }
 
 const MAP_CONFIG: Record<string, { color: string; bg: string; border: string }> = {
@@ -61,8 +63,19 @@ export const TeamSlidesSections: React.FC<TeamSlidesSectionsProps> = ({
   killfeedPhases,
   positionsSummary,
   dropsSummary,
+  teamRushDuos,
 }) => {
   const [selectedSafeMapIndex, setSelectedSafeMapIndex] = useState<number>(0);
+
+  const teamDuosList = React.useMemo(() => {
+    if (teamRushDuos && teamRushDuos.length > 0) return teamRushDuos;
+    if (!data || !teamStats?.name) return [];
+    return calculateRushDuosData(data, {
+      teamFilter: teamStats.name,
+      onlyRushDuo: false,
+      minMatches: 1
+    });
+  }, [teamRushDuos, data, teamStats?.name]);
 
   const safeMapsList = safePerformanceByMapTeam && safePerformanceByMapTeam.length > 0
     ? safePerformanceByMapTeam
@@ -807,8 +820,136 @@ export const TeamSlidesSections: React.FC<TeamSlidesSectionsProps> = ({
         </div>
       );
 
-    // 11. FASES DO JOGO (KILL FEED POR SAFE)
+    // 11. DUPLAS DE RUSH & SINERGIA DA EQUIPE (NOVO)
     case 10:
+      return (
+        <div className="space-y-4 animate-in fade-in duration-300">
+          <div className="flex items-center justify-between border-b border-white/10 pb-3">
+            <div>
+              <h4 className="text-xs font-black uppercase tracking-wider text-white flex items-center gap-2">
+                <Flame size={16} className="text-yellow-400" /> Duplas de Rush & Sinergia Ofensiva da Equipe
+              </h4>
+              <p className="text-[11px] text-gray-400">Estatísticas das duplas mais letais, impacto em abates, armas de rush e sinergia de combate</p>
+            </div>
+            <span className="px-3 py-1 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/40 text-xs font-black uppercase">
+              {teamDuosList.length} Duplas Registradas
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[380px] overflow-y-auto custom-scrollbar">
+            {teamDuosList.slice(0, 6).map((duo, idx) => {
+              const isTop = idx === 0;
+              return (
+                <div 
+                  key={duo.id || idx}
+                  className={`p-4 rounded-2xl border transition-all flex flex-col justify-between ${
+                    isTop 
+                      ? 'bg-gradient-to-b from-yellow-950/30 via-black/70 to-black border-yellow-500/40 shadow-lg shadow-yellow-500/10'
+                      : 'bg-black/60 border-white/10'
+                  }`}
+                >
+                  <div>
+                    {/* Header with Type & Rank */}
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                        isTop ? 'bg-yellow-500 text-black font-black' : 'bg-white/10 text-gray-300'
+                      }`}>
+                        #{idx + 1} • {duo.duoTypeLabel.split(' ')[0]}
+                      </span>
+                      <span className="text-[10px] font-mono font-bold text-yellow-400">
+                        {duo.matchesTogether} quedas juntos
+                      </span>
+                    </div>
+
+                    {/* Dual Players Mini Cards */}
+                    <div className="grid grid-cols-2 gap-2 bg-black/50 p-2.5 rounded-xl border border-white/5 mb-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-black border border-white/10 overflow-hidden shrink-0 flex items-center justify-center">
+                          {duo.player1.avatar ? (
+                            <img src={duo.player1.avatar} alt={duo.player1.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <Users size={14} className="text-gray-400" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-xs font-black text-white truncate block">{duo.player1.name}</span>
+                          <span className="text-[9px] text-yellow-400 font-bold">{duo.player1.kills} kills</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 border-l border-white/5 pl-2">
+                        <div className="w-8 h-8 rounded-lg bg-black border border-white/10 overflow-hidden shrink-0 flex items-center justify-center">
+                          {duo.player2.avatar ? (
+                            <img src={duo.player2.avatar} alt={duo.player2.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <Users size={14} className="text-gray-400" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-xs font-black text-white truncate block">{duo.player2.name}</span>
+                          <span className="text-[9px] text-yellow-400 font-bold">{duo.player2.kills} kills</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Combined Metrics Grid */}
+                    <div className="grid grid-cols-3 gap-2 text-center text-xs mb-3">
+                      <div className="bg-white/5 p-2 rounded-xl">
+                        <span className="text-[8px] font-black uppercase text-gray-400 block">Abates</span>
+                        <span className="text-base font-black text-yellow-400 font-mono">{duo.combinedKills}</span>
+                      </div>
+                      <div className="bg-white/5 p-2 rounded-xl">
+                        <span className="text-[8px] font-black uppercase text-gray-400 block">Média K/Q</span>
+                        <span className="text-base font-black text-amber-300 font-mono">{duo.killsPerMatch}</span>
+                      </div>
+                      <div className="bg-white/5 p-2 rounded-xl">
+                        <span className="text-[8px] font-black uppercase text-gray-400 block">Deitados</span>
+                        <span className="text-base font-black text-emerald-400 font-mono">{duo.combinedKnockdowns}</span>
+                      </div>
+                    </div>
+
+                    {/* Best Weapons mini row */}
+                    {duo.topWeapons.length > 0 && (
+                      <div className="flex items-center gap-2 pt-2 border-t border-white/5">
+                        <span className="text-[9px] font-bold text-gray-400 uppercase shrink-0">Armas:</span>
+                        <div className="flex items-center gap-1.5 overflow-x-auto">
+                          {duo.topWeapons.slice(0, 3).map((w, wIdx) => (
+                            <span key={wIdx} className="text-[9px] font-bold text-white bg-black/60 px-1.5 py-0.5 rounded border border-white/10 whitespace-nowrap">
+                              {w.name} ({w.kills})
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Synergy Progress Bar */}
+                  <div className="mt-3 pt-2 border-t border-white/5">
+                    <div className="flex justify-between text-[9px] font-bold text-gray-400 mb-1">
+                      <span>Sinergia Ofensiva</span>
+                      <span className="text-yellow-400 font-black">{duo.synergyScore}%</span>
+                    </div>
+                    <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
+                      <div 
+                        className="h-full bg-gradient-to-r from-yellow-500 to-red-500 rounded-full"
+                        style={{ width: `${Math.min(duo.synergyScore, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {teamDuosList.length === 0 && (
+              <div className="col-span-3 text-center py-12 text-gray-500 text-xs">
+                Nenhum registro suficiente de duplas para esta equipe
+              </div>
+            )}
+          </div>
+        </div>
+      );
+
+    // 12. FASES DO JOGO (KILL FEED POR SAFE)
+    case 11:
       return (
         <div className="space-y-6 animate-in fade-in duration-300">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -835,8 +976,8 @@ export const TeamSlidesSections: React.FC<TeamSlidesSectionsProps> = ({
         </div>
       );
 
-    // 12. HISTÓRICO DE PERFORMANCE & EVOLUÇÃO
-    case 11:
+    // 13. HISTÓRICO DE PERFORMANCE & EVOLUÇÃO
+    case 12:
       return (
         <div className="space-y-6 animate-in fade-in duration-300">
           <div className="bg-black/60 p-6 rounded-3xl border border-white/10">
@@ -861,8 +1002,8 @@ export const TeamSlidesSections: React.FC<TeamSlidesSectionsProps> = ({
         </div>
       );
 
-    // 13. DOMÍNIO TERRITORIAL (MAPAS)
-    case 12:
+    // 14. DOMÍNIO TERRITORIAL (MAPAS)
+    case 13:
       return (
         <div className="space-y-6 animate-in fade-in duration-300">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -901,16 +1042,16 @@ export const TeamSlidesSections: React.FC<TeamSlidesSectionsProps> = ({
         </div>
       );
 
-    // 14. DISTRIBUIÇÃO POR SAFE / KPM
-    case 13:
+    // 15. DISTRIBUIÇÃO POR SAFE / KPM
+    case 14:
       return (
         <div className="space-y-6 animate-in fade-in duration-300">
           <TeamKpmAnalysis data={data} selectedTeam={teamStats.name} onSelectTeam={() => {}} />
         </div>
       );
 
-    // 15. SUMÁRIO DE POSIÇÕES (1º ao 12º LUGAR)
-    case 14:
+    // 16. SUMÁRIO DE POSIÇÕES (1º ao 12º LUGAR)
+    case 15:
       return (
         <div className="space-y-6 animate-in fade-in duration-300">
           <h4 className="text-xs font-black uppercase tracking-wider text-white mb-2">
@@ -935,8 +1076,8 @@ export const TeamSlidesSections: React.FC<TeamSlidesSectionsProps> = ({
         </div>
       );
 
-    // 16. PERFORMANCE POR ORDEM DE QUEDA (DROP 1 A DROP 6)
-    case 15:
+    // 17. PERFORMANCE POR ORDEM DE QUEDA (DROP 1 A DROP 6)
+    case 16:
       return (
         <div className="space-y-6 animate-in fade-in duration-300">
           <h4 className="text-xs font-black uppercase tracking-wider text-white mb-2">
@@ -955,8 +1096,8 @@ export const TeamSlidesSections: React.FC<TeamSlidesSectionsProps> = ({
         </div>
       );
 
-    // 17. DESEMPENHO DO ELENCO (ROSTER)
-    case 16:
+    // 18. DESEMPENHO DO ELENCO (ROSTER)
+    case 17:
       return (
         <div className="space-y-6 animate-in fade-in duration-300">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1015,8 +1156,8 @@ export const TeamSlidesSections: React.FC<TeamSlidesSectionsProps> = ({
         </div>
       );
 
-    // 18. ARSENAL & ARMAS
-    case 17:
+    // 19. ARSENAL & ARMAS
+    case 18:
       return (
         <div className="space-y-6 animate-in fade-in duration-300">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1057,8 +1198,8 @@ export const TeamSlidesSections: React.FC<TeamSlidesSectionsProps> = ({
         </div>
       );
 
-    // 19. PAUTA DA REUNIÃO
-    case 18:
+    // 20. PAUTA DA REUNIÃO
+    case 19:
     default:
       return (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-in fade-in duration-300">
@@ -1122,3 +1263,4 @@ export const TeamSlidesSections: React.FC<TeamSlidesSectionsProps> = ({
       );
   }
 };
+

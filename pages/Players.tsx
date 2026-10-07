@@ -22,6 +22,7 @@ import { findDimImg } from '../utils/skillImages';
 import { getPlayerCharacterHistory } from '../utils/characterUtils';
 import CharacterSkillsFrequency from '../components/CharacterSkillsFrequency';
 import { getWeaponInfo } from '../utils/weaponUtils';
+import { RushDuosAnalysis } from '../components/RushDuosAnalysis';
 
 interface PlayersProps {
   data: DashboardData;
@@ -63,7 +64,7 @@ const parseNumber = (val: string | undefined | null): number => {
 const Players: React.FC<PlayersProps> = ({ data }) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'ranking' | 'momentum' | 'kpmSafes' | 'playerRounds' | 'playerDrops' | 'chars' | 'report' | 'auditoria' | 'stats' | 'roles' | 'compare' | 'mapKings'>('ranking');
+  const [activeTab, setActiveTab] = useState<'ranking' | 'momentum' | 'rushDuos' | 'kpmSafes' | 'playerRounds' | 'playerDrops' | 'chars' | 'report' | 'auditoria' | 'stats' | 'roles' | 'compare' | 'mapKings' | 'evolution'>('ranking');
   const [mapKingsSubTab, setMapKingsSubTab] = useState<"maps" | "drops">("maps");
   const [instagramPost, setInstagramPost] = useState<{ group: any; type: "map" | "drop" } | null>(null);
   const [rankingSubTab, setRankingSubTab] = useState<'general' | 'maps' | 'safes' | 'kpmSafes'>('general');
@@ -2402,6 +2403,7 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
       <div className="flex flex-wrap gap-2 border-b border-gray-700 pb-2 no-print">
         {[
             { id: "ranking", label: "Ranking Geral", icon: <Trophy size={18} /> },
+            { id: "rushDuos", label: "Duplas de Rush", icon: <Swords size={18} /> },
             { id: "evolution", label: "Evolução Performance", icon: <TrendingUp size={18} /> },
             { id: "momentum", label: "Termômetro", icon: <Flame size={18} /> },
             { id: "kpmSafes", label: "KPM por Safe", icon: <Flame size={18} /> },
@@ -2495,6 +2497,15 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
       )}
 
       <div className="min-h-[600px]">
+          {activeTab === 'rushDuos' && (
+            <div className="animate-in fade-in duration-300">
+              <RushDuosAnalysis 
+                data={data} 
+                title="Estatísticas & Análise de Duplas de Rush do Campeonato"
+              />
+            </div>
+          )}
+
           {activeTab === 'evolution' && (
             <PerformanceEvolutionChart 
               data={data}

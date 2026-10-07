@@ -12,6 +12,7 @@ import { DangerStudies } from '../components/DangerStudies';
 import { WeaponStudiesDashboard } from '../components/WeaponStudiesDashboard';
 import { MAPS_CONFIG, preloadAllMaps } from '../utils/mapPreloader';
 import { FastMapView } from '../components/FastMapView';
+import { RushDuosAnalysis } from '../components/RushDuosAnalysis';
 
 const MAPS = MAPS_CONFIG.map(m => ({ id: m.id, name: m.name, url: m.url }));
 
@@ -74,7 +75,7 @@ interface StudiesProps {
 }
 
 const Studies: React.FC<StudiesProps> = ({ data }) => {
-    const [activeMainTab, setActiveMainTab] = useState<'safe' | 'revives' | 'fights' | 'dangers' | 'weapons' | 'mapstream'>('safe');
+    const [activeMainTab, setActiveMainTab] = useState<'safe' | 'revives' | 'fights' | 'dangers' | 'weapons' | 'duos' | 'mapstream'>('safe');
 
     // Safe Studies State
     const [selectedMap, setSelectedMap] = useState(MAPS[0]);
@@ -618,6 +619,20 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
                         Dashboard de Armas
                     </button>
                     <button
+                        onClick={() => setActiveMainTab('duos')}
+                        className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all ${
+                            activeMainTab === 'duos'
+                            ? 'bg-gradient-to-r from-red-600 to-yellow-500 text-black font-black shadow-lg shadow-yellow-500/20 scale-[1.02]'
+                            : 'text-gray-400 hover:text-white hover:bg-white/5'
+                        }`}
+                    >
+                        <Flame size={16} className={activeMainTab === 'duos' ? 'fill-black text-black' : 'text-red-400'} />
+                        Duplas de Rush
+                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase bg-yellow-400 text-black">
+                            NOVO
+                        </span>
+                    </button>
+                    <button
                         onClick={() => setActiveMainTab('mapstream')}
                         className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all ${
                             activeMainTab === 'mapstream'
@@ -825,7 +840,14 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
                 <WeaponStudiesDashboard data={data} />
             )}
 
-            {/* TAB 6: MAPSTREAM */}
+            {/* TAB 6: DUPLAS DE RUSH & SINERGIA */}
+            {activeMainTab === 'duos' && data && (
+                <div className="animate-in fade-in duration-300">
+                    <RushDuosAnalysis data={data} title="Análise Geral de Duplas de Rush do Campeonato" />
+                </div>
+            )}
+
+            {/* TAB 7: MAPSTREAM */}
             {activeMainTab === 'mapstream' && (
                 <div className="space-y-6 animate-in fade-in duration-300">
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
