@@ -2,7 +2,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { DashboardData, PlayerData, CharacterData } from '../types';
-import { Trophy, Crown, User, Users, Swords, Zap, BarChart2, Scale, Map as MapIcon, Skull, ChevronRight, ChevronDown, ChevronUp, Sparkles, X, Activity, Info, Crosshair, Shield, ShieldAlert, ArrowLeft, Disc, Flame, Target, AlertCircle, LayoutGrid, MapPin, Hash, Target as TargetIcon, CheckCircle2, AlertTriangle, Search, Star, ListOrdered, Eye, EyeOff, Gamepad2, LayoutList, Layers, TrendingUp, Check, Presentation, Download, FileText } from 'lucide-react';
+import { Trophy, Crown, User, Users, Swords, Zap, BarChart2, Scale, Map as MapIcon, Skull, ChevronRight, ChevronDown, ChevronUp, Sparkles, X, Activity, Info, Crosshair, Shield, ShieldAlert, ArrowLeft, Disc, Flame, Target, AlertCircle, LayoutGrid, MapPin, Hash, Target as TargetIcon, CheckCircle2, AlertTriangle, Search, Star, ListOrdered, Eye, EyeOff, Gamepad2, LayoutList, Layers, TrendingUp, Check, Presentation, Download, FileText, Printer } from 'lucide-react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, LabelList, Cell, YAxis, CartesianGrid, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts';
 import { calculateOverallKpmFromMapStats, calculateMapDurationSec, getMapGroup, SAFE_DURATIONS_SEC } from '../utils/kpmUtils';
 import FilterBar from '../components/FilterBar';
@@ -183,7 +183,11 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
       ...data.players.map(p => p.CONFRONTO)
     ].filter(Boolean))).sort();
 
-    return { teams, players, weapons: [], safes: [], maps, rounds, quedas, confrontations, activeHabs, grupos };
+    const funcoes = Array.from(new Set(
+      (data.playersDimension || []).flatMap(d => [d.Funcao, d.Funcao2]).filter(Boolean)
+    )).sort() as string[];
+
+    return { teams, players, weapons: [], safes: [], maps, rounds, quedas, confrontations, activeHabs, grupos, funcoes };
   }, [data.players, data.killFeed, data.characters, data.playersDimension, data.teamsReference, data.confrontationsDimension, data.details, filters.rodada]);
 
   const charactersMap = useMemo(() => {
@@ -238,6 +242,14 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
         if (filters.grupo.length > 0) {
             const teamGroup = teamGroupMap.get(normalize(p.TIME));
             if (!teamGroup || !filters.grupo.some(g => normalize(g) === teamGroup)) return false;
+        }
+
+        // Filtro de Função
+        if (filters.funcao && filters.funcao.length > 0) {
+            const dim = (data.playersDimension || []).find(d => normalize(d.Name) === normalize(p.PLAYER));
+            const pRoles = [dim?.Funcao, dim?.Funcao2].filter(Boolean).map(r => normalize(r));
+            const matchesRole = filters.funcao.some(f => pRoles.includes(normalize(f)));
+            if (!matchesRole) return false;
         }
 
         // FILTRO ESTRITO: Se selecionar RD e Q, deve bater os dois simultaneamente no registro
@@ -2429,22 +2441,70 @@ const Players: React.FC<PlayersProps> = ({ data }) => {
 
       <FilterBar filters={filters} setFilters={setFilters} options={filterOptions} defaultOpen={false} />
 
-      <div className="flex justify-between items-center no-print bg-black/20 p-4 rounded-2xl border border-white/5">
-        <div className="flex items-center gap-2">
-          <Info size={16} className="text-yellow-500" />
-          <span className="text-xs font-black text-white uppercase tracking-wider">Métricas e Estatísticas</span>
-          <span className="text-[10px] text-gray-500 hidden sm:inline">• Entenda o significado de cada coluna da tabela</span>
+      {/* Barra de Filtro Rápido por Função + Ação de Impressão */}
+      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 no-print bg-black/40 p-4 rounded-2xl border border-white/10">
+        <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1 md:pb-0">
+          <span className="text-[10px] font-black uppercase text-yellow-500 tracking-wider flex items-center gap-1 shrink-0 mr-1">
+            <Users size={14} /> Função:
+          </span>
+          <button
+            onClick={() => setFilters(prev => ({ ...prev, funcao: [] }))}
+            className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
+              (!filters.funcao || filters.funcao.length === 0)
+                ? 'bg-yellow-500 text-black font-black shadow-md shadow-yellow-500/20'
+                : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 border border-white/5'
+            }`}
+          >
+            Todas
+          </button>
+          {filterOptions.funcoes && filterOptions.funcoes.map(f => {
+            const isSelected = filters.funcao && filters.funcao.includes(f);
+            return (
+              <button
+                key={f}
+                onClick={() => {
+                  setFilters(prev => {
+                    const current = prev.funcao || [];
+                    if (current.includes(f)) {
+                      return { ...prev, funcao: current.filter(x => x !== f) };
+                    } else {
+                      return { ...prev, funcao: [...current, f] };
+                    }
+                  });
+                }}
+                className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap shrink-0 border ${
+                  isSelected
+                    ? 'bg-yellow-500 text-black border-yellow-400 font-black shadow-md shadow-yellow-500/20'
+                    : 'bg-white/5 text-gray-300 border-white/5 hover:border-yellow-500/40 hover:text-yellow-400'
+                }`}
+              >
+                {f}
+              </button>
+            );
+          })}
         </div>
-        <button
-          onClick={() => setShowLegend(!showLegend)}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-            showLegend 
-              ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 scale-105' 
-              : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 border border-white/5'
-          }`}
-        >
-          {showLegend ? 'Ocultar Legenda' : 'Ver Legenda das Colunas'}
-        </button>
+
+        <div className="flex items-center gap-2 shrink-0 justify-end">
+          <button
+            onClick={() => setShowLegend(!showLegend)}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+              showLegend 
+                ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 scale-105' 
+                : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 border border-white/5'
+            }`}
+          >
+            {showLegend ? 'Ocultar Legenda' : 'Legenda'}
+          </button>
+
+          <button
+            onClick={() => window.print()}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-yellow-500 hover:bg-yellow-400 text-black shadow-lg shadow-yellow-500/25 transition-all hover:scale-105 cursor-pointer"
+            title="Imprimir ou exportar lista de jogadores em PDF"
+          >
+            <Printer size={14} />
+            <span>Imprimir Lista</span>
+          </button>
+        </div>
       </div>
 
       {showLegend && (

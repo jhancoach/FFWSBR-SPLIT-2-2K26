@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Map as MapIcon, Trash2, Crosshair, ZoomIn, ZoomOut, Move, LogIn, LogOut, X, Download, Upload, Tv, Play, Plus, ExternalLink, Youtube, Film, Info, Shield, BarChart2, Trophy, Flame, Target, Layers, ListOrdered, TrendingUp, User, Users, Search, Award, Swords, LayoutGrid, ArrowUpDown, MapPin, HeartPulse, AlertTriangle } from 'lucide-react';
+import { Map as MapIcon, Trash2, Crosshair, ZoomIn, ZoomOut, Move, LogIn, LogOut, X, Download, Upload, Tv, Play, Plus, ExternalLink, Youtube, Film, Info, Shield, BarChart2, Trophy, Flame, Target, Layers, ListOrdered, TrendingUp, User, Users, Search, Award, Swords, LayoutGrid, ArrowUpDown, MapPin, HeartPulse, AlertTriangle, Crown } from 'lucide-react';
 import { doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db, auth, isFirebasePlaceholder } from '../firebase';
 import { OperationType, handleFirestoreError } from '../utils/firestoreError';
@@ -13,6 +13,7 @@ import { WeaponStudiesDashboard } from '../components/WeaponStudiesDashboard';
 import { MAPS_CONFIG, preloadAllMaps } from '../utils/mapPreloader';
 import { FastMapView } from '../components/FastMapView';
 import { RushDuosAnalysis } from '../components/RushDuosAnalysis';
+import { CaptainDraftStudy } from '../components/CaptainDraftStudy';
 
 const MAPS = MAPS_CONFIG.map(m => ({ id: m.id, name: m.name, url: m.url }));
 
@@ -75,7 +76,7 @@ interface StudiesProps {
 }
 
 const Studies: React.FC<StudiesProps> = ({ data }) => {
-    const [activeMainTab, setActiveMainTab] = useState<'safe' | 'revives' | 'fights' | 'dangers' | 'weapons' | 'duos' | 'mapstream'>('safe');
+    const [activeMainTab, setActiveMainTab] = useState<'safe' | 'revives' | 'fights' | 'dangers' | 'weapons' | 'duos' | 'draft' | 'mapstream'>('safe');
 
     // Safe Studies State
     const [selectedMap, setSelectedMap] = useState(MAPS[0]);
@@ -633,6 +634,20 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
                         </span>
                     </button>
                     <button
+                        onClick={() => setActiveMainTab('draft')}
+                        className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all ${
+                            activeMainTab === 'draft'
+                            ? 'bg-yellow-500 text-black font-black shadow-lg shadow-yellow-500/20 scale-[1.02]'
+                            : 'text-gray-400 hover:text-white hover:bg-white/5'
+                        }`}
+                    >
+                        <Crown size={16} className={activeMainTab === 'draft' ? 'fill-black text-black' : 'text-yellow-400'} />
+                        Draft All Star Free Fire
+                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase bg-yellow-400 text-black">
+                            NOVO
+                        </span>
+                    </button>
+                    <button
                         onClick={() => setActiveMainTab('mapstream')}
                         className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all ${
                             activeMainTab === 'mapstream'
@@ -844,6 +859,13 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
             {activeMainTab === 'duos' && data && (
                 <div className="animate-in fade-in duration-300">
                     <RushDuosAnalysis data={data} title="Análise Geral de Duplas de Rush do Campeonato" />
+                </div>
+            )}
+
+            {/* TAB 7: DRAFT DO CAPITÃO */}
+            {activeMainTab === 'draft' && data && (
+                <div className="animate-in fade-in duration-300">
+                    <CaptainDraftStudy data={data} />
                 </div>
             )}
 
