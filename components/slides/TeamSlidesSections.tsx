@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Shield, Users, Target, Flame, Crosshair, Award, 
   Crown, Star, CheckCircle2, AlertTriangle, Zap, Activity, 
   TrendingUp, MapPin, BarChart3, Disc, Swords, Trophy,
-  Clock, Skull, ArrowUp, ArrowDown, Sparkles, Filter, Calendar
+  Clock, Skull, ArrowUp, ArrowDown, Sparkles, Filter, Calendar,
+  Layers, Check, Eye
 } from 'lucide-react';
 import { 
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, 
@@ -12,7 +13,7 @@ import {
 import { DashboardData, TeamStats, MatchDetails } from '../../types';
 import { TeamKpmAnalysis } from '../TeamKpmAnalysis';
 
-interface TeamSlidesSectionsProps {
+export interface TeamSlidesSectionsProps {
   slideIndex: number;
   data: DashboardData;
   teamStats: any;
@@ -23,7 +24,11 @@ interface TeamSlidesSectionsProps {
   teamDropTimeline: any[];
   zeroStatsTeam: any;
   safeStats: any[];
-  lineups: any[];
+  safePerformanceByMapTeam: any[];
+  lineups: any;
+  teamRoundsStats: any[];
+  teamMapMvpStats: any[];
+  teamCharSummary: any;
   killfeedPhases: any;
   positionsSummary: any[];
   dropsSummary: any[];
@@ -48,11 +53,22 @@ export const TeamSlidesSections: React.FC<TeamSlidesSectionsProps> = ({
   teamDropTimeline,
   zeroStatsTeam,
   safeStats,
+  safePerformanceByMapTeam,
   lineups,
+  teamRoundsStats,
+  teamMapMvpStats,
+  teamCharSummary,
   killfeedPhases,
   positionsSummary,
   dropsSummary,
 }) => {
+  const [selectedSafeMapIndex, setSelectedSafeMapIndex] = useState<number>(0);
+
+  const safeMapsList = safePerformanceByMapTeam && safePerformanceByMapTeam.length > 0
+    ? safePerformanceByMapTeam
+    : [];
+  const currentSafeMap = safeMapsList[selectedSafeMapIndex] || safeMapsList[0];
+
   switch (slideIndex) {
     // 1. CAPA & IDENTIDADE
     case 0:
@@ -85,7 +101,7 @@ export const TeamSlidesSections: React.FC<TeamSlidesSectionsProps> = ({
                 {teamStats.name}
               </h1>
               <p className="text-gray-400 text-sm mt-2 max-w-xl font-medium leading-relaxed">
-                Apresentação executiva integrando todas as 13 seções táticas: estilo por mapa, quedas zeradas, safes, formações de elenco, kill feed por fase e diretrizes para comissão técnica.
+                Apresentação executiva integrando todas as seções táticas: abates por rodada, safes detalhadas por mapa, MVP da equipe por mapa, formações escaladas, composição de habilidades, kill feed por fase e diretrizes técnicas.
               </p>
             </div>
 
@@ -161,7 +177,7 @@ export const TeamSlidesSections: React.FC<TeamSlidesSectionsProps> = ({
                 Origem da Pontuação: Combate vs Posicionamento
               </h4>
               <span className="text-xs font-bold text-gray-400">
-                {teamStats.abts} pts de kills | {teamStats.ptsc} pts de posição
+                {teamStats.abts} pts de kills | {teamStats.ptsc || 0} pts de posição
               </span>
             </div>
 
@@ -181,11 +197,11 @@ export const TeamSlidesSections: React.FC<TeamSlidesSectionsProps> = ({
             <div className="flex items-center justify-between text-xs font-bold">
               <span className="text-red-400 flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>
-                {teamStats.percentAbts}% Abates (Agressividade)
+                {teamStats.percentAbts || 0}% Abates (Agressividade)
               </span>
               <span className="text-yellow-400 flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-yellow-500"></span>
-                {teamStats.percentPos}% Posição (Sobrevivência)
+                {teamStats.percentPos || 0}% Posição (Sobrevivência)
               </span>
             </div>
           </div>
@@ -316,7 +332,7 @@ export const TeamSlidesSections: React.FC<TeamSlidesSectionsProps> = ({
         </div>
       );
 
-    // 5. PONTOS & ABATES POR RODADA / QUEDA
+    // 5. PONTOS & ABATES POR PARTIDA / QUEDA
     case 4:
       return (
         <div className="space-y-6 animate-in fade-in duration-300">
@@ -359,43 +375,68 @@ export const TeamSlidesSections: React.FC<TeamSlidesSectionsProps> = ({
         </div>
       );
 
-    // 6. MELHORES & PIORES SAFES POR MAPA (ONDE FECHOU)
+    // 6. ABATES POR RODADA (NOVO: DESEMPENHO E ABATES POR RODADA)
     case 5:
       return (
         <div className="space-y-6 animate-in fade-in duration-300">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-black/60 p-5 rounded-3xl border border-emerald-500/20">
-              <h4 className="text-xs font-black uppercase tracking-wider text-emerald-400 mb-3 flex items-center gap-2">
-                <MapPin size={15} /> Locais de Safe com Maior Pontuação
-              </h4>
-              <div className="space-y-2 max-h-56 overflow-y-auto custom-scrollbar">
-                {safeStats.slice(0, 5).map((s, idx) => (
-                  <div key={idx} className="bg-black/50 p-3 rounded-xl border border-white/5 flex items-center justify-between">
-                    <div>
-                      <span className="text-xs font-black uppercase text-white block">{s.name || s.local || 'Local N/A'}</span>
-                      <span className="text-[10px] text-gray-400 uppercase">{s.map || 'Mapa'} • {s.count || s.matches || 1} aparições</span>
-                    </div>
-                    <span className="text-sm font-mono font-black text-emerald-400">{s.pts || s.kills || 0} pts</span>
-                  </div>
-                ))}
-                {safeStats.length === 0 && (
-                  <div className="text-center py-8 text-gray-500 text-xs">Sem registros de safe filtrados</div>
-                )}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 bg-black/60 p-6 rounded-3xl border border-white/10 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-black uppercase text-white tracking-wide flex items-center gap-2">
+                    <Crosshair size={16} className="text-red-400" /> Abates Totais & Média por Rodada
+                  </h4>
+                  <p className="text-[11px] text-gray-400">Volume de eliminações conquistadas pela equipe em cada rodada</p>
+                </div>
+                <span className="px-3 py-1 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-black">
+                  Total: {teamStats.abts} Kills
+                </span>
+              </div>
+
+              <div className="h-60 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={teamRoundsStats}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" />
+                    <XAxis dataKey="roundLabel" stroke="#9ca3af" fontSize={10} />
+                    <YAxis stroke="#9ca3af" fontSize={10} />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#12141c', borderColor: '#ffffff20', borderRadius: '12px' }}
+                      itemStyle={{ fontSize: '11px', fontWeight: 'bold' }}
+                    />
+                    <Bar dataKey="kills" fill="#ef4444" radius={[6, 6, 0, 0]} name="Abates" />
+                    <Bar dataKey="pts" fill="#eab308" radius={[6, 6, 0, 0]} name="Pontos" />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
             </div>
 
-            <div className="bg-black/60 p-5 rounded-3xl border border-red-500/20">
-              <h4 className="text-xs font-black uppercase tracking-wider text-red-400 mb-3 flex items-center gap-2">
-                <AlertTriangle size={15} /> Safes com Menor Rendimento
+            {/* Destaques das Rodadas */}
+            <div className="bg-black/60 p-5 rounded-3xl border border-white/10 flex flex-col justify-between space-y-3">
+              <h4 className="text-xs font-black uppercase tracking-wider text-yellow-400 flex items-center gap-1.5">
+                <Trophy size={14} /> Ranking de Rodadas Mais Letais
               </h4>
-              <div className="space-y-2 max-h-56 overflow-y-auto custom-scrollbar">
-                {safeStats.slice(-5).reverse().map((s, idx) => (
-                  <div key={idx} className="bg-black/50 p-3 rounded-xl border border-white/5 flex items-center justify-between">
+
+              <div className="space-y-2.5 overflow-y-auto max-h-60 custom-scrollbar">
+                {[...(teamRoundsStats || [])].sort((a, b) => b.kills - a.kills).map((r, idx) => (
+                  <div 
+                    key={r.roundLabel} 
+                    className={`p-3 rounded-xl border flex items-center justify-between ${
+                      idx === 0 
+                        ? 'bg-red-500/15 border-red-500/40 text-white shadow-md shadow-red-500/10' 
+                        : 'bg-black/50 border-white/5 text-gray-300'
+                    }`}
+                  >
                     <div>
-                      <span className="text-xs font-black uppercase text-white block">{s.name || s.local || 'Local N/A'}</span>
-                      <span className="text-[10px] text-gray-400 uppercase">{s.map || 'Mapa'}</span>
+                      <span className="text-xs font-black uppercase flex items-center gap-1.5">
+                        {idx === 0 && <Flame size={13} className="text-red-400 shrink-0" />}
+                        {r.roundLabel}
+                      </span>
+                      <span className="text-[10px] text-gray-400">{r.matches} quedas • {r.avgKills} kills/queda</span>
                     </div>
-                    <span className="text-sm font-mono font-black text-red-400">{s.pts || 0} pts</span>
+                    <div className="text-right">
+                      <span className="text-sm font-black font-mono text-red-400">{r.kills} kills</span>
+                      <span className="text-[10px] text-yellow-400 font-mono block">{r.pts} pts</span>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -404,62 +445,256 @@ export const TeamSlidesSections: React.FC<TeamSlidesSectionsProps> = ({
         </div>
       );
 
-    // 7. ABATES & MVP POR MAPA
+    // 7. SAFES POR MAPA (ONDE A SAFE FECHOU POR MAPA)
     case 6:
       return (
-        <div className="space-y-6 animate-in fade-in duration-300">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {teamMapStats.map((m) => (
-              <div key={m.map} className="bg-black/60 p-5 rounded-2xl border border-white/10 space-y-3">
+        <div className="space-y-4 animate-in fade-in duration-300">
+          {/* Seletor de Mapa para Análise de Safe */}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
+            <div className="flex items-center gap-2">
+              <MapPin size={16} className="text-yellow-400" />
+              <h4 className="text-xs font-black uppercase tracking-wider text-white">
+                Análise de Fechamento de Safes por Mapa
+              </h4>
+            </div>
+
+            <div className="flex items-center gap-1.5 overflow-x-auto">
+              {safeMapsList.map((mObj, idx) => (
+                <button
+                  key={mObj.mapName}
+                  onClick={() => setSelectedSafeMapIndex(idx)}
+                  className={`px-3 py-1 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                    selectedSafeMapIndex === idx
+                      ? 'bg-yellow-500 text-black shadow-md shadow-yellow-500/20'
+                      : 'bg-black/60 text-gray-400 hover:text-white border border-white/5'
+                  }`}
+                >
+                  {mObj.mapName} ({mObj.localsList?.length || 0})
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {currentSafeMap ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Melhores Safes do Mapa */}
+              <div className="bg-black/60 p-4 rounded-2xl border border-emerald-500/30 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-black text-white uppercase italic">{m.map}</span>
-                  <span className="text-xs font-mono font-black text-red-400">{m.kills} abates</span>
+                  <span className="text-xs font-black uppercase text-emerald-400 flex items-center gap-1.5">
+                    <CheckCircle2 size={14} /> Melhores Safes em {currentSafeMap.mapName}
+                  </span>
+                  <span className="text-[10px] text-gray-400 font-bold uppercase">Maior Rendimento</span>
                 </div>
-                <div className="w-full bg-white/5 h-2 rounded-full overflow-hidden">
-                  <div 
-                    className="bg-red-500 h-full rounded-full" 
-                    style={{ width: `${Math.min(((m.kills || 0) / (teamStats.abts || 1)) * 100, 100)}%` }}
-                  />
-                </div>
-                <div className="flex items-center justify-between text-[10px] text-gray-400 font-bold uppercase">
-                  <span>{m.drops} partidas</span>
-                  <span className="text-yellow-400">{m.booyahs} Booyahs</span>
+
+                <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
+                  {(currentSafeMap.bestLocals || []).slice(0, 5).map((loc: any, idx: number) => (
+                    <div key={idx} className="bg-black/50 p-3 rounded-xl border border-white/5 flex items-center justify-between">
+                      <div>
+                        <span className="text-xs font-black uppercase text-white block">{loc.localName}</span>
+                        <span className="text-[10px] text-gray-400">
+                          {loc.matchesCount} {loc.matchesCount === 1 ? 'queda' : 'quedas'} • {loc.booyahs > 0 ? `${loc.booyahs} Booyah(s)` : '0 Booyah'}
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-sm font-black text-emerald-400 font-mono block">{loc.avgPts} pts/queda</span>
+                        <span className="text-[10px] text-red-400 font-mono">{loc.totalKills} kills ({loc.avgKills}/queda)</span>
+                      </div>
+                    </div>
+                  ))}
+                  {(!currentSafeMap.bestLocals || currentSafeMap.bestLocals.length === 0) && (
+                    <div className="text-center py-6 text-gray-500 text-xs">Sem registros para este mapa</div>
+                  )}
                 </div>
               </div>
-            ))}
-          </div>
+
+              {/* Piores Safes do Mapa */}
+              <div className="bg-black/60 p-4 rounded-2xl border border-red-500/30 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black uppercase text-red-400 flex items-center gap-1.5">
+                    <AlertTriangle size={14} /> Safes Críticas em {currentSafeMap.mapName}
+                  </span>
+                  <span className="text-[10px] text-gray-400 font-bold uppercase">Ajuste de Rotação</span>
+                </div>
+
+                <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
+                  {(currentSafeMap.worstLocals || []).slice(0, 5).map((loc: any, idx: number) => (
+                    <div key={idx} className="bg-black/50 p-3 rounded-xl border border-white/5 flex items-center justify-between">
+                      <div>
+                        <span className="text-xs font-black uppercase text-white block">{loc.localName}</span>
+                        <span className="text-[10px] text-gray-400">{loc.matchesCount} {loc.matchesCount === 1 ? 'queda' : 'quedas'} • {loc.avgPos}º pos média</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-sm font-black text-red-400 font-mono block">{loc.avgPts} pts/queda</span>
+                        <span className="text-[10px] text-gray-400 font-mono">{loc.totalKills} kills</span>
+                      </div>
+                    </div>
+                  ))}
+                  {(!currentSafeMap.worstLocals || currentSafeMap.worstLocals.length === 0) && (
+                    <div className="text-center py-6 text-gray-500 text-xs">Sem registros de safes críticas</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-12 text-gray-500 text-xs">
+              Nenhuma informação de fechamento de safe cadastrada para as partidas desta equipe.
+            </div>
+          )}
         </div>
       );
 
-    // 8. FORMAÇÕES (LINEUPS)
+    // 8. ABATES & MVP DA EQUIPE POR MAPA
     case 7:
       return (
         <div className="space-y-6 animate-in fade-in duration-300">
-          <h4 className="text-xs font-black uppercase tracking-wider text-white">
-            Formações Escaladas pela Equipe
-          </h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-72 overflow-y-auto custom-scrollbar">
-            {lineups.length > 0 ? (
-              lineups.map((l, idx) => (
-                <div key={idx} className="bg-black/60 p-4 rounded-2xl border border-white/10 flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] font-black uppercase text-yellow-400 block mb-1">
-                      Lineup #{idx + 1} ({l.matches || 1} quedas disputadas)
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <h4 className="text-sm font-black uppercase text-white tracking-wide flex items-center gap-2">
+                <Crown size={18} className="text-yellow-400" /> Destaques & MVPs da Equipe por Mapa
+              </h4>
+              <p className="text-[11px] text-gray-400">Atletas mais decisivos e líderes de abates em cada mapa disputado</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {teamMapMvpStats.map((mapItem) => {
+              const cfg = MAP_CONFIG[mapItem.map] || { color: '#eab308', bg: 'bg-yellow-500/10', border: 'border-yellow-500/30' };
+              const mvp = mapItem.topPlayer;
+
+              return (
+                <div 
+                  key={mapItem.map}
+                  className="bg-black/60 p-5 rounded-2xl border border-white/10 hover:border-yellow-500/40 transition-all space-y-4"
+                >
+                  <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                    <span className="text-sm font-black uppercase text-white italic tracking-wide">
+                      {mapItem.map}
                     </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {(l.players || []).map((p: string, pIdx: number) => (
-                        <span key={pIdx} className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-white font-bold text-[10px]">
-                          {p}
+                    <span className="text-xs font-mono font-bold text-gray-400">
+                      {mapItem.teamKills} kills da equipe
+                    </span>
+                  </div>
+
+                  {mvp ? (
+                    <div className="flex items-center gap-3 bg-black/40 p-3 rounded-xl border border-yellow-500/20">
+                      <div className="w-14 h-14 rounded-xl bg-black border border-yellow-500/30 p-0.5 flex items-center justify-center overflow-hidden shrink-0">
+                        {mvp.img ? (
+                          <img src={mvp.img} alt={mvp.name} className="w-full h-full object-cover rounded-lg" />
+                        ) : (
+                          <Users size={24} className="text-yellow-400" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <Crown size={13} className="text-yellow-400 shrink-0" />
+                          <span className="text-sm font-black uppercase text-white truncate italic">{mvp.name}</span>
+                        </div>
+                        <span className="text-[10px] text-yellow-400 font-bold uppercase block">
+                          MVP do Mapa • {mvp.mvpCount}x MVP
+                        </span>
+                        <div className="flex items-center gap-3 mt-1 text-xs">
+                          <span className="text-red-400 font-mono font-bold">{mvp.kills} kills</span>
+                          <span className="text-gray-400 font-mono">{mvp.damage.toLocaleString()} dano</span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-4 text-gray-500 text-xs">Sem dados individuais para este mapa</div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-2 text-[10px] text-gray-400 pt-1 border-t border-white/5">
+                    <div>
+                      <span className="block font-bold">Quedas: {mapItem.drops}</span>
+                      <span className="text-yellow-400 font-bold">{mapItem.booyahs} Booyahs</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="block font-bold">Média: {mapItem.avgKills} kills/queda</span>
+                      <span className="text-emerald-400 font-bold">{mapItem.pts} pts totais</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+
+    // 9. FORMAÇÕES ESCALADAS (LINEUPS)
+    case 8:
+      return (
+        <div className="space-y-4 animate-in fade-in duration-300">
+          <div className="flex items-center justify-between border-b border-white/10 pb-3">
+            <div>
+              <h4 className="text-xs font-black uppercase tracking-wider text-white flex items-center gap-2">
+                <Users size={16} className="text-yellow-400" /> Formações Escaladas (Lineups)
+              </h4>
+              <p className="text-[11px] text-gray-400">Combinações de atletas escalados e aproveitamento por formação</p>
+            </div>
+            <span className="px-3 py-1 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/40 text-xs font-black uppercase">
+              {lineups?.lineups?.length || 0} Formações Registradas
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[360px] overflow-y-auto custom-scrollbar">
+            {lineups?.lineups && lineups.lineups.length > 0 ? (
+              lineups.lineups.map((l: any, idx: number) => {
+                const isMain = idx === 0;
+                return (
+                  <div 
+                    key={l.id || idx} 
+                    className={`p-4 rounded-2xl border transition-all ${
+                      isMain 
+                        ? 'bg-gradient-to-br from-yellow-500/15 via-black/70 to-black/90 border-yellow-500/40 shadow-lg shadow-yellow-500/10' 
+                        : 'bg-black/60 border-white/10'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black uppercase text-yellow-400">
+                          Formação #{idx + 1}
+                        </span>
+                        {isMain && (
+                          <span className="px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-300 text-[9px] font-black uppercase border border-yellow-500/30">
+                            ★ Mais Utilizada
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-xs font-bold text-gray-400">
+                        {l.matches} {l.matches === 1 ? 'queda' : 'quedas'}
+                      </span>
+                    </div>
+
+                    {/* Jogadores da formação */}
+                    <div className="flex flex-wrap gap-1.5 my-3">
+                      {(l.players || []).map((pName: string, pIdx: number) => (
+                        <span 
+                          key={pIdx} 
+                          className="px-2.5 py-1 rounded-lg bg-black/80 border border-white/10 text-white font-bold text-xs uppercase flex items-center gap-1"
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-yellow-400"></span>
+                          {pName}
                         </span>
                       ))}
                     </div>
+
+                    {/* Métricas da Lineup */}
+                    <div className="grid grid-cols-3 gap-2 pt-2 border-t border-white/5 text-center text-xs">
+                      <div className="bg-black/40 p-2 rounded-xl">
+                        <span className="text-[9px] text-gray-400 uppercase font-bold block">Pontos Totais</span>
+                        <span className="text-base font-black text-yellow-400 font-mono">{l.points} ({l.avgPts}/q)</span>
+                      </div>
+                      <div className="bg-black/40 p-2 rounded-xl">
+                        <span className="text-[9px] text-gray-400 uppercase font-bold block">Abates</span>
+                        <span className="text-base font-black text-red-400 font-mono">{l.kills} ({l.avgKills}/q)</span>
+                      </div>
+                      <div className="bg-black/40 p-2 rounded-xl">
+                        <span className="text-[9px] text-gray-400 uppercase font-bold block">Booyahs</span>
+                        <span className="text-base font-black text-emerald-400 font-mono">{l.booyahs} 👑</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-right shrink-0 ml-4">
-                    <span className="text-sm font-black text-yellow-400 font-mono block">{l.pts || 0} pts</span>
-                    <span className="text-[10px] text-red-400 font-mono">{l.kills || 0} kills</span>
-                  </div>
-                </div>
-              ))
+                );
+              })
             ) : (
               <div className="col-span-2 text-center py-12 text-gray-500 text-xs">
                 Lineup padrão ativa em todas as rodadas
@@ -469,8 +704,111 @@ export const TeamSlidesSections: React.FC<TeamSlidesSectionsProps> = ({
         </div>
       );
 
-    // 9. FASES DO JOGO (KILL FEED POR SAFE)
-    case 8:
+    // 10. COMPOSIÇÃO DE HABILIDADES DA EQUIPE (NOVO: ATIVAS, PASSIVAS, PETS E ITENS)
+    case 9:
+      return (
+        <div className="space-y-4 animate-in fade-in duration-300">
+          <div className="flex items-center justify-between border-b border-white/10 pb-3">
+            <div>
+              <h4 className="text-xs font-black uppercase tracking-wider text-white flex items-center gap-2">
+                <Zap size={16} className="text-yellow-400" /> Composição de Habilidades & Meta da Equipe
+              </h4>
+              <p className="text-[11px] text-gray-400">Habilidades ativas, passivas, pets e itens mais selecionados pelo time</p>
+            </div>
+            <span className="text-xs font-bold text-yellow-400">
+              {teamCharSummary?.totalDrops || 0} Quedas Analisadas
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Habilidades Ativas (Hab 1) */}
+            <div className="bg-black/60 p-4 rounded-2xl border border-white/10 space-y-3">
+              <span className="text-xs font-black uppercase text-yellow-400 flex items-center gap-1.5">
+                <Flame size={14} /> Habilidades Ativas Mais Utilizadas (Hab 1)
+              </span>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {(teamCharSummary?.activeSkills || []).slice(0, 6).map((sk: any, idx: number) => (
+                  <div key={idx} className="bg-black/50 p-2.5 rounded-xl border border-white/5 flex items-center gap-2">
+                    <div className="w-9 h-9 rounded-lg bg-black border border-yellow-500/30 p-0.5 flex items-center justify-center shrink-0">
+                      {sk.img ? (
+                        <img src={sk.img} alt={sk.name} className="w-full h-full object-contain rounded" />
+                      ) : (
+                        <Zap size={14} className="text-yellow-400" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-[11px] font-black uppercase text-white truncate block">{sk.name}</span>
+                      <span className="text-[9px] font-mono text-yellow-400 font-bold">{sk.count}x ({sk.pct}%)</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Habilidades Passivas (Hab 2, 3, 4) */}
+            <div className="bg-black/60 p-4 rounded-2xl border border-white/10 space-y-3">
+              <span className="text-xs font-black uppercase text-blue-400 flex items-center gap-1.5">
+                <Shield size={14} /> Habilidades Passivas Meta (Hab 2, 3 & 4)
+              </span>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {(teamCharSummary?.passives || []).slice(0, 6).map((sk: any, idx: number) => (
+                  <div key={idx} className="bg-black/50 p-2.5 rounded-xl border border-white/5 flex items-center gap-2">
+                    <div className="w-9 h-9 rounded-lg bg-black border border-blue-500/30 p-0.5 flex items-center justify-center shrink-0">
+                      {sk.img ? (
+                        <img src={sk.img} alt={sk.name} className="w-full h-full object-contain rounded" />
+                      ) : (
+                        <Shield size={14} className="text-blue-400" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-[11px] font-black uppercase text-white truncate block">{sk.name}</span>
+                      <span className="text-[9px] font-mono text-blue-400 font-bold">{sk.count}x ({sk.pct}%)</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Pets & Itens de Apoio */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="bg-black/60 p-4 rounded-2xl border border-white/10 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-black uppercase text-purple-400 block">Pets Mais Utilizados</span>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {(teamCharSummary?.pets || []).slice(0, 3).map((p: any, idx: number) => (
+                    <div key={idx} className="flex items-center gap-1.5 bg-black/50 px-2 py-1 rounded-lg border border-white/5 text-xs">
+                      {p.img && <img src={p.img} alt={p.name} className="w-5 h-5 object-contain" />}
+                      <span className="font-bold text-white">{p.name}</span>
+                      <span className="text-purple-400 font-mono text-[10px]">({p.count}x)</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-black/60 p-4 rounded-2xl border border-white/10 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-black uppercase text-emerald-400 block">Itens de Carregamento</span>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {(teamCharSummary?.items || []).slice(0, 3).map((it: any, idx: number) => (
+                    <div key={idx} className="flex items-center gap-1.5 bg-black/50 px-2 py-1 rounded-lg border border-white/5 text-xs">
+                      {it.img && <img src={it.img} alt={it.name} className="w-5 h-5 object-contain" />}
+                      <span className="font-bold text-white">{it.name}</span>
+                      <span className="text-emerald-400 font-mono text-[10px]">({it.count}x)</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+
+    // 11. FASES DO JOGO (KILL FEED POR SAFE)
+    case 10:
       return (
         <div className="space-y-6 animate-in fade-in duration-300">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -497,13 +835,13 @@ export const TeamSlidesSections: React.FC<TeamSlidesSectionsProps> = ({
         </div>
       );
 
-    // 10. HISTÓRICO DE PERFORMANCE & EVOLUÇÃO
-    case 9:
+    // 12. HISTÓRICO DE PERFORMANCE & EVOLUÇÃO
+    case 11:
       return (
         <div className="space-y-6 animate-in fade-in duration-300">
           <div className="bg-black/60 p-6 rounded-3xl border border-white/10">
             <h4 className="text-xs font-black uppercase tracking-wider text-white mb-4">
-              Curva de Acúmulo de Pontos
+              Curva de Acúmulo de Pontos por Partida
             </h4>
             <div className="h-64 w-full">
               <ResponsiveContainer width="100%" height="100%">
@@ -523,8 +861,8 @@ export const TeamSlidesSections: React.FC<TeamSlidesSectionsProps> = ({
         </div>
       );
 
-    // 11. DOMÍNIO TERRITORIAL (MAPAS)
-    case 10:
+    // 13. DOMÍNIO TERRITORIAL (MAPAS)
+    case 12:
       return (
         <div className="space-y-6 animate-in fade-in duration-300">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -563,16 +901,16 @@ export const TeamSlidesSections: React.FC<TeamSlidesSectionsProps> = ({
         </div>
       );
 
-    // 12. DISTRIBUIÇÃO POR SAFE / KPM
-    case 11:
+    // 14. DISTRIBUIÇÃO POR SAFE / KPM
+    case 13:
       return (
         <div className="space-y-6 animate-in fade-in duration-300">
           <TeamKpmAnalysis data={data} selectedTeam={teamStats.name} onSelectTeam={() => {}} />
         </div>
       );
 
-    // 13. SUMÁRIO DE POSIÇÕES (1º ao 12º LUGAR)
-    case 12:
+    // 15. SUMÁRIO DE POSIÇÕES (1º ao 12º LUGAR)
+    case 14:
       return (
         <div className="space-y-6 animate-in fade-in duration-300">
           <h4 className="text-xs font-black uppercase tracking-wider text-white mb-2">
@@ -597,8 +935,8 @@ export const TeamSlidesSections: React.FC<TeamSlidesSectionsProps> = ({
         </div>
       );
 
-    // 14. PERFORMANCE POR QUEDA (DROP 1 A DROP 6)
-    case 13:
+    // 16. PERFORMANCE POR ORDEM DE QUEDA (DROP 1 A DROP 6)
+    case 15:
       return (
         <div className="space-y-6 animate-in fade-in duration-300">
           <h4 className="text-xs font-black uppercase tracking-wider text-white mb-2">
@@ -617,8 +955,8 @@ export const TeamSlidesSections: React.FC<TeamSlidesSectionsProps> = ({
         </div>
       );
 
-    // 15. DESEMPENHO DO ELENCO (ROSTER)
-    case 14:
+    // 17. DESEMPENHO DO ELENCO (ROSTER)
+    case 16:
       return (
         <div className="space-y-6 animate-in fade-in duration-300">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -677,8 +1015,8 @@ export const TeamSlidesSections: React.FC<TeamSlidesSectionsProps> = ({
         </div>
       );
 
-    // 16. ARSENAL & ARMAS
-    case 15:
+    // 18. ARSENAL & ARMAS
+    case 17:
       return (
         <div className="space-y-6 animate-in fade-in duration-300">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -719,8 +1057,8 @@ export const TeamSlidesSections: React.FC<TeamSlidesSectionsProps> = ({
         </div>
       );
 
-    // 17. PAUTA DA REUNIÃO
-    case 16:
+    // 19. PAUTA DA REUNIÃO
+    case 18:
     default:
       return (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-in fade-in duration-300">

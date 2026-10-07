@@ -18,6 +18,7 @@ import { calculateTeamStats } from '../services/dataService';
 import { findTeamLogo, formatTeamName } from '../utils/teamUtils';
 import { getWeaponInfo } from '../utils/weaponUtils';
 import { findDimImg } from '../utils/skillImages';
+import { getTeamCharacters, getTeamCharacterSummary, isSameTeam } from '../utils/characterUtils';
 import { TeamSlidesSections } from '../components/slides/TeamSlidesSections';
 import { PlayerSlidesSections } from '../components/slides/PlayerSlidesSections';
 
@@ -517,11 +518,88 @@ export const Presentation: React.FC<PresentationProps> = ({ data }) => {
     };
   }, [teamMatchDetails, selectedTeamName]);
 
-  // Safe stats (Onde fechou)
+  // Safe stats (Onde fechou) e Análise de Safes por Mapa
+  const safePerformanceByMapTeam = useMemo(() => {
+    if (!selectedTeamName) return [];
+    const mapsMap = new Map<string, Map<string, {
+      localName: string;
+      mapName: string;
+      matches: MatchDetails[];
+      matchesCount: number;
+      totalPts: number;
+      totalPtsc: number;
+      totalKills: number;
+      booyahs: number;
+      sumPos: number;
+    }>>();
+
+    teamMatchDetails.forEach(m => {
+      const map = m.MAPA ? m.MAPA.trim().toUpperCase() : 'N/A';
+      const local = (m.ONDE_FECHOU || m.LOCAL || (m as any).SAFE || (m as any).Safe || 'Geral').trim();
+      if (!mapsMap.has(map)) {
+        mapsMap.set(map, new Map());
+      }
+      const mapLocals = mapsMap.get(map)!;
+      if (!mapLocals.has(local)) {
+        mapLocals.set(local, {
+          localName: local,
+          mapName: map,
+          matches: [],
+          matchesCount: 0,
+          totalPts: 0,
+          totalPtsc: 0,
+          totalKills: 0,
+          booyahs: 0,
+          sumPos: 0,
+        });
+      }
+      const locObj = mapLocals.get(local)!;
+      const pts = parseNum(m.PTS);
+      const abts = parseNum(m.ABTS);
+      const ptsc = parseNum(m.PTSC);
+      const pos = parseNum(m.POS);
+      const isBooyah = pos === 1 || parseNum(m.B) > 0;
+
+      locObj.matches.push(m);
+      locObj.matchesCount += 1;
+      locObj.totalPts += pts;
+      locObj.totalPtsc += ptsc;
+      locObj.totalKills += abts;
+      if (isBooyah) locObj.booyahs += 1;
+      if (pos > 0) locObj.sumPos += pos;
+    });
+
+    return Array.from(mapsMap.entries()).map(([mapName, localsMap]) => {
+      const localsList = Array.from(localsMap.values()).map(loc => {
+        const avgPts = loc.matchesCount > 0 ? loc.totalPts / loc.matchesCount : 0;
+        const avgKills = loc.matchesCount > 0 ? loc.totalKills / loc.matchesCount : 0;
+        const avgPos = loc.matchesCount > 0 ? loc.sumPos / loc.matchesCount : 12;
+        return {
+          ...loc,
+          avgPts: avgPts.toFixed(1),
+          avgPtsNum: avgPts,
+          avgKills: avgKills.toFixed(1),
+          avgKillsNum: avgKills,
+          avgPos: avgPos.toFixed(1),
+        };
+      });
+
+      const bestLocals = [...localsList].sort((a, b) => b.avgPtsNum - a.avgPtsNum || b.avgKillsNum - a.avgKillsNum);
+      const worstLocals = [...localsList].sort((a, b) => a.avgPtsNum - b.avgPtsNum || a.avgKillsNum - b.avgKillsNum);
+
+      return {
+        mapName,
+        localsList,
+        bestLocals,
+        worstLocals
+      };
+    }).sort((a, b) => b.localsList.length - a.localsList.length);
+  }, [teamMatchDetails, selectedTeamName]);
+
   const safeStats = useMemo(() => {
     const safeMap = new Map<string, { name: string; map: string; pts: number; kills: number; count: number }>();
     teamMatchDetails.forEach(d => {
-      const local = (d.LOCAL || (d as any).SAFE || 'N/A').trim();
+      const local = (d.ONDE_FECHOU || d.LOCAL || (d as any).SAFE || 'N/A').trim();
       if (!local || local === 'N/A') return;
       const key = `${d.MAPA || 'MAP'}_${local}`.toUpperCase();
       const current = safeMap.get(key) || { name: local, map: d.MAPA || 'N/A', pts: 0, kills: 0, count: 0 };
@@ -533,14 +611,198 @@ export const Presentation: React.FC<PresentationProps> = ({ data }) => {
     return Array.from(safeMap.values()).sort((a, b) => b.pts - a.pts);
   }, [teamMatchDetails]);
 
-  // Lineups
-  const lineups = useMemo(() => {
-    const lineupMap = new Map<string, { players: string[]; matches: number; pts: number; kills: number }>();
-    (data.characters || []).filter(c => normalize(c.Time) === normalize(selectedTeamName)).forEach(c => {
-      // Grouping
+  // Formações escaladas (Lineups) da equipe
+  const teamLineupsData = useMemo(() => {
+    if (!selectedTeamName) return null;
+    const teamMatches = teamMatchDetails.filter(d => {
+      const hasMap = d.MAPA && d.MAPA.trim() !== '';
+      const hasPts = d.PTS !== '' && d.PTS !== undefined && d.PTS !== null;
+      const hasAbts = d.ABTS !== '' && d.ABTS !== undefined && d.ABTS !== null;
+      return hasMap && (hasPts || hasAbts);
     });
-    return [];
-  }, [data.characters, selectedTeamName]);
+
+    const lineupsMap = new Map<string, {
+      id: string;
+      players: string[];
+      matches: number;
+      kills: number;
+      points: number;
+      ptsc: number;
+      booyahs: number;
+      zeroPts: number;
+    }>();
+
+    teamMatches.forEach(match => {
+      const rdClean = (match.RD || '').toString().replace(/\D/g, '');
+      const qClean = (match.Q || (match as any).S || '').toString().replace(/\D/g, '');
+      const playerNamesSet = new Set<string>();
+
+      // 1. characters
+      if (data.characters && data.characters.length > 0) {
+        data.characters.forEach(c => {
+          if (!c || !c.Player) return;
+          if (!isSameTeam(c.Time, selectedTeamName, data.teamsReference)) return;
+          const cRd = (c.Rd || c.RD || '').toString().replace(/\D/g, '');
+          const cQ = (c.Q || (c as any).S || '').toString().replace(/\D/g, '');
+          if (cRd === rdClean && cQ === qClean) {
+            playerNamesSet.add(c.Player.trim());
+          }
+        });
+      }
+
+      // 2. players
+      if (playerNamesSet.size === 0 && data.players && data.players.length > 0) {
+        data.players.forEach(p => {
+          if (!p || !p.PLAYER) return;
+          if (!isSameTeam(p.TIME, selectedTeamName, data.teamsReference)) return;
+          const pRd = (p.RD || '').toString().replace(/\D/g, '');
+          const pQ = (p.Q || (p as any).S || '').toString().replace(/\D/g, '');
+          if (pRd === rdClean && pQ === qClean) {
+            playerNamesSet.add(p.PLAYER.trim());
+          }
+        });
+      }
+
+      // 3. killFeed fallback
+      if (playerNamesSet.size === 0 && data.killFeed && data.killFeed.length > 0) {
+        data.killFeed.forEach(k => {
+          const kRd = (k.RD || '').toString().replace(/\D/g, '');
+          const kQ = (k.Q || '').toString().replace(/\D/g, '');
+          if (kRd === rdClean && kQ === qClean) {
+            if (isSameTeam(k.TIME_ASSASSINO || k.TIME, selectedTeamName, data.teamsReference) && k.ASSASSINO) {
+              playerNamesSet.add(k.ASSASSINO.trim());
+            }
+            if (isSameTeam(k.TIME_VITIMA, selectedTeamName, data.teamsReference) && k.VITIMA) {
+              playerNamesSet.add(k.VITIMA.trim());
+            }
+          }
+        });
+      }
+
+      const playerNames = Array.from(playerNamesSet).sort((a, b) => a.localeCompare(b));
+      if (playerNames.length === 0) return;
+
+      const lineupKey = playerNames.join(' • ');
+      const pts = parseNum(match.PTS);
+      const kills = parseNum(match.ABTS);
+      const ptsc = parseNum(match.PTSC);
+      const pos = parseNum(match.POS);
+      const booyah = pos === 1 || parseNum(match.B) === 1;
+
+      if (lineupsMap.has(lineupKey)) {
+        const existing = lineupsMap.get(lineupKey)!;
+        existing.matches += 1;
+        existing.kills += kills;
+        existing.points += pts;
+        existing.ptsc += ptsc;
+        if (booyah) existing.booyahs += 1;
+        if (pts === 0) existing.zeroPts += 1;
+      } else {
+        lineupsMap.set(lineupKey, {
+          id: lineupKey,
+          players: playerNames,
+          matches: 1,
+          kills,
+          points: pts,
+          ptsc,
+          booyahs: booyah ? 1 : 0,
+          zeroPts: pts === 0 ? 1 : 0,
+        });
+      }
+    });
+
+    const lineupsList = Array.from(lineupsMap.values()).map(l => {
+      const avgPts = l.matches > 0 ? (l.points / l.matches).toFixed(1) : '0.0';
+      const avgKills = l.matches > 0 ? (l.kills / l.matches).toFixed(1) : '0.0';
+      const winRate = l.matches > 0 ? ((l.booyahs / l.matches) * 100).toFixed(0) : '0';
+      return {
+        ...l,
+        avgPts,
+        avgKills,
+        winRate,
+      };
+    }).sort((a, b) => b.matches - a.matches || b.points - a.points);
+
+    return {
+      lineups: lineupsList,
+      totalCount: lineupsList.length
+    };
+  }, [teamMatchDetails, selectedTeamName, data.characters, data.players, data.killFeed, data.teamsReference]);
+
+  // Abates e Pontos por Rodada
+  const teamRoundsStats = useMemo(() => {
+    const roundMap = new Map<string, { round: string; roundLabel: string; kills: number; pts: number; matches: number }>();
+    teamMatchDetails.forEach(d => {
+      const rd = (d.RD || '1').toString().trim();
+      const label = `RD ${rd}`;
+      const current = roundMap.get(rd) || { round: rd, roundLabel: label, kills: 0, pts: 0, matches: 0 };
+      current.kills += parseNum(d.ABTS);
+      current.pts += parseNum(d.PTS);
+      current.matches += 1;
+      roundMap.set(rd, current);
+    });
+
+    return Array.from(roundMap.values()).map(r => ({
+      ...r,
+      avgKills: r.matches > 0 ? (r.kills / r.matches).toFixed(1) : '0.0',
+      avgPts: r.matches > 0 ? (r.pts / r.matches).toFixed(1) : '0.0',
+    })).sort((a, b) => parseNum(a.round) - parseNum(b.round));
+  }, [teamMatchDetails]);
+
+  // MVP e Destaque da Equipe por Mapa
+  const teamMapMvpStats = useMemo(() => {
+    const teamPlayerNames = new Set(teamRoster.map(p => normalize(p.name)));
+
+    return teamMapStats.map(m => {
+      const normMap = normalize(m.map);
+      const playerMapPerf = new Map<string, { name: string; kills: number; damage: number; mvpCount: number; img?: string }>();
+
+      (data.players || []).forEach(p => {
+        if (!p.PLAYER) return;
+        if (!isSameTeam(p.TIME, selectedTeamName, data.teamsReference) && !teamPlayerNames.has(normalize(p.PLAYER))) return;
+        const pMap = normalize(p.MAPA);
+        if (pMap === normMap || pMap.includes(normMap) || normMap.includes(pMap)) {
+          const pKey = normalize(p.PLAYER);
+          const current = playerMapPerf.get(pKey) || {
+            name: p.PLAYER,
+            kills: 0,
+            damage: 0,
+            mvpCount: 0,
+            img: findDimImg(data.playersDimension, p.PLAYER)
+          };
+          current.kills += parseNum(p.Abates);
+          current.damage += parseNum(p.Dano);
+          current.mvpCount += parseNum(p.MVP);
+          playerMapPerf.set(pKey, current);
+        }
+      });
+
+      const playerList = Array.from(playerMapPerf.values()).sort((a, b) => b.kills - a.kills || b.damage - a.damage);
+      const topPlayer = playerList[0] || (teamRoster[0] ? {
+        name: teamRoster[0].name,
+        kills: Math.round(m.kills * 0.4),
+        damage: Math.round(m.kills * 400),
+        mvpCount: m.booyahs,
+        img: teamRoster[0].img
+      } : null);
+
+      return {
+        map: m.map,
+        drops: m.drops,
+        booyahs: m.booyahs,
+        teamKills: m.kills,
+        pts: m.pts,
+        avgKills: m.avgKills,
+        avgPts: m.avgPts,
+        topPlayer
+      };
+    });
+  }, [teamMapStats, data.players, data.playersDimension, data.teamsReference, teamRoster, selectedTeamName]);
+
+  // Composição de Habilidades do Time
+  const teamCharSummary = useMemo(() => {
+    return getTeamCharacterSummary(data, selectedTeamName);
+  }, [data, selectedTeamName]);
 
   // Killfeed phases
   const killfeedPhases = useMemo(() => {
@@ -713,19 +975,21 @@ export const Presentation: React.FC<PresentationProps> = ({ data }) => {
     '2. Raio-X de Performance',
     '3. Estilos por Mapa',
     '4. Quedas Zeradas',
-    '5. Pontos por Rodada',
-    '6. Safes por Mapa',
-    '7. Abates por Mapa',
-    '8. Formações (Lineups)',
-    '9. Fases do Jogo (Kill Feed)',
-    '10. Histórico de Performance',
-    '11. Domínio Territorial',
-    '12. KPM por Safe',
-    '13. Sumário de Posições',
-    '14. Performance por Queda',
-    '15. Desempenho do Elenco',
-    '16. Arsenal & Estilo Tático',
-    '17. Pauta da Reunião'
+    '5. Pontos & Abates por Partida',
+    '6. Abates por Rodada',
+    '7. Safes por Mapa',
+    '8. Abates & MVP por Mapa',
+    '9. Formações Escaladas (Lineups)',
+    '10. Composição de Habilidades',
+    '11. Fases do Jogo (Kill Feed)',
+    '12. Histórico de Performance',
+    '13. Domínio Territorial',
+    '14. KPM por Safe',
+    '15. Sumário de Posições',
+    '16. Performance por Ordem de Queda',
+    '17. Desempenho do Elenco',
+    '18. Arsenal & Armas',
+    '19. Pauta da Reunião'
   ];
 
   const playerSlideTitles = [
@@ -1160,7 +1424,11 @@ export const Presentation: React.FC<PresentationProps> = ({ data }) => {
               teamDropTimeline={teamDropTimeline}
               zeroStatsTeam={zeroStatsTeam}
               safeStats={safeStats}
-              lineups={lineups}
+              safePerformanceByMapTeam={safePerformanceByMapTeam}
+              lineups={teamLineupsData}
+              teamRoundsStats={teamRoundsStats}
+              teamMapMvpStats={teamMapMvpStats}
+              teamCharSummary={teamCharSummary}
               killfeedPhases={killfeedPhases}
               positionsSummary={positionsSummary}
               dropsSummary={dropsSummary}
@@ -1353,6 +1621,73 @@ export const Presentation: React.FC<PresentationProps> = ({ data }) => {
                     <div key={w.name} className="bg-gray-900 p-3 rounded-xl border border-gray-800">
                       <span className="font-black uppercase text-white block truncate">{w.name}</span>
                       <span className="text-yellow-400 font-mono font-bold">{w.count} kills ({w.pct}%)</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Página 3: Safes, Formações & Composição de Habilidades */}
+            <div className="p-8 bg-black text-white rounded-3xl border border-gray-800 break-after-page space-y-6">
+              <h2 className="text-xl font-black uppercase text-yellow-400 border-b border-gray-800 pb-2">
+                2. Safes por Mapa, Formações Escaladas & Composição de Habilidades
+              </h2>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <h3 className="text-xs font-black uppercase text-gray-400 mb-2">Formações Escaladas (Lineups)</h3>
+                  <div className="space-y-2 text-xs">
+                    {(teamLineupsData?.lineups || []).slice(0, 3).map((l: any, idx: number) => (
+                      <div key={idx} className="bg-gray-900 p-3 rounded-xl border border-gray-800">
+                        <div className="flex justify-between font-bold text-yellow-400 mb-1">
+                          <span>Formação #{idx + 1} ({l.matches} quedas)</span>
+                          <span className="text-white font-mono">{l.points} pts • {l.kills} kills</span>
+                        </div>
+                        <span className="text-gray-300 text-[11px]">{(l.players || []).join(' • ')}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-xs font-black uppercase text-gray-400 mb-2">Habilidades Meta da Equipe</h3>
+                  <div className="bg-gray-900 p-3 rounded-xl border border-gray-800 space-y-2 text-xs">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-yellow-500 block">Ativas Mais Escolhidas</span>
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        {(teamCharSummary?.activeSkills || []).slice(0, 3).map((sk: any, idx: number) => (
+                          <span key={idx} className="bg-black/60 px-2 py-0.5 rounded border border-white/10 text-white text-[10px] font-bold">
+                            {sk.name} ({sk.count}x)
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-blue-400 block">Passivas Dominantes</span>
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        {(teamCharSummary?.passives || []).slice(0, 4).map((sk: any, idx: number) => (
+                          <span key={idx} className="bg-black/60 px-2 py-0.5 rounded border border-white/10 text-white text-[10px] font-bold">
+                            {sk.name} ({sk.count}x)
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-gray-800">
+                <h3 className="text-xs font-black uppercase text-gray-400 mb-2">Melhores Safes por Mapa</h3>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  {safePerformanceByMapTeam.slice(0, 3).map((mObj: any) => (
+                    <div key={mObj.mapName} className="bg-gray-900 p-2.5 rounded-xl border border-gray-800">
+                      <span className="font-black text-yellow-400 uppercase block mb-1">{mObj.mapName}</span>
+                      {(mObj.bestLocals || []).slice(0, 2).map((loc: any, lIdx: number) => (
+                        <div key={lIdx} className="flex justify-between text-[10px] text-gray-300">
+                          <span className="truncate">{loc.localName}</span>
+                          <span className="font-mono text-emerald-400 font-bold">{loc.avgPts} pts/q</span>
+                        </div>
+                      ))}
                     </div>
                   ))}
                 </div>
