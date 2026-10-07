@@ -480,7 +480,7 @@ export const CaptainDraftStudy: React.FC<CaptainDraftStudyProps> = ({ data }) =>
     };
   }, [snakePicks, snakeDraftOrder]);
 
-  // Pool of all available unpicked players
+  // Pool of all available unpicked players (Only players from the 12 teams in Fase Rumo ao Mundial)
   const availablePlayersPool = useMemo(() => {
     const list: Array<{
       name: string;
@@ -498,8 +498,10 @@ export const CaptainDraftStudy: React.FC<CaptainDraftStudyProps> = ({ data }) =>
       teamImg?: string;
     }> = [];
 
+    const rumoTeamsSet = new Set(teamsWithRosters.map(t => normalize(t.teamName)));
+
     playerStatsMap.forEach(stat => {
-      if (!pickedPlayersSet.has(normalize(stat.name))) {
+      if (rumoTeamsSet.has(normalize(stat.team)) && !pickedPlayersSet.has(normalize(stat.name))) {
         const avgKills = stat.matches > 0 ? Number((stat.kills / stat.matches).toFixed(1)) : 0;
         const avgDamage = stat.matches > 0 ? Math.round(stat.damage / stat.matches) : 0;
         list.push({
@@ -513,7 +515,7 @@ export const CaptainDraftStudy: React.FC<CaptainDraftStudyProps> = ({ data }) =>
     // Sort by kills desc
     list.sort((a, b) => b.kills - a.kills);
     return list;
-  }, [playerStatsMap, pickedPlayersSet]);
+  }, [playerStatsMap, pickedPlayersSet, teamsWithRosters]);
 
   // Filtered pool by search and role
   const filteredAvailablePool = useMemo(() => {
