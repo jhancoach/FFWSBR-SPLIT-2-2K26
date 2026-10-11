@@ -1785,6 +1785,7 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
 
   const bannerTeamPerfData = useMemo(() => {
     if (!selectedTeam) return null;
+    const cleanSelectedTeam = selectedTeam.trim().toLowerCase();
     
     let totalPtsc = 0;
     let totalAbts = 0;
@@ -1794,7 +1795,7 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
     const mapStatsMap = new Map<string, { mapName: string, matches: number, ptsc: number, abts: number, pts: number, booyahs: number }>();
 
     data.details.forEach(d => {
-      if (d.TIME?.toLowerCase() !== selectedTeam.toLowerCase()) return;
+      if ((d.TIME || '').trim().toLowerCase() !== cleanSelectedTeam) return;
       if (selectedRd !== 'all' && d.RD?.toString() !== selectedRd) return;
       
       const ptsc = parseNumber(d.PTSC);
@@ -1821,16 +1822,20 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
     });
 
     const playerStats = new Map<string, { name: string, img: string, kills: number, dmg: number, hs: number, knocks: number, matches: number }>();
+    
+    // Accumulate player stats
     data.players.forEach(p => {
-      if (p.TIME?.toLowerCase() !== selectedTeam.toLowerCase()) return;
+      if ((p.TIME || '').trim().toLowerCase() !== cleanSelectedTeam) return;
       if (selectedRd !== 'all' && p.RD?.toString() !== selectedRd) return;
 
-      const pName = p.PLAYER;
+      const pName = p.PLAYER?.trim();
       if (!pName) return;
 
       if (!playerStats.has(pName)) {
-        const playerRef = data.playersDimension.find(d => d.Name.toLowerCase().trim() === pName.toLowerCase().trim());
-        playerStats.set(pName, { name: pName, img: playerRef?.IMG || '', kills: 0, dmg: 0, hs: 0, knocks: 0, matches: 0 });
+        const charEntry = data.characters?.find(c => c.Player?.toLowerCase().trim() === pName.toLowerCase() && c.playerImg);
+        const playerRef = data.playersDimension.find(d => d.Name.toLowerCase().trim() === pName.toLowerCase());
+        const playerImg = charEntry?.playerImg || playerRef?.IMG || findDimImg(data.playersDimension, pName) || '';
+        playerStats.set(pName, { name: pName, img: playerImg, kills: 0, dmg: 0, hs: 0, knocks: 0, matches: 0 });
       }
 
       const stats = playerStats.get(pName)!;
@@ -1840,6 +1845,40 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
       stats.knocks += parseNumber(p.Deitados);
       stats.matches++;
     });
+
+    // Fallback: if no players recorded for this specific round or team, gather team roster across all rounds
+    if (playerStats.size === 0) {
+      data.players.forEach(p => {
+        if ((p.TIME || '').trim().toLowerCase() !== cleanSelectedTeam) return;
+        const pName = p.PLAYER?.trim();
+        if (!pName) return;
+
+        if (!playerStats.has(pName)) {
+          const charEntry = data.characters?.find(c => c.Player?.toLowerCase().trim() === pName.toLowerCase() && c.playerImg);
+          const playerRef = data.playersDimension.find(d => d.Name.toLowerCase().trim() === pName.toLowerCase());
+          const playerImg = charEntry?.playerImg || playerRef?.IMG || findDimImg(data.playersDimension, pName) || '';
+          playerStats.set(pName, { name: pName, img: playerImg, kills: 0, dmg: 0, hs: 0, knocks: 0, matches: 0 });
+        }
+        const stats = playerStats.get(pName)!;
+        stats.kills += parseNumber(p.Abates);
+        stats.dmg += parseNumber(p.Dano);
+        stats.hs += parseNumber(p.HS);
+        stats.knocks += parseNumber(p.Deitados);
+        stats.matches++;
+      });
+    }
+
+    // Fallback 2: if still no players from data.players, check characters
+    if (playerStats.size === 0 && Array.isArray(data.characters)) {
+      data.characters.forEach(c => {
+        if ((c.Time || '').trim().toLowerCase() !== cleanSelectedTeam) return;
+        const pName = c.Player?.trim();
+        if (!pName || playerStats.has(pName)) return;
+        const playerRef = data.playersDimension.find(d => d.Name.toLowerCase().trim() === pName.toLowerCase());
+        const playerImg = c.playerImg || playerRef?.IMG || findDimImg(data.playersDimension, pName) || '';
+        playerStats.set(pName, { name: pName, img: playerImg, kills: 0, dmg: 0, hs: 0, knocks: 0, matches: 0 });
+      });
+    }
 
     const players = Array.from(playerStats.values()).sort((a, b) => b.kills - a.kills).map(p => ({
       ...p,
@@ -1859,8 +1898,18 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
 
     const teamImg = findTeamLogo(selectedTeam, data.teamsReference);
 
-    return { teamName: selectedTeam, teamImg, ptsc: totalPtsc, abts: totalAbts, pts: totalPtsc + totalAbts, booyahs: totalBooyahs, matches, players, maps };
-  }, [data.details, data.players, data.teamsReference, data.playersDimension, selectedTeam, selectedRd]);
+    return { 
+      teamName: selectedTeam, 
+      teamImg, 
+      ptsc: totalPtsc, 
+      abts: totalAbts, 
+      pts: totalPtsc + totalAbts, 
+      booyahs: totalBooyahs, 
+      matches, 
+      players, 
+      maps 
+    };
+  }, [data.details, data.players, data.characters, data.teamsReference, data.playersDimension, selectedTeam, selectedRd]);
 
   const bannerPlayerData = useMemo(() => {
     if (!selectedRd) return { topAbts: [], topDmg: [], topHs: [], topKnocks: [] };
@@ -2430,14 +2479,14 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
             )}
 
             {activeTab === 'team_perf' && (
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1.5 w-full sm:w-auto">
                 <span className="text-gray-500 font-bold uppercase tracking-widest text-[11px] leading-none">Equipe</span>
                 <select
                   value={selectedTeam}
                   onChange={(e) => setSelectedTeam(e.target.value)}
-                  className="bg-black border border-white/10 rounded-xl px-3 py-2.5 text-white font-bold focus:border-yellow-500 outline-none w-40 text-xs uppercase"
+                  className="bg-black border border-yellow-500/50 rounded-xl px-3 py-2.5 text-white font-bold focus:border-yellow-400 outline-none w-full sm:w-44 text-xs uppercase"
                 >
-                  <option value="" disabled>Equipe</option>
+                  <option value="" disabled>Selecione a Equipe</option>
                   {availableTeams.map(t => (
                     <option key={t} value={t}>{t}</option>
                   ))}
@@ -2501,14 +2550,14 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
       </div>
 
       {/* Preview Container */}
-      <div className="flex md:justify-center bg-white/5 p-4 md:p-8 rounded-3xl border border-white/5 overflow-x-auto">
+      <div className="flex justify-center items-start bg-white/5 p-2 sm:p-4 md:p-8 rounded-2xl sm:rounded-3xl border border-white/5 overflow-x-auto max-w-full">
         
         {/* Banner Real (Scale down for preview, full size for render) */}
-        <div className={`relative origin-top transform scale-[0.3] min-[380px]:scale-[0.35] sm:scale-[0.5] md:scale-[0.6] lg:scale-[0.7] ${isFeedTab ? '-mb-[945px] min-[380px]:-mb-[877px] sm:-mb-[675px] md:-mb-[540px] lg:-mb-[405px]' : '-mb-[1344px] min-[380px]:-mb-[1248px] sm:-mb-[960px] md:-mb-[768px] lg:-mb-[576px]'}`}>
+        <div className={`relative origin-top transform scale-[0.27] min-[360px]:scale-[0.31] min-[400px]:scale-[0.35] sm:scale-[0.5] md:scale-[0.6] lg:scale-[0.7] ${isFeedTab ? '-mb-[985px] min-[360px]:-mb-[930px] min-[400px]:-mb-[877px] sm:-mb-[675px] md:-mb-[540px] lg:-mb-[405px]' : '-mb-[1400px] min-[360px]:-mb-[1325px] min-[400px]:-mb-[1248px] sm:-mb-[960px] md:-mb-[768px] lg:-mb-[576px]'}`}>
           
           <div 
             ref={bannerRef}
-            className={`bg-gradient-to-br from-[#1a1a1a] to-black w-[1080px] ${isFeedTab ? 'h-[1350px]' : 'h-[1920px]'} relative overflow-hidden flex flex-col font-display border border-white/5`}
+            className={`bg-gradient-to-br from-[#1a1a1a] to-black w-[1080px] ${isFeedTab ? 'h-[1350px]' : 'h-[1920px]'} relative overflow-hidden flex flex-col font-display border border-white/5 shrink-0`}
             style={{ padding: '80px', boxSizing: 'border-box' }}
           >
             {/* Background Effects */}
@@ -2868,8 +2917,9 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
                 </div>
               </div>
 
-            ) : activeTab === 'team_perf' && bannerTeamPerfData ? (
-              <div className="flex-1 flex flex-col justify-start gap-4 relative z-10 w-full">
+            ) : activeTab === 'team_perf' ? (
+              bannerTeamPerfData ? (
+                <div className="flex-1 flex flex-col justify-start gap-4 relative z-10 w-full">
                 
                 {/* Cabeçalho da Equipe e Resumo Coletivo */}
                 <div className="bg-black/50 p-6 rounded-3xl border border-yellow-500/30 backdrop-blur-sm flex items-center justify-between shadow-[0_10px_30px_rgba(234,179,8,0.2)]">
@@ -2993,8 +3043,14 @@ const Banners: React.FC<BannersProps> = ({ data }) => {
                   </div>
                 )}
               </div>
-
-            ) : (activeTab === 'map_kings_stories' || activeTab === 'drop_kings_stories' || activeTab === 'role_kings_stories' || activeTab === 'team_map_kings_stories' || activeTab === 'team_drop_kings_stories') && currentKingsData.length > 0 && selectedMapOrDrop ? (
+            ) : (
+              <div className="flex-1 flex flex-col justify-center items-center text-center p-12 text-gray-400">
+                <Users size={64} className="mb-4 text-yellow-500/60" />
+                <h3 className="text-2xl font-bold uppercase text-white mb-2">Selecione uma equipe</h3>
+                <p className="text-base text-gray-400 max-w-md">Escolha a equipe acima para visualizar e gerar o banner de desempenho individual e por mapa.</p>
+              </div>
+            )
+          ) : (activeTab === 'map_kings_stories' || activeTab === 'drop_kings_stories' || activeTab === 'role_kings_stories' || activeTab === 'team_map_kings_stories' || activeTab === 'team_drop_kings_stories') && currentKingsData.length > 0 && selectedMapOrDrop ? (
               (() => {
                 const group = currentKingsData.find(g => g.name === selectedMapOrDrop);
                 if (!group) return null;
