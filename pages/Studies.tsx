@@ -12,6 +12,7 @@ import { DangerStudies } from '../components/DangerStudies';
 import { WeaponStudiesDashboard } from '../components/WeaponStudiesDashboard';
 import { MAPS_CONFIG, preloadAllMaps } from '../utils/mapPreloader';
 import { FastMapView } from '../components/FastMapView';
+import { HeatmapOverlay, HeatmapPaletteType } from '../components/HeatmapOverlay';
 import { RushDuosAnalysis } from '../components/RushDuosAnalysis';
 import { CaptainDraftStudy } from '../components/CaptainDraftStudy';
 
@@ -81,6 +82,10 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
     // Safe Studies State
     const [selectedMap, setSelectedMap] = useState(MAPS[0]);
     const [points, setPoints] = useState<SafePoint[]>([]);
+    const [safeHeatmapMode, setSafeHeatmapMode] = useState<'both' | 'heatmap' | 'markers'>('both');
+    const [safeHeatmapPalette, setSafeHeatmapPalette] = useState<HeatmapPaletteType>('fire');
+    const [safeHeatmapRadius, setSafeHeatmapRadius] = useState<number>(45);
+    const [safeHeatmapOpacity, setSafeHeatmapOpacity] = useState<number>(0.85);
     
     // Zoom and Pan state
     const [zoom, setZoom] = useState(1);
@@ -422,6 +427,16 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
     };
 
     const maxCount = Math.max(...points.map(p => p.count), 1);
+    
+    // Map safe points into heatmap points
+    const safeHeatmapPoints = useMemo(() => {
+        return points.map(p => ({
+            x: p.x + 1,
+            y: p.y + 1,
+            weight: p.count
+        }));
+    }, [points]);
+
     const activeStream = mapStreams.find(s => s.id === selectedStreamId) || mapStreams[0];
 
     return (
@@ -755,6 +770,102 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
                         </div>
                     </div>
 
+                    {/* Heatmap & Visualization Controls Bar */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 bg-black/60 p-3 sm:p-4 rounded-2xl border border-white/10 backdrop-blur-md">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-gray-400 font-bold uppercase tracking-wider text-xs flex items-center gap-1.5 mr-1">
+                                <Flame size={15} className="text-orange-500" /> Modo de Visualização:
+                            </span>
+                            
+                            <div className="flex bg-black/80 p-1 rounded-xl border border-white/10">
+                                <button
+                                    type="button"
+                                    onClick={() => setSafeHeatmapMode('both')}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                                        safeHeatmapMode === 'both' 
+                                            ? 'bg-yellow-500 text-black shadow-md shadow-yellow-500/20' 
+                                            : 'text-gray-400 hover:text-white'
+                                    }`}
+                                >
+                                    <Layers size={13} />
+                                    <span>Ambos</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSafeHeatmapMode('heatmap')}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                                        safeHeatmapMode === 'heatmap' 
+                                            ? 'bg-orange-500 text-white shadow-md shadow-orange-500/30' 
+                                            : 'text-gray-400 hover:text-white'
+                                    }`}
+                                >
+                                    <Flame size={13} />
+                                    <span>Mapa de Calor</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSafeHeatmapMode('markers')}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                                        safeHeatmapMode === 'markers' 
+                                            ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' 
+                                            : 'text-gray-400 hover:text-white'
+                                    }`}
+                                >
+                                    <Target size={13} />
+                                    <span>Marcadores</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {safeHeatmapMode !== 'markers' && (
+                            <div className="flex flex-wrap items-center gap-3">
+                                {/* Palette Selector */}
+                                <div className="flex items-center gap-2">
+                                    <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Paleta:</span>
+                                    <select
+                                        value={safeHeatmapPalette}
+                                        onChange={(e) => setSafeHeatmapPalette(e.target.value as HeatmapPaletteType)}
+                                        className="bg-black/80 border border-white/10 text-white text-xs font-bold uppercase rounded-lg px-2.5 py-1.5 outline-none focus:border-yellow-500"
+                                    >
+                                        <option value="fire">🔥 Fogo Térmico</option>
+                                        <option value="danger">⚡ Perigo Intenso</option>
+                                        <option value="emerald">🟢 Esmeralda Tático</option>
+                                        <option value="amber">🟡 Âmbar Radar</option>
+                                    </select>
+                                </div>
+
+                                {/* Radius Slider */}
+                                <div className="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-xl border border-white/5">
+                                    <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Raio:</span>
+                                    <input
+                                        type="range"
+                                        min="25"
+                                        max="80"
+                                        value={safeHeatmapRadius}
+                                        onChange={(e) => setSafeHeatmapRadius(Number(e.target.value))}
+                                        className="w-20 accent-yellow-500 cursor-pointer"
+                                    />
+                                    <span className="text-yellow-400 text-xs font-mono font-bold w-6 text-right">{safeHeatmapRadius}</span>
+                                </div>
+
+                                {/* Opacity Slider */}
+                                <div className="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-xl border border-white/5">
+                                    <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Opacidade:</span>
+                                    <input
+                                        type="range"
+                                        min="0.3"
+                                        max="1.0"
+                                        step="0.05"
+                                        value={safeHeatmapOpacity}
+                                        onChange={(e) => setSafeHeatmapOpacity(Number(e.target.value))}
+                                        className="w-16 accent-yellow-500 cursor-pointer"
+                                    />
+                                    <span className="text-yellow-400 text-xs font-mono font-bold w-8 text-right">{Math.round(safeHeatmapOpacity * 100)}%</span>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
                     <div className="bg-[#1a1a1a] rounded-3xl border border-gray-800 p-4 sm:p-6 flex flex-col items-center gap-6 shadow-2xl relative overflow-hidden">
                         <FastMapView
                             selectedMap={selectedMap}
@@ -765,10 +876,19 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
                             isAdmin={isAdmin}
                             showClearButton={true}
                             onClearMap={handleClear}
+                            overlayLayer={
+                                <HeatmapOverlay
+                                    points={safeHeatmapPoints}
+                                    visible={safeHeatmapMode !== 'markers'}
+                                    palette={safeHeatmapPalette}
+                                    radius={safeHeatmapRadius}
+                                    opacity={safeHeatmapOpacity}
+                                />
+                            }
                             onMapClick={(_, coords) => handleMapClickCoords(coords)}
                             onMapRightClick={(_, coords) => handleMapRightClickCoords(coords)}
                         >
-                            {points.map((p, i) => {
+                            {safeHeatmapMode !== 'heatmap' && points.map((p, i) => {
                                 const intensity = p.count / maxCount;
                                 
                                 let bgColor = 'bg-yellow-400';
@@ -807,6 +927,16 @@ const Studies: React.FC<StudiesProps> = ({ data }) => {
                                 <div>
                                     <span className="block text-[10px] text-gray-500 font-bold uppercase tracking-widest">Zonas Distintas</span>
                                     <span className="block text-xl font-black text-white italic leading-none">{points.length}</span>
+                                </div>
+                            </div>
+                            <div className="w-px h-8 bg-gray-800 mx-2"></div>
+                            <div className="flex items-center gap-3">
+                                <Flame size={18} className="text-orange-500" />
+                                <div>
+                                    <span className="block text-[10px] text-gray-500 font-bold uppercase tracking-widest">Visualização Ativa</span>
+                                    <span className="block text-xs font-black text-orange-400 uppercase tracking-wider leading-none mt-1">
+                                        {safeHeatmapMode === 'both' ? 'Mapa de Calor + Marcadores' : safeHeatmapMode === 'heatmap' ? 'Mapa de Calor (Puro)' : 'Marcadores Numéricos'}
+                                    </span>
                                 </div>
                             </div>
                         </div>
